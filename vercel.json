@@ -1,40 +1,18 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "services": {
-    "frontend": {
-      "root": "frontend",
-      "framework": "nextjs"
-    },
-    "backend-python": {
-      "root": "backend-python",
-      "framework": "fastapi",
-      "entrypoint": "main:app"
-    },
-    "backend-node": {
-      "root": "backend-node",
-      "framework": "express"
+  "functions": {
+    "backend-python/main.py": {
+      "runtime": "vercel-python@4.2.0"
     }
   },
-  "rewrites": [
+  "routes": [
     {
       "source": "/api/python/(.*)",
-      "destination": {
-        "service": "backend-python"
-      }
+      "destination": "/backend-python/main.py"
     },
     {
-      "source": "/api/node/(.*)",
-      "destination": {
-        "service": "backend-node"
-      }
-    },
-    {
-      "source": "/(.*)",
-      "destination": {
-        "service": "frontend"
-      }
+      "source": "/api/(.*)",
+      "destination": "/backend-python/main.py"
     }
   ]
 }
-
-
