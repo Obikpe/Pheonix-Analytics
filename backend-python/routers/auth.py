@@ -5,6 +5,7 @@ import os
 import re
 import time
 from collections import defaultdict, deque
+from datetime import datetime, timezone
 from typing import Optional
 
 import bcrypt
@@ -249,7 +250,7 @@ def register(body: RegisterRequest):
             "detail": "Payment pending - complete checkout"
         }
     
-    # Save new user to Supabase SQL table
+    # Save new user to Supabase SQL table with timestamp compatible with TIMESTAMPTZ
     new_user_data = {
         "email": email,
         "hashed_password": pw_hash,
@@ -258,7 +259,7 @@ def register(body: RegisterRequest):
         "sub_status": "pending",
         "is_paid": False,
         "subscription_tier": "free",
-        "created_at": int(time.time())
+        "created_at": datetime.now(timezone.utc).isoformat()
     }
     
     try:
@@ -289,7 +290,7 @@ def admin_create_user(body: AdminCreateUser, _: CurrentUser = Depends(require_ad
         "sub_status": "active",
         "is_paid": True,
         "subscription_tier": "paid",
-        "created_at": int(time.time())
+        "created_at": datetime.now(timezone.utc).isoformat()
     }
     
     try:

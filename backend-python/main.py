@@ -6,11 +6,11 @@ from dotenv import load_dotenv
 ENV_PATH = Path(__file__).parent / ".env"
 load_dotenv(dotenv_path=ENV_PATH, override=True)
 
-# Debug now will be accurate
+# Debug checks
 print("DEBUG CHECK -> JWT_SECRET length:", len(os.getenv("JWT_SECRET", "")))
 print("DEBUG CHECK -> Loaded from:", ENV_PATH.resolve(), "exists:", ENV_PATH.exists())
 
-# 2. NOW import routers - they will see JWT_SECRET
+# 2. NOW import routers
 from routers import auth, grading, admin, progress, billing
 from routers.admin import router as admin_router
 from fastapi import FastAPI, Request
@@ -24,9 +24,8 @@ from contextlib import asynccontextmanager
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # init_db is now explicit, not on import
-    auth.init_db()
-    print(f"DB initialized at {auth.DB_FILE}")
+    # Supabase is managed externally via SQL, no local init_db needed
+    print("Backend startup: Connected to Supabase PostgreSQL")
     yield
 
 app = FastAPI(
@@ -37,16 +36,16 @@ app = FastAPI(
     redoc_url="/redoc"
 )
 
-# Rate limiter - you were missing the middleware
+# Rate limiter middleware
 limiter = Limiter(key_func=get_remote_address, default_limits=["60/minute"])
 app.state.limiter = limiter
-app.add_middleware(SlowAPIMiddleware)  # <-- THIS WAS MISSING
+app.add_middleware(SlowAPIMiddleware)
 
 @app.exception_handler(RateLimitExceeded)
 async def rate_limit_handler(request, exc):
     return JSONResponse(status_code=429, content={"error": "Rate limit exceeded, try again in 15 minutes"})
 
-# CORS
+# CORS Middleware (Correctly placed to handle preflight OPTIONS requests)
 origins = [
     "http://localhost:3000",
     "http://localhost:5173",
@@ -54,14 +53,14 @@ origins = [
     os.getenv("FRONTEND_URL", "https://thepheonixanalytics.com"),
     "https://www.thepheonixanalytics.com",
 ]
-origins.extend([f"http://localhost:{p}" for p in [3000,3001,3002,4000,5173,8000]])
-origins.extend([f"http://127.0.0.1:{p}" for p in [3000,3001,3002,4000]])
+origins.extend([f"http://localhost:{p}" for p in [3000, 3001, 3002, 4000, 5173, 8000]])
+origins.extend([f"http://127.0.0.1:{p}" for p in [3000, 3001, 3002, 4000]])
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["GET","POST","PUT","DELETE","OPTIONS"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -83,7 +82,7 @@ app.include_router(admin_router)
 
 @app.get("/")
 def health():
-    return {"status": "ok", "service": "pheonix-python-secure", "routers": ["auth","grading","admin","progress"]}
+    return {"status": "ok", "service": "pheonix-python-secure", "routers": ["auth", "grading", "admin", "progress"]}
 
 @app.get("/api/health")
 def api_health():
