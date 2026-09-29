@@ -6,10 +6,6 @@ from dotenv import load_dotenv
 ENV_PATH = Path(__file__).parent / ".env"
 load_dotenv(dotenv_path=ENV_PATH, override=True)
 
-# Debug checks
-print("DEBUG CHECK -> JWT_SECRET length:", len(os.getenv("JWT_SECRET", "")))
-print("DEBUG CHECK -> Loaded from:", ENV_PATH.resolve(), "exists:", ENV_PATH.exists())
-
 # 2. NOW import routers
 from routers import auth, grading, admin, progress, billing, webhooks, community
 from routers.admin import router as admin_router
