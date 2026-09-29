@@ -25,7 +25,7 @@ async def lifespan(app: FastAPI):
     yield
 
 app = FastAPI(
-    title="The Pheonix Analytics - Python Backend",
+    title="Learnora - Python Backend",
     version="2.0.0-secure",
     lifespan=lifespan,
     docs_url="/docs",
