@@ -1,6 +1,6 @@
 'use client';
 export const dynamic = 'force-dynamic';
-import { useEffect, useState, useMemo, useRef } from 'react';
+import { Suspense, useEffect, useState, useMemo, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Playground from '@/components/Playground';
 import courses from '@/data/courses.json';
@@ -38,7 +38,7 @@ interface PortfolioItem {
   codeSnippet?: string;
 }
 
-export default function WitStartDashboard() {
+function WitStartDashboardContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [email, setEmail] = useState('');
@@ -70,7 +70,6 @@ export default function WitStartDashboard() {
   const [replyText, setReplyText] = useState<{ [key: string]: string }>({});
 
   // Dynamic WitStart Courses extracted strictly from courses.json:
-  // Filters where witstart is true and sorts in ascending order by id (ws_01, ws_02...)
   const witstartCourses = useMemo(() => {
     return courses
       .filter((c: any) => c.witstart === true)
@@ -225,38 +224,10 @@ export default function WitStartDashboard() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Unlocking Logic
-  const isCourseLocked = (index: number) => {
-    /*
-    if (index === 0) return false; 
-    const prevCourse = witstartCourses[index - 1];
-    if (!prevCourse) return false;
-
-    const prevLessonsDone = completedIds.includes(prevCourse.id);
-
-    if (index === 1) {
-      return !prevLessonsDone;
-    } else {
-      const prevModuleNum = index;
-      const prevProject = allProjects.find(p => p.module === prevModuleNum);
-      const prevProjectPassed = prevProject ? passedProjectIds.includes(prevProject.id) : true;
-      return !(prevLessonsDone && prevProjectPassed);
-    }
-    */
-    return false; // Unlocked by default
-  };
-
-  const isProjectLocked = (projectModule: number) => {
-    /*
-    const course = witstartCourses.find((c: any, idx: number) => (c.module === projectModule) || (idx + 1 === projectModule));
-    if (!course) return false;
-    return !completedIds.includes(course.id);
-    */
-    return false; // Unlocked by default
-  };
+  const isCourseLocked = (index: number) => false;
+  const isProjectLocked = (projectModule: number) => false;
 
   const openCourse = (courseId: string, locked: boolean) => {
-    // if (locked) return;
     router.push(`/dashboard/course/${courseId}`);
   };
 
@@ -557,11 +528,7 @@ export default function WitStartDashboard() {
                     <div
                       key={c.id}
                       onClick={() => openCourse(c.id, locked)}
-                      className={`relative rounded-3xl p-7 border transition-all duration-300 ${
-                        /* locked 
-                          ? 'bg-stone-900/30 border-stone-900 opacity-60 cursor-not-allowed' 
-                          : */ 'bg-white border-[#e5e8ee] hover:-translate-y-1 hover:border-[#d7ad35]/70 cursor-pointer shadow-sm hover:shadow-xl hover:shadow-[#111827]/7'
-                      }`}
+                      className="relative rounded-3xl p-7 border bg-white border-[#e5e8ee] hover:-translate-y-1 hover:border-[#d7ad35]/70 cursor-pointer shadow-sm hover:shadow-xl hover:shadow-[#111827]/7 transition-all duration-300"
                     >
                       <div className="relative -mx-7 -mt-7 mb-5 h-32 overflow-hidden rounded-t-[22px] bg-[#e8eaee]">
                         <img
@@ -584,11 +551,7 @@ export default function WitStartDashboard() {
                           {c.id} {c.module ? `• Module ${c.module}` : ''}
                         </span>
                         
-                        {/* {locked ? (
-                          <span className="text-xs bg-red-950/80 border border-red-800/50 text-red-400 px-3 py-1 rounded-full font-bold">
-                            🔒 Locked
-                          </span>
-                        ) : */} {done ? (
+                        {done ? (
                           <span className="text-xs bg-emerald-50 border border-emerald-200 text-emerald-700 px-3 py-1 rounded-full font-bold">
                             ✓ Completed
                           </span>
@@ -614,8 +577,8 @@ export default function WitStartDashboard() {
                         </div>
                         
                         <div className="flex items-center justify-between text-xs font-bold tracking-widest uppercase opacity-85 mt-1">
-                          <span className={/* locked ? 'text-stone-600' : */ 'text-[#b08722]'}>
-                            {/* locked ? 'Complete Prerequisites to Unlock' : */} 'Open Course Curriculum →'
+                          <span className="text-[#b08722]">
+                            Open Course Curriculum →
                           </span>
                           <span className="text-[#7d8492]">{c.duration || '16 lessons'}</span>
                         </div>
@@ -643,10 +606,9 @@ export default function WitStartDashboard() {
               <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {allProjects.map((p) => {
                   const passed = passedProjectIds.includes(p.id);
-                  const projectLocked = isProjectLocked(p.module);
 
                   return (
-                    <div key={p.id} className={`bg-white border rounded-[22px] p-6 flex flex-col justify-between transition shadow-sm hover:-translate-y-0.5 hover:shadow-lg hover:shadow-[#111827]/5 ${/* projectLocked ? 'border-stone-900 opacity-60' : */ 'border-[#e5e8ee] hover:border-[#d7ad35]/60'}`}>
+                    <div key={p.id} className="bg-white border border-[#e5e8ee] rounded-[22px] p-6 flex flex-col justify-between transition shadow-sm hover:-translate-y-0.5 hover:shadow-lg hover:shadow-[#111827]/5 hover:border-[#d7ad35]/60">
                       <div className="-mx-6 -mt-6 mb-5 h-24 overflow-hidden rounded-t-[22px]">
                         <img src={[
                           'https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&w=900&q=80',
@@ -660,15 +622,9 @@ export default function WitStartDashboard() {
                             Module {p.module}
                           </span>
                           
-                          {/* {projectLocked ? (
-                            <span className="text-[10px] bg-red-950/80 border border-red-800/50 text-red-400 px-2.5 py-0.5 rounded-full font-bold">
-                              🔒 Locked by Lessons
-                            </span>
-                          ) : */} (
-                            <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full ${passed ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-stone-800 text-[#7d8492]'}`}>
-                              {passed ? '✓ Passed & Verified' : 'Available'}
-                            </span>
-                          )
+                          <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full ${passed ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-stone-800 text-[#7d8492]'}`}>
+                            {passed ? '✓ Passed & Verified' : 'Available'}
+                          </span>
                         </div>
                         <h3 className="text-base font-bold text-[#151821] mt-1">{p.title}</h3>
                         <p className="text-xs text-[#7d8492] mt-2.5 leading-relaxed">{p.desc}</p>
@@ -678,15 +634,13 @@ export default function WitStartDashboard() {
                         <span className="text-[11px] font-bold text-[#7d8492]">{p.track}</span>
                         <button 
                           onClick={() => {
-                            // if (projectLocked) return;
                             setActiveGradingProject(p);
                             setSubmissionCode(`# Module ${p.module}: ${p.title}\n# Write your solution here\n\nimport pandas as pd\nprint("Executing solution script...")\n`);
                             setGradingResult(null);
                           }}
-                          // disabled={projectLocked}
-                          className={`text-xs font-bold px-4 py-2 rounded-xl shadow-md transition ${/* projectLocked ? 'bg-stone-800 text-stone-600 cursor-not-allowed' : */ 'bg-[#111827] text-white hover:bg-[#1d293b] cursor-pointer'}`}
+                          className="text-xs font-bold px-4 py-2 rounded-xl shadow-md transition bg-[#111827] text-white hover:bg-[#1d293b] cursor-pointer"
                         >
-                          {/* projectLocked ? 'Complete Lessons First' : */} 'Open Workspace 🚀'
+                          Open Workspace 🚀
                         </button>
                       </div>
                     </div>
@@ -912,5 +866,13 @@ export default function WitStartDashboard() {
         </div>
       </main>
     </div>
+  );
+}
+
+export default function WitStartDashboard() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-[#111827] flex items-center justify-center text-white"><p>Loading dashboard...</p></div>}>
+      <WitStartDashboardContent />
+    </Suspense>
   );
 }

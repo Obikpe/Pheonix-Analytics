@@ -1,8 +1,8 @@
 'use client';
 export const dynamic = 'force-dynamic';
+import { Suspense, useMemo } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Image from 'next/image';
-import { useMemo } from 'react';
 import Link from 'next/link';
 import courses from '@/data/courses.json';
 import myLogo from '@/public/logo.png';
@@ -22,7 +22,7 @@ interface CourseRecord {
   module?: number;
 }
 
-export default function TrackOverviewPage() {
+function TrackOverviewContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   
@@ -55,7 +55,7 @@ export default function TrackOverviewPage() {
         <h2 className="text-xl font-bold text-[#151821]">Track Not Found</h2>
         <p className="text-xs text-[#7d8492] mt-1">We couldn't find any courses under the requested learning path.</p>
         <button 
-          onClick={() => router.push('@/dashboard/general')}
+          onClick={() => router.push('/dashboard/general')}
           className="mt-4 px-4 py-2 bg-[#111827] text-white text-xs font-bold rounded-xl"
         >
           Return to Dashboard
@@ -72,7 +72,7 @@ export default function TrackOverviewPage() {
         <header className="flex items-center justify-between mb-8">
           <button 
             onClick={() => router.push('/dashboard/general')}
-            className="flex items-center gap-2 text-xs font-bold text-[#687080] hover:text-[#151821] transition"
+            className="flex items-center gap-2 text-xs font-bold text-[#687080] hover:text-[#151821] transition cursor-pointer"
           >
             ← Back to Dashboard
           </button>
@@ -174,5 +174,13 @@ export default function TrackOverviewPage() {
 
       </div>
     </div>
+  );
+}
+
+export default function TrackOverviewPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-[#111827] flex items-center justify-center text-white"><p>Loading track overview...</p></div>}>
+      <TrackOverviewContent />
+    </Suspense>
   );
 }
