@@ -1,0 +1,65 @@
+the-pheonix-analytics/
+├── .env
+├── .env.example
+├── folder_structure.txt
+├── HOW_TO_RUN.md
+├── package-lock.json
+├── package.json
+├── README.md
+├── requirements.txt
+├── structure.py
+├── backend-node/
+│   ├── index.js
+│   ├── package-lock.json
+│   ├── package.json
+├── backend-python/
+│   ├── main.py
+│   ├── requirements.txt
+│   ├── routers/
+│   │   ├── admin.py
+│   │   ├── auth.py
+│   │   ├── grader.py
+│   │   ├── grading.py
+├── frontend/
+│   ├── batch1.ps1
+│   ├── batch2.ps1
+│   ├── create-lessons-folders.ps1
+│   ├── fix-courses.ps1
+│   ├── fix-ws01.ps1
+│   ├── generate-lessons-index.ps1
+│   ├── next-env.d.ts
+│   ├── package-lock.json
+│   ├── package.json
+│   ├── postcss.config.js
+│   ├── tailwind.config.js
+│   ├── tsconfig.json
+│   ├── update-and-create-realistic.ps1
+│   ├── app/
+│   │   ├── globals.css
+│   │   ├── layout.tsx
+│   │   ├── page.tsx
+│   │   ├── admin/
+│   │   │   ├── page.tsx
+│   │   ├── dashboard/
+│   │   │   ├── page.tsx
+│   │   │   ├── course/
+│   │   │   │   ├── [courseId]/
+│   │   │   │   │   ├── page.tsx
+│   │   │   │   │   ├── [lessonId]/
+│   │   │   │   │   │   ├── page.tsx
+│   ├── components/
+│   │   ├── Header.tsx
+│   │   ├── HeroCentered.tsx
+│   │   ├── Library.tsx
+│   │   ├── Playground.tsx
+│   │   ├── Pricing.tsx
+│   ├── data/
+│   │   ├── courses.json
+│   │   ├── lessons_index.json
+│   ├── public/
+│   │   ├── logo.png
+├── supabase/
+│   ├── config.toml
+│   ├── README.md
+│   ├── migrations/
+│   │   ├── 001_initial.sql

@@ -1,0 +1,66 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+html { scroll-behavior: smooth; }
+body { background: #F8F9FA; color: #212529; font-family: Inter, sans-serif; }
+.dark-landing { background: #151618; color: #E8E9EA; }
+.cta-fire { background: #FF8C00; color: #151618; transition: all 0.3s; }
+.cta-fire:hover { background: #E67E00; transform: translateY(-1px); box-shadow: 0 8px 20px rgba(255,140,0,0.35); }
+.card { background: #FFFFFF; border: 1px solid #DEE2E6; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+.dark-card { background: #1A1D21; border: 1px solid #2A2E35; }
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.5rem 0;
+}
+th, td {
+  border: 1px solid #e5e7eb;
+  padding: 10px 14px;
+  text-align: left;
+}
+th {
+  background-color: #f9fafb;
+  font-weight: bold;
+}
+/* Add this to your globals.css */
+.prose h1 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin-top: 1.5rem;
+  margin-bottom: 0.75rem;
+}
+.prose h2, .prose h3 {
+  font-weight: 600;
+  margin-top: 1.25rem;
+}
+.prose ul {
+  list-style-type: disc;
+  padding-left: 1.5rem;
+  margin: 1rem 0;
+}
+
+.prose ol {
+  list-style-type: decimal;
+  padding-left: 1.5rem;
+  margin: 1rem 0;
+}
+
+.prose li {
+  margin-bottom: 0.5rem;
+}
+
+/* Add inside your global CSS file */
+pre, 
+pre code.hljs {
+  background-color: #111827 !important;
+  color: #F3F4F6 !important;
+  padding: 1rem;
+  border-radius: 0.5rem;
+  overflow-x: auto;
+  margin: 1.5rem 0;
+}
+
+code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.875rem;
+}

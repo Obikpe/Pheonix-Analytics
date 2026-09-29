@@ -1,0 +1,5 @@
+﻿# Lesson 30
+Course: c_034
+ID: c_034_l30
+
+Write complete explanatory notes here...
