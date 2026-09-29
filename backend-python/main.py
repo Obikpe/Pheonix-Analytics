@@ -11,7 +11,7 @@ print("DEBUG CHECK -> JWT_SECRET length:", len(os.getenv("JWT_SECRET", "")))
 print("DEBUG CHECK -> Loaded from:", ENV_PATH.resolve(), "exists:", ENV_PATH.exists())
 
 # 2. NOW import routers
-from routers import auth, grading, admin, progress, billing
+from routers import auth, grading, admin, progress, billing, webhooks, community
 from routers.admin import router as admin_router
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -83,6 +83,8 @@ app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
 app.include_router(progress.router, prefix="/api/progress", tags=["progress"])
 app.include_router(billing.router, prefix="/api/billing", tags=["billing"])
 app.include_router(admin_router)
+app.include_router(webhooks.router, prefix="/api/webhooks", tags=["webhooks"])
+app.include_router(community.router, prefix="/api/community", tags=["community"])
 
 @app.get("/")
 def health():
