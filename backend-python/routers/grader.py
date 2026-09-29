@@ -1,7 +1,8 @@
 # This marks the projects only
 
 # grader.py
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 pydantic_v = __import__("pydantic")
 BaseModel = pydantic_v.BaseModel
@@ -9,21 +10,12 @@ import io
 import sys
 import traceback
 
-app = FastAPI()
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
+router = APIRouter()
 class GradeRequest(BaseModel):
     project_id: str
     code: str
 
-@app.post("/grade")
+@router.post("/grade")
 async def grade_project(req: GradeRequest):
     code = req.code
     project_id = req.project_id
@@ -96,7 +88,3 @@ async def grade_project(req: GradeRequest):
         "line": None,
         "suggestion": suggestion
     }
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="127.0.0.1", port=8000)

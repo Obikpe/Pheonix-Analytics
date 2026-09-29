@@ -7,7 +7,7 @@ ENV_PATH = Path(__file__).parent / ".env"
 load_dotenv(dotenv_path=ENV_PATH, override=True)
 
 # 2. NOW import routers
-from routers import auth, grading, admin, progress, billing, webhooks, community
+from routers import auth, grading, admin, progress, billing, webhooks, community, grader
 from routers.admin import router as admin_router
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -81,10 +81,10 @@ app.include_router(billing.router, prefix="/api/billing", tags=["billing"])
 app.include_router(admin_router)
 app.include_router(webhooks.router, prefix="/api/webhooks", tags=["webhooks"])
 app.include_router(community.router, prefix="/api/community", tags=["community"])
-
+app.include_router(grader.router, prefix="/api/grader", tags=["grader"])
 @app.get("/")
 def health():
-    return {"status": "ok", "service": "pheonix-python-secure", "routers": ["auth", "grading", "admin", "progress"]}
+    return {"status": "ok", "service": "pheonix-python-secure", "routers": ["auth", "grading", "admin", "progress","grader", "billing", "webhooks"]}
 
 @app.get("/api/health")
 def api_health():
