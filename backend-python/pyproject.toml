@@ -1,2 +1,17 @@
+[project]
+name = "learnora-backend"
+version = "2.0.0"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi",
+    "slowapi",
+    "python-dotenv",
+    "bcrypt",
+    "python-jose",
+    "supabase",
+    "httpx",
+    "pydantic",
+]
+
 [tool.vercel]
 entrypoint = "main:app"
