@@ -45,18 +45,19 @@ origins = [
     "http://localhost:3000",
     "https://thepheonixanalytics.com",
     "https://www.thepheonixanalytics.com",
+    "https://learnora-me.vercel.app",
 ]
+
 frontend = os.getenv("FRONTEND_URL", "").rstrip("/")
-if frontend:
+if frontend and frontend not in origins:
     origins.append(frontend)
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
-    allow_origin_regex=r"https://learnora-me.vercel.app/",
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
 )
 
 @app.middleware("http")
