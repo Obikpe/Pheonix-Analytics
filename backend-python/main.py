@@ -44,20 +44,17 @@ async def rate_limit_handler(request, exc):
 # CORS Middleware (Correctly placed to handle preflight OPTIONS requests)
 origins = [
     "http://localhost:3000",
-    "http://localhost:5173",
-    "http://127.0.0.1:3000",
-    os.getenv("FRONTEND_URL", "https://thepheonixanalytics.com"),
+    "https://thepheonixanalytics.com",
     "https://www.thepheonixanalytics.com",
 ]
-origins.extend([f"http://localhost:{p}" for p in [3000, 3001, 3002, 4000, 5173, 8000]])
-origins.extend([f"http://127.0.0.1:{p}" for p in [3000, 3001, 3002, 4000]])
+frontend = os.getenv("FRONTEND_URL", "").rstrip("/")
+if frontend:
+    origins.append(frontend)
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["*"],
     allow_origin_regex=r"https://your-project(-[a-z0-9-]+)?\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
