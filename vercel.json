@@ -7,17 +7,12 @@
   },
   "routes": [
     {
-      "source": "/((?!api/).*)",
+      "source": "/api/python/(.*)",
       "destination": "/backend-python/main.py"
     },
     {
       "source": "/api/(.*)",
       "destination": "/backend-python/main.py"
     }
-  ],
-  "tool": {
-    "vercel": {
-      "entrypoint": "backend-python/main:app"
-    }
-  }
+  ]
 }
