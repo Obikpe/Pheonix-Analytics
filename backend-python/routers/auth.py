@@ -20,7 +20,7 @@ bearer = HTTPBearer(auto_error=False)
 
 APP_ENV = os.getenv("APP_ENV", "production")
 SUPABASE_URL = os.getenv("SUPABASE_URL", "")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")
+SUPABASE_KEY = os.getenv("SUPABASE_SECRET_KEY", "")
 
 if not SUPABASE_URL or not SUPABASE_KEY:
     if APP_ENV != "development":
