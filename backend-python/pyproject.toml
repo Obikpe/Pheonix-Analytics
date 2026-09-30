@@ -11,6 +11,8 @@ dependencies = [
     "supabase",
     "httpx",
     "pydantic",
+    "pyJWT",
+    "passlib"
 ]
 
 [tool.vercel]
