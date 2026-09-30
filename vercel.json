@@ -5,11 +5,7 @@
       "runtime": "vercel-python@4.2.0"
     }
   },
-  "routes": [
-    {
-      "source": "/api/python/(.*)",
-      "destination": "/backend-python/main.py"
-    },
+  "rewrites": [
     {
       "source": "/api/(.*)",
       "destination": "/backend-python/main.py"
