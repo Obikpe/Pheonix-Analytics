@@ -53,7 +53,7 @@ if frontend:
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
-    allow_origin_regex=r"https://your-project(-[a-z0-9-]+)?\.vercel\.app",
+    allow_origin_regex=r"https://learnora-me.vercel.app/",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
