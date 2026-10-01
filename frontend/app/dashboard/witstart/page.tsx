@@ -386,7 +386,7 @@ function WitStartDashboardContent() {
           'https://learnora-backend.vercel.app'
         ).replace(/\/$/, '');
 
-        const response = await fetch(`${apiBaseUrl}/auth/me`, {
+        const response = await fetch(`${apiBaseUrl}/api/auth/me`, {
           method: 'GET',
           headers: {
             Authorization: `Bearer ${token}`,
