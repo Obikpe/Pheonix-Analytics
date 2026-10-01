@@ -613,7 +613,7 @@ export default function SuperAdminDashboard() {
       localStorage.removeItem('phx_plan');
     }
 
-    router.replace('/login');
+    router.replace('/');
   }, [router]);
 
   const verifySuperAdmin = useCallback(
@@ -626,7 +626,7 @@ export default function SuperAdminDashboard() {
           response.account_type !== 'admin' ||
           response.role !== 'super_admin'
         ) {
-          router.replace('/login');
+          router.replace('/');
           return null;
         }
 
@@ -1464,8 +1464,10 @@ export default function SuperAdminDashboard() {
     localStorage.removeItem('phx_email');
     localStorage.removeItem('phx_role');
     localStorage.removeItem('phx_plan');
+    localStorage.removeItem('phx_name');
+    localStorage.removeItem('phx_account_type');
 
-    router.replace('/api/auth/login');
+    router.replace('/');
   };
 
   const navigate = (tab: Tab) => {
