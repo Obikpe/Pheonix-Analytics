@@ -194,12 +194,14 @@ export default function Header() {
     access_token: string;
     email: string;
     role: string;
+    name: string;
   }) => {
     // NOTE: localStorage tokens are readable by any XSS.
     // Prefer an httpOnly cookie set by the API.
     localStorage.setItem('phx_token', data.access_token);
     localStorage.setItem('phx_email', data.email);
     localStorage.setItem('phx_role', data.role);
+    localStorage.setItem('phx_name', data.name || '');
   };
 
   const launchPaystackModal = async (

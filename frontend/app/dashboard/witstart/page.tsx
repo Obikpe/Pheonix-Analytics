@@ -59,7 +59,7 @@ function WitStartDashboardContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  const [email, setEmail] = useState('');
+  const [name, setName] = useState('');
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [tab, setTab] = useState<Tab>('learning');
@@ -371,11 +371,10 @@ function WitStartDashboardContent() {
   // ---------------------------------------------------------
 
   useEffect(() => {
-    const e =
-      localStorage.getItem('phx_email') ||
-      'student@witstart.org';
-
-    setEmail(e);
+    // The backend user record stores the learner's name in `name`.
+    // The login handler should persist the returned value as `phx_name`.
+    const savedName = localStorage.getItem('phx_name') || '';
+    setName(savedName.trim());
 
     const savedProgress = JSON.parse(
       localStorage.getItem('phx_progress') ||
@@ -513,8 +512,7 @@ function WitStartDashboardContent() {
 
     const newQ: Question = {
       id: Date.now().toString(),
-      author:
-        email.split('@')[0] || 'Student',
+      author: name.trim() || 'Learner',
       title: newTitle,
       content: newContent,
       tag: newTag,
@@ -548,9 +546,7 @@ function WitStartDashboardContent() {
             replies: [
               ...q.replies,
               {
-                author:
-                  email.split('@')[0] ||
-                  'Student',
+                author: name.trim() || 'Learner',
                 text,
                 time: 'Just now',
               },
@@ -912,9 +908,9 @@ function WitStartDashboardContent() {
 
                   <p
                     className="text-xs font-semibold text-white/80 truncate"
-                    title={email}
+                    title={name || 'Learner'}
                   >
-                    {email}
+                    {name || 'Learner'}
                   </p>
 
                 </div>
@@ -997,7 +993,7 @@ function WitStartDashboardContent() {
 
           </div>
 
-          {email && (
+          {name !== undefined && (
             <div
               className="relative"
               ref={dropdownRef}
@@ -1019,7 +1015,7 @@ function WitStartDashboardContent() {
                 </span>
 
                 <span className="max-w-[140px] truncate hidden sm:inline">
-                  {email}
+                  {name || 'Learner'}
                 </span>
 
                 <span className="text-[10px] text-[#9299a7]">
@@ -1038,7 +1034,7 @@ function WitStartDashboardContent() {
                     </p>
 
                     <p className="text-[#252a35] font-semibold truncate mt-0.5">
-                      {email}
+                      {name || 'Learner'}
                     </p>
 
                   </div>
