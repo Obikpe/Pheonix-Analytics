@@ -8,7 +8,14 @@ import httpx
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from .auth import supabase, make_token, allowed_for, norm_email, hash_password, check_password_rules, _env_accounts
+from .auth import (
+    supabase,
+    make_token,
+    allowed_for,
+    norm_email,
+    hash_password,
+    check_password_rules,
+)
 
 router = APIRouter()
 log = logging.getLogger("billing")
@@ -43,9 +50,6 @@ def verify_and_register(body: VerifyAndRegisterRequest):
     email = norm_email(body.email)
     check_password_rules(body.password)
     name = (body.name or "").strip()[:100] or None
-
-    if email in _env_accounts():
-        raise HTTPException(400, "Email already registered")
 
     # 1. Verify the Paystack reference BEFORE any DB write
     try:
