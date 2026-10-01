@@ -520,10 +520,8 @@ def get_current_user(
     # ---------------------------------------------------------------
 
     admin = _find_admin(email)
-    print(f"[AUTH] ADMIN LOOKUP RESULT: {bool(admin)}")
     if admin:
         if not admin.get("is_active", False):
-            print(f"[AUTH] ADMIN FOUND: {admin.get('email')} | role={admin.get('role')}")
             raise HTTPException(
                 status_code=403,
                 detail="Administrator account is disabled",
@@ -573,7 +571,6 @@ def get_current_user(
             account_type="admin",
             is_paid=True,
         )
-    print(f"[AUTH] NO ADMIN FOUND - NOW CHECKING USERS FOR: {email}")
 
     # ---------------------------------------------------------------
     # LEARNER ACCOUNT
@@ -783,15 +780,8 @@ def login(
     # ---------------------------------------------------------------
 
     admin = _find_admin(email)
-    print(
-        f"[AUTH ME] ADMIN LOOKUP RESULT: "
-        f"{bool(admin)} | email={email}"
-    )
+
     if admin:
-        print(
-            f"[AUTH ME] ADMIN FOUND: "
-            f"{admin.get('email')} | role={admin.get('role')}"
-        )
 
         if not admin.get("is_active", False):
             _record_failure(rate_key)
@@ -891,7 +881,6 @@ def login(
                 "admin",
             ),
         }
-    print(f"[AUTH ME] NO ADMIN FOUND - NOW CHECKING USERS: {email}")
 
     # ---------------------------------------------------------------
     # LEARNER

@@ -1465,7 +1465,7 @@ export default function SuperAdminDashboard() {
     localStorage.removeItem('phx_role');
     localStorage.removeItem('phx_plan');
 
-    router.replace('/login');
+    router.replace('/api/auth/login');
   };
 
   const navigate = (tab: Tab) => {
