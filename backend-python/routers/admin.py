@@ -50,7 +50,7 @@ def create_user(payload: CreateUser):
     row = {
         "email": email,
         "name": (payload.name or "").strip()[:100] or None,
-        "hashed_password": hash_password(payload.password),
+        "password_hash": hash_password(payload.password),
         "role": payload.role,
         "sub_status": "active",
         "is_paid": True,
