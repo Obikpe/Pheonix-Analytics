@@ -2,7 +2,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
+const API_URL = 'https://learnora-backend.vercel.app';
 export const dynamic = 'force-dynamic';
 type Tab = 'overview' | 'live' | 'users' | 'paying' | 'free' | 'witstart' | 'billing' | 'security';
 
