@@ -4,8 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 const API_URL =
-  process.env.NEXT_PUBLIC_API_URL ||
-  "https://learnora-backend.vercel.app";
+"https://learnora-backend.vercel.app";
 
 type Tab = "overview" | "learners" | "activity" | "billing";
 
