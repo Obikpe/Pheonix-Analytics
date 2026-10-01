@@ -32,7 +32,7 @@ type ActiveView = 'overview' | 'tracks' | 'community';
 const TRIAL_LENGTH_DAYS = 7;
 
 /* -------------------------------------------------------------------------- */
-/*  Visual system                                                             */
+/* Visual system                                                              */
 /* -------------------------------------------------------------------------- */
 
 const trackVisuals = [
@@ -225,6 +225,7 @@ export default function GeneralDashboard() {
 
       if (!startedAt) {
         startedAt = new Date().toISOString();
+
         localStorage.setItem(
           'phx_trial_started_at',
           startedAt,
@@ -238,7 +239,10 @@ export default function GeneralDashboard() {
       );
 
       setTrialDaysLeft(
-        Math.max(TRIAL_LENGTH_DAYS - elapsedDays, 0),
+        Math.max(
+          TRIAL_LENGTH_DAYS - elapsedDays,
+          0,
+        ),
       );
     }
 
@@ -318,8 +322,10 @@ export default function GeneralDashboard() {
       (track, index) => ({
         track,
         count: trackMap[track].count,
-        description: trackMap[track].description,
-        progress: trackMap[track].progress,
+        description:
+          trackMap[track].description,
+        progress:
+          trackMap[track].progress,
         image:
           trackVisuals[
             index % trackVisuals.length
@@ -465,18 +471,21 @@ export default function GeneralDashboard() {
 
   return (
     <div className="min-h-screen bg-[#f6f7fb] text-[#151821]">
+
       {/* Desktop sidebar */}
       <aside className="fixed inset-y-0 left-0 z-40 hidden w-[248px] flex-col border-r border-[#e7e9ef] bg-[#111827] text-white lg:flex">
+
         <div className="flex h-[76px] items-center gap-3 border-b border-white/10 px-6">
+
           <Image
             src={logo}
-            alt="Phoenix logo"
+            alt="Learnora Me logo"
             className="h-10 w-10 shrink-0 object-contain"
           />
 
           <div>
             <div className="text-[15px] font-bold tracking-tight">
-              The Phoenix Hub
+              Learnora Me
             </div>
 
             <div className="mt-0.5 text-[9px] font-semibold uppercase tracking-[.18em] text-white/45">
@@ -486,11 +495,13 @@ export default function GeneralDashboard() {
         </div>
 
         <div className="flex-1 overflow-y-auto px-3 py-5">
+
           <p className="px-3 pb-2 text-[10px] font-bold uppercase tracking-[.16em] text-white/35">
             Workspace
           </p>
 
           <nav className="space-y-1">
+
             {[
               {
                 id: 'overview' as ActiveView,
@@ -537,6 +548,7 @@ export default function GeneralDashboard() {
                 )}
               </button>
             ))}
+
           </nav>
 
           <p className="mt-8 px-3 pb-2 text-[10px] font-bold uppercase tracking-[.16em] text-white/35">
@@ -544,6 +556,7 @@ export default function GeneralDashboard() {
           </p>
 
           <nav className="space-y-1">
+
             <button
               onClick={handleResume}
               className="flex w-full items-center gap-3 rounded-xl px-3.5 py-3 text-left text-[13px] font-medium text-white/65 transition hover:bg-white/7 hover:text-white"
@@ -569,12 +582,15 @@ export default function GeneralDashboard() {
                 Soon
               </span>
             </button>
+
           </nav>
         </div>
 
         {plan === 'trial' && (
           <div className="m-3 rounded-2xl border border-[#d7ad35]/30 bg-[#d7ad35]/10 p-4">
+
             <div className="flex items-center justify-between">
+
               <span className="text-[10px] font-bold uppercase tracking-[.12em] text-[#f2d477]">
                 Free trial
               </span>
@@ -582,15 +598,18 @@ export default function GeneralDashboard() {
               <span className="text-[10px] font-semibold text-white/65">
                 {trialDaysLeft} days
               </span>
+
             </div>
 
             <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/10">
+
               <div
                 className="h-full rounded-full bg-[#d7ad35] transition-all"
                 style={{
                   width: `${trialPct}%`,
                 }}
               />
+
             </div>
 
             <button
@@ -603,10 +622,12 @@ export default function GeneralDashboard() {
             >
               Unlock full access
             </button>
+
           </div>
         )}
 
         <div className="border-t border-white/10 p-3">
+
           <button
             onClick={handleLogout}
             className="flex w-full items-center gap-3 rounded-xl px-3.5 py-2.5 text-xs font-medium text-white/45 hover:bg-white/7 hover:text-white"
@@ -614,12 +635,14 @@ export default function GeneralDashboard() {
             <IconLogout className="h-4 w-4" />
             Log out
           </button>
+
         </div>
       </aside>
 
       {/* Mobile sidebar */}
       {mobileNavOpen && (
         <div className="fixed inset-0 z-50 lg:hidden">
+
           <button
             aria-label="Close menu"
             onClick={() =>
@@ -629,17 +652,21 @@ export default function GeneralDashboard() {
           />
 
           <aside className="relative flex h-full w-[285px] flex-col bg-[#111827] text-white shadow-2xl">
+
             <div className="flex h-[76px] items-center justify-between border-b border-white/10 px-5">
+
               <div className="flex items-center gap-3">
+
                 <Image
                   src={logo}
-                  alt="Phoenix logo"
+                  alt="Learnora Me logo"
                   className="h-10 w-10 shrink-0 object-contain"
                 />
 
                 <span className="font-bold">
-                  The Phoenix Hub
+                  Learnora Me
                 </span>
+
               </div>
 
               <button
@@ -650,9 +677,11 @@ export default function GeneralDashboard() {
               >
                 <IconClose className="h-5 w-5" />
               </button>
+
             </div>
 
             <div className="space-y-1 p-3">
+
               {[
                 [
                   'overview',
@@ -689,15 +718,19 @@ export default function GeneralDashboard() {
                   </button>
                 ),
               )}
+
             </div>
           </aside>
         </div>
       )}
 
       <div className="lg:pl-[248px]">
+
         {/* Top navigation */}
         <header className="sticky top-0 z-30 border-b border-[#e7e9ef] bg-[#f6f7fb]/90 px-4 py-3 backdrop-blur-xl sm:px-6 lg:px-8">
+
           <div className="mx-auto flex max-w-[1440px] items-center gap-3">
+
             <button
               onClick={() =>
                 setMobileNavOpen(true)
@@ -708,6 +741,7 @@ export default function GeneralDashboard() {
             </button>
 
             <div className="relative max-w-[590px] flex-1">
+
               <IconSearch className="absolute left-4 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-[#9299a7]" />
 
               <input
@@ -739,27 +773,34 @@ export default function GeneralDashboard() {
                 placeholder="Search thousands of courses, tracks and skills..."
                 className="h-11 w-full rounded-xl border border-[#e2e5eb] bg-white pl-11 pr-4 text-[13px] font-medium text-[#151821] outline-none transition placeholder:text-[#a2a8b4] focus:border-[#c9a12c] focus:ring-4 focus:ring-[#c9a12c]/10"
               />
+
             </div>
 
             <div className="ml-auto flex items-center gap-2">
+
               <div className="hidden rounded-full border border-[#d7ad35]/30 bg-[#fff8df] px-3 py-2 text-[10px] font-bold text-[#8d6a12] sm:flex sm:items-center sm:gap-1.5">
+
                 <span className="h-1.5 w-1.5 rounded-full bg-[#d7ad35]" />
 
                 {plan === 'trial'
                   ? `${trialDaysLeft} days left`
-                  : 'Phoenix Pro'}
+                  : 'Learnora Pro'}
+
               </div>
 
               <button className="relative rounded-xl border border-[#e2e5eb] bg-white p-2.5 text-[#606878] hover:text-[#151821]">
+
                 <IconBell className="h-[18px] w-[18px]" />
 
                 <span className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-[#c99627]" />
+
               </button>
 
               <div
                 className="relative"
                 ref={dropdownRef}
               >
+
                 <button
                   onClick={() =>
                     setDropdownOpen(
@@ -769,17 +810,21 @@ export default function GeneralDashboard() {
                   }
                   className="flex items-center gap-2 rounded-xl border border-[#e2e5eb] bg-white p-1.5 pr-2.5"
                 >
+
                   <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#111827] text-xs font-bold uppercase text-white">
                     {email.charAt(0) ||
                       'L'}
                   </span>
 
                   <IconChevron className="hidden h-3.5 w-3.5 text-[#9299a7] sm:block" />
+
                 </button>
 
                 {dropdownOpen && (
                   <div className="absolute right-0 mt-2 w-60 overflow-hidden rounded-2xl border border-[#e2e5eb] bg-white py-1 shadow-2xl shadow-[#111827]/10">
+
                     <div className="border-b border-[#eef0f4] px-4 py-3">
+
                       <p className="text-[9px] font-bold uppercase tracking-[.14em] text-[#9aa0ad]">
                         Signed in as
                       </p>
@@ -787,6 +832,7 @@ export default function GeneralDashboard() {
                       <p className="mt-1 truncate text-xs font-semibold text-[#252a35]">
                         {email}
                       </p>
+
                     </div>
 
                     {plan ===
@@ -799,7 +845,7 @@ export default function GeneralDashboard() {
                         }
                         className="w-full px-4 py-3 text-left text-xs font-semibold text-[#8d6a12] hover:bg-[#fff9e9]"
                       >
-                        Upgrade to Phoenix Pro
+                        Upgrade to Learnora Pro
                       </button>
                     )}
 
@@ -812,16 +858,20 @@ export default function GeneralDashboard() {
                       <IconLogout className="h-4 w-4" />
                       Log out
                     </button>
+
                   </div>
                 )}
+
               </div>
             </div>
           </div>
         </header>
 
         <main className="mx-auto max-w-[1440px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+
           {/* Hero */}
           <section className="relative min-h-[310px] overflow-hidden rounded-[28px] bg-[#111827] shadow-[0_22px_60px_rgba(17,24,39,.12)]">
+
             {learningScenes.map(
               (scene, index) => (
                 <div
@@ -847,21 +897,27 @@ export default function GeneralDashboard() {
             <div className="absolute inset-y-0 right-0 hidden w-1/2 bg-gradient-to-l from-[#111827]/10 to-transparent lg:block" />
 
             <div className="relative flex min-h-[310px] flex-col justify-center p-7 sm:p-10 lg:max-w-[700px] lg:p-12">
+
               <div className="mb-4 inline-flex w-fit items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[.13em] text-[#f2d477] backdrop-blur">
+
                 <IconSpark className="h-3.5 w-3.5" />
+
                 {
                   learningScenes[
                     carouselIndex
                   ].eyebrow
                 }
+
               </div>
 
               <h1 className="max-w-2xl text-3xl font-bold leading-[1.08] tracking-[-.035em] text-white sm:text-4xl lg:text-[46px]">
+
                 {
                   learningScenes[
                     carouselIndex
                   ].title
                 }
+
               </h1>
 
               <p className="mt-4 max-w-xl text-sm leading-6 text-white/65 sm:text-[15px]">
@@ -869,6 +925,7 @@ export default function GeneralDashboard() {
               </p>
 
               <div className="mt-7 flex flex-wrap gap-3">
+
                 <button
                   onClick={
                     handleResume
@@ -891,10 +948,12 @@ export default function GeneralDashboard() {
                 >
                   Explore tracks
                 </button>
+
               </div>
             </div>
 
             <div className="absolute bottom-5 right-6 flex gap-1.5">
+
               {learningScenes.map(
                 (_, index) => (
                   <button
@@ -916,11 +975,13 @@ export default function GeneralDashboard() {
                   />
                 ),
               )}
+
             </div>
           </section>
 
           {/* Status strip */}
           <section className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+
             {[
               {
                 label: 'Courses available',
@@ -962,11 +1023,13 @@ export default function GeneralDashboard() {
                 key={stat.label}
                 className="rounded-2xl border border-[#e5e8ee] bg-white px-4 py-4 shadow-sm"
               >
+
                 <p className="text-[10px] font-bold uppercase tracking-[.1em] text-[#9299a7]">
                   {stat.label}
                 </p>
 
                 <div className="mt-1 flex items-end gap-2">
+
                   <span className="text-xl font-bold tracking-tight text-[#151821]">
                     {stat.value}
                   </span>
@@ -974,13 +1037,17 @@ export default function GeneralDashboard() {
                   <span className="pb-0.5 text-[10px] font-medium text-[#9299a7]">
                     {stat.detail}
                   </span>
+
                 </div>
               </div>
             ))}
+
           </section>
 
           <div className="mt-7 grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
+
             <div className="min-w-0">
+
               {activeView ===
               'community' ? (
                 <CommunityPanel />
@@ -999,8 +1066,11 @@ export default function GeneralDashboard() {
                 <>
                   {/* Continue learning */}
                   <section className="overflow-hidden rounded-[24px] border border-[#e5e8ee] bg-white shadow-sm">
+
                     <div className="flex flex-col gap-5 p-5 sm:flex-row sm:items-center sm:p-6">
+
                       <div className="relative h-[155px] w-full shrink-0 overflow-hidden rounded-2xl bg-[#dfe3ea] sm:w-[245px]">
+
                         <img
                           src={
                             trackVisuals[0]
@@ -1016,10 +1086,13 @@ export default function GeneralDashboard() {
                             continueTrack
                           }
                         </div>
+
                       </div>
 
                       <div className="min-w-0 flex-1">
+
                         <div className="flex items-center justify-between gap-3">
+
                           <p className="text-[10px] font-bold uppercase tracking-[.12em] text-[#b08722]">
                             Continue where you left off
                           </p>
@@ -1030,6 +1103,7 @@ export default function GeneralDashboard() {
                             }
                             %
                           </span>
+
                         </div>
 
                         <h2 className="mt-2 line-clamp-2 text-xl font-bold tracking-tight text-[#151821] sm:text-2xl">
@@ -1043,6 +1117,7 @@ export default function GeneralDashboard() {
                         </p>
 
                         <div className="mt-5 h-2 overflow-hidden rounded-full bg-[#edf0f4]">
+
                           <div
                             className="h-full rounded-full bg-[#c99e2c] transition-all"
                             style={{
@@ -1052,6 +1127,7 @@ export default function GeneralDashboard() {
                               )}%`,
                             }}
                           />
+
                         </div>
 
                         <button
@@ -1067,21 +1143,26 @@ export default function GeneralDashboard() {
 
                           <IconArrow className="h-4 w-4" />
                         </button>
+
                       </div>
                     </div>
                   </section>
 
                   {/* Tracks */}
                   <section className="mt-7">
+
                     <div className="mb-4 flex items-end justify-between gap-4">
+
                       <div>
+
                         <p className="text-[10px] font-bold uppercase tracking-[.14em] text-[#b08722]">
-                          Explore the hub
+                          Explore Learnora Me
                         </p>
 
                         <h2 className="mt-1 text-2xl font-bold tracking-tight text-[#151821]">
                           Learning tracks
                         </h2>
+
                       </div>
 
                       <button
@@ -1094,6 +1175,7 @@ export default function GeneralDashboard() {
                       >
                         View all →
                       </button>
+
                     </div>
 
                     <TracksPanel
@@ -1106,13 +1188,16 @@ export default function GeneralDashboard() {
                         handleTrackClick
                       }
                     />
+
                   </section>
                 </>
               )}
+
             </div>
 
             {/* Right rail */}
             <aside className="space-y-5">
+
               {/* Trial status */}
               <div
                 className={`overflow-hidden rounded-[24px] border p-5 shadow-sm ${
@@ -1121,8 +1206,11 @@ export default function GeneralDashboard() {
                     : 'border-[#d9dee7] bg-white'
                 }`}
               >
+
                 <div className="flex items-center justify-between">
+
                   <div>
+
                     <p className="text-[10px] font-bold uppercase tracking-[.13em] text-[#8d6a12]">
                       {plan ===
                       'trial'
@@ -1134,8 +1222,9 @@ export default function GeneralDashboard() {
                       {plan ===
                       'trial'
                         ? `${trialDaysLeft} days remaining`
-                        : 'Phoenix Pro'}
+                        : 'Learnora Pro'}
                     </h3>
+
                   </div>
 
                   <span
@@ -1151,9 +1240,11 @@ export default function GeneralDashboard() {
                       ? 'Trial'
                       : 'Active'}
                   </span>
+
                 </div>
 
                 <div className="mt-4 h-2 overflow-hidden rounded-full bg-white">
+
                   <div
                     className="h-full rounded-full bg-[#c99e2c]"
                     style={{
@@ -1165,6 +1256,7 @@ export default function GeneralDashboard() {
                       }%`,
                     }}
                   />
+
                 </div>
 
                 <p className="mt-3 text-[11px] leading-5 text-[#81765b]">
@@ -1187,26 +1279,34 @@ export default function GeneralDashboard() {
                     Upgrade to Pro
                   </button>
                 )}
+
               </div>
 
               {/* Community card */}
               <div className="rounded-[24px] border border-[#e5e8ee] bg-white p-5 shadow-sm">
+
                 <div className="flex items-start justify-between">
+
                   <div>
+
                     <div className="flex items-center gap-2">
+
                       <span className="h-2 w-2 rounded-full bg-emerald-500" />
 
                       <p className="text-[10px] font-bold uppercase tracking-[.13em] text-[#747c8c]">
                         Learner community
                       </p>
+
                     </div>
 
                     <h3 className="mt-2 text-lg font-bold tracking-tight text-[#151821]">
                       Learn out loud.
                     </h3>
+
                   </div>
 
                   <IconMessage className="h-5 w-5 text-[#b28c2a]" />
+
                 </div>
 
                 <p className="mt-2 text-xs leading-5 text-[#7d8492]">
@@ -1224,10 +1324,12 @@ export default function GeneralDashboard() {
                   Open community
                   <IconArrow className="h-4 w-4" />
                 </button>
+
               </div>
 
               {/* Learning image reel */}
               <div className="group relative h-[205px] overflow-hidden rounded-[24px] bg-[#111827]">
+
                 <img
                   src={
                     learningScenes[
@@ -1243,22 +1345,26 @@ export default function GeneralDashboard() {
                 <div className="absolute inset-0 bg-gradient-to-t from-[#111827] via-[#111827]/20 to-transparent" />
 
                 <div className="absolute bottom-0 left-0 right-0 p-5">
+
                   <p className="text-[9px] font-bold uppercase tracking-[.14em] text-[#f2d477]">
-                    The Phoenix mindset
+                    The Learnora mindset
                   </p>
 
                   <p className="mt-1 text-base font-bold leading-snug text-white">
                     Small lessons. Real projects. Visible progress.
                   </p>
+
                 </div>
               </div>
+
             </aside>
           </div>
         </main>
 
         <footer className="border-t border-[#e7e9ef] px-6 py-7 text-center text-[10px] font-medium text-[#9aa0ad]">
-          © {new Date().getFullYear()} The Phoenix Hub · A learning platform by Phoenix
+          © {new Date().getFullYear()} Learnora Me · A learning platform for learning, building and growing
         </footer>
+
       </div>
     </div>
   );
@@ -1276,6 +1382,7 @@ function TracksPanel({
   if (tracks.length === 0) {
     return (
       <div className="rounded-[24px] border border-dashed border-[#d9dee7] bg-white p-12 text-center">
+
         <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-[#f0f2f6] text-[#6d7584]">
           <IconSearch className="h-5 w-5" />
         </div>
@@ -1289,12 +1396,14 @@ function TracksPanel({
             ? `Nothing matches “${query}”. Try another skill or track name.`
             : 'New learning tracks will appear here as they are published.'}
         </p>
+
       </div>
     );
   }
 
   return (
     <div className="grid gap-4 sm:grid-cols-2">
+
       {tracks.map((item) => (
         <button
           key={item.track}
@@ -1303,7 +1412,9 @@ function TracksPanel({
           }
           className="group overflow-hidden rounded-[22px] border border-[#e5e8ee] bg-white text-left shadow-sm transition duration-300 hover:-translate-y-0.5 hover:border-[#d2ae47] hover:shadow-lg hover:shadow-[#111827]/5"
         >
+
           <div className="relative h-32 overflow-hidden bg-[#e7e9ee]">
+
             <img
               src={item.image}
               alt=""
@@ -1313,6 +1424,7 @@ function TracksPanel({
             <div className="absolute inset-0 bg-gradient-to-t from-[#111827]/75 via-transparent to-transparent" />
 
             <div className="absolute bottom-3 left-3 flex items-center gap-2">
+
               <span className="rounded-lg bg-white/90 px-2 py-1 text-[9px] font-bold text-[#202632] backdrop-blur">
                 {item.count}{' '}
                 {item.count ===
@@ -1327,16 +1439,20 @@ function TracksPanel({
                   {item.progress}% done
                 </span>
               )}
+
             </div>
           </div>
 
           <div className="p-4">
+
             <div className="flex items-start justify-between gap-3">
+
               <h3 className="text-[15px] font-bold tracking-tight text-[#151821] group-hover:text-[#9a761c]">
                 {item.track}
               </h3>
 
               <IconArrow className="mt-0.5 h-4 w-4 shrink-0 text-[#a7adba] transition group-hover:translate-x-1 group-hover:text-[#b08722]" />
+
             </div>
 
             <p className="mt-1.5 line-clamp-2 text-[11px] leading-5 text-[#818897]">
@@ -1344,6 +1460,7 @@ function TracksPanel({
             </p>
 
             <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-[#edf0f4]">
+
               <div
                 className="h-full rounded-full bg-[#c9a12c]"
                 style={{
@@ -1355,10 +1472,13 @@ function TracksPanel({
                   )}%`,
                 }}
               />
+
             </div>
+
           </div>
         </button>
       ))}
+
     </div>
   );
 }
@@ -1389,14 +1509,19 @@ function CommunityPanel() {
 
   return (
     <section className="rounded-[24px] border border-[#e5e8ee] bg-white p-5 shadow-sm sm:p-6">
+
       <div className="flex flex-col gap-4 border-b border-[#edf0f4] pb-5 sm:flex-row sm:items-center sm:justify-between">
+
         <div>
+
           <div className="flex items-center gap-2">
+
             <span className="h-2 w-2 rounded-full bg-emerald-500" />
 
             <p className="text-[10px] font-bold uppercase tracking-[.14em] text-[#737b8a]">
               Community
             </p>
+
           </div>
 
           <h2 className="mt-1.5 text-2xl font-bold tracking-tight text-[#151821]">
@@ -1406,6 +1531,7 @@ function CommunityPanel() {
           <p className="mt-1 text-xs leading-5 text-[#858c99]">
             Questions, explanations, project feedback and conversations around your learning.
           </p>
+
         </div>
 
         <button
@@ -1416,12 +1542,15 @@ function CommunityPanel() {
           }
           className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#111827] px-4 py-2.5 text-xs font-bold text-white transition hover:bg-[#1c273a]"
         >
+
           <IconMessage className="h-4 w-4" />
 
           {isAsking
             ? 'Cancel'
             : 'Ask a question'}
+
         </button>
+
       </div>
 
       {isAsking && (
@@ -1431,6 +1560,7 @@ function CommunityPanel() {
           }
           className="mt-4 rounded-2xl border border-[#d7ad35]/30 bg-[#fafbfc] p-4"
         >
+
           <label className="mb-2 block text-xs font-bold text-[#252a35]">
             What is your question?
           </label>
@@ -1455,10 +1585,12 @@ function CommunityPanel() {
           >
             Post to Feed
           </button>
+
         </form>
       )}
 
       <div className="mt-5 grid gap-3 sm:grid-cols-2">
+
         {[
           [
             'Ask',
@@ -1482,7 +1614,9 @@ function CommunityPanel() {
               key={title}
               className="rounded-2xl border border-[#edf0f4] bg-[#fafbfc] p-4"
             >
+
               <div className="flex items-center gap-3">
+
                 <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#fff7dc] text-[10px] font-bold text-[#96731d]">
                   0{index + 1}
                 </span>
@@ -1490,17 +1624,21 @@ function CommunityPanel() {
                 <h3 className="text-sm font-bold text-[#252a35]">
                   {title}
                 </h3>
+
               </div>
 
               <p className="mt-3 text-xs leading-5 text-[#7d8492]">
                 {description}
               </p>
+
             </div>
           ),
         )}
+
       </div>
 
       <div className="mt-5 rounded-2xl bg-[#111827] p-5 text-white">
+
         <p className="text-[9px] font-bold uppercase tracking-[.14em] text-[#d7ad35]">
           Community feed
         </p>
@@ -1514,6 +1652,7 @@ function CommunityPanel() {
         </p>
 
         <div className="mt-4 flex flex-wrap gap-2">
+
           {[
             'Questions',
             'Answers',
@@ -1527,8 +1666,10 @@ function CommunityPanel() {
               {tag}
             </span>
           ))}
+
         </div>
       </div>
+
     </section>
   );
 }
