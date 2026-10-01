@@ -457,7 +457,7 @@ export default function StaffAdminDashboard() {
       localStorage.removeItem('phx_plan');
     }
 
-    router.replace('/login');
+    router.replace('/');
   }, [router]);
 
   const verifyStaffAdmin =
@@ -1026,7 +1026,7 @@ export default function StaffAdminDashboard() {
       'phx_plan',
     );
 
-    router.replace('/login');
+    router.replace('/');
   };
 
   const navigate = (

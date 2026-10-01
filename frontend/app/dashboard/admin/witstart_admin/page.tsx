@@ -303,7 +303,7 @@ export default function WitStartAdminPage() {
         ) {
           router.replace("/dashboard/admin/staff_admin");
         } else {
-          router.replace("/login");
+          router.replace("/");
         }
 
         return false;
@@ -312,7 +312,7 @@ export default function WitStartAdminPage() {
       setAdmin(current);
       return true;
     } catch {
-      router.replace("/login");
+      router.replace("/");
       return false;
     }
   }, [router]);
@@ -665,7 +665,9 @@ export default function WitStartAdminPage() {
             <button
               onClick={() => {
                 localStorage.removeItem("phx_token");
-                router.replace("/login");
+                localStorage.removeItem("phx_name");
+                localStorage.removeItem("phx_account_type");
+                router.replace("/");
               }}
               className="mt-2 w-full rounded-xl px-3 py-2 text-left text-xs text-zinc-500 transition hover:bg-red-400/10 hover:text-red-300"
             >
