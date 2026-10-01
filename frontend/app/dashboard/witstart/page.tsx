@@ -383,8 +383,7 @@ function WitStartDashboardContent() {
 
       try {
         const apiBaseUrl = (
-          process.env.NEXT_PUBLIC_API_URL ||
-          'http://127.0.0.1:8000'
+          'https://learnora-backend.vercel.app'
         ).replace(/\/$/, '');
 
         const response = await fetch(`${apiBaseUrl}/auth/me`, {
