@@ -7,12 +7,49 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import coursesData from '@/data/courses.json';
 
+type DashboardType = 'general' | 'witstart' | 'admin';
+
 type Props = {
   params: Promise<{ courseId: string }>;
   searchParams?: Promise<{
     [key: string]: string | string[] | undefined;
   }>;
 };
+
+function getDashboardType(
+  value: string | string[] | undefined
+): DashboardType {
+  const type = Array.isArray(value)
+    ? value[0]
+    : value;
+
+  const normalized = type?.toLowerCase();
+
+  if (normalized === 'witstart') {
+    return 'witstart';
+  }
+
+  if (normalized === 'admin') {
+    return 'admin';
+  }
+
+  return 'general';
+}
+
+function getDashboardHref(
+  dashboardType: DashboardType
+): string {
+  switch (dashboardType) {
+    case 'witstart':
+      return '/dashboard/witstart';
+
+    case 'admin':
+      return '/dashboard/admin';
+
+    default:
+      return '/dashboard/general';
+  }
+}
 
 export default async function CourseLessonsPage({
   params,
@@ -25,45 +62,35 @@ export default async function CourseLessonsPage({
     : {};
 
   // ---------------------------------------------------------
-  // Determine which dashboard the learner came from.
-  //
-  // Expected URLs:
-  // /dashboard/course/[courseId]?type=general
-  // /dashboard/course/[courseId]?type=witstart
-  // /dashboard/course/[courseId]?type=admin
-  //
-  // If no type is provided, default to the normal/general
-  // dashboard.
+  // DETERMINE WHERE THE LEARNER CAME FROM
   // ---------------------------------------------------------
 
   const typeParam =
-    resolvedSearchParams.type ||
-    resolvedSearchParams.from ||
+    resolvedSearchParams.type ??
+    resolvedSearchParams.from ??
     resolvedSearchParams.ref;
 
-  const dashboardType =
-    typeof typeParam === 'string'
-      ? typeParam.toLowerCase()
-      : 'general';
+  const safeDashboardType =
+    getDashboardType(typeParam);
 
-  // Only allow known dashboard types.
-  // Anything unknown safely falls back to general.
-  const validDashboardTypes = ['general', 'witstart', 'admin'];
+  const dashboardHref =
+    getDashboardHref(safeDashboardType);
 
-  const safeDashboardType = validDashboardTypes.includes(dashboardType)
-    ? dashboardType
-    : 'general';
-
-  let dashboardHref = '/dashboard/general';
-
-  if (safeDashboardType === 'witstart') {
-    dashboardHref = '/dashboard/witstart';
-  } else if (safeDashboardType === 'admin') {
-    dashboardHref = '/dashboard/admin';
-  }
+  /*
+   * This query string is intentionally reused everywhere
+   * on this page.
+   *
+   * Examples:
+   *
+   * ?type=general
+   * ?type=witstart
+   * ?type=admin
+   */
+  const typeQuery =
+    `?type=${safeDashboardType}`;
 
   // ---------------------------------------------------------
-  // Find the course
+  // FIND COURSE
   // ---------------------------------------------------------
 
   const course = (coursesData as any[]).find(
@@ -75,7 +102,7 @@ export default async function CourseLessonsPage({
   }
 
   // ---------------------------------------------------------
-  // Find the course lesson folder
+  // FIND COURSE LESSON FOLDER
   // ---------------------------------------------------------
 
   const base = path.join(
@@ -105,12 +132,12 @@ export default async function CourseLessonsPage({
         matchedDir.name
       );
     }
-  } catch (error) {
+  } catch {
     targetFolder = '';
   }
 
   // ---------------------------------------------------------
-  // Load lessons
+  // LOAD LESSONS
   // ---------------------------------------------------------
 
   let lessons: any[] = [];
@@ -167,13 +194,15 @@ export default async function CourseLessonsPage({
         Math.ceil(wordCount / 200)
       );
 
-      const matchResult = file.match(/^(\d+)/);
+      const matchResult =
+        file.match(/^(\d+)/);
 
       const numMatch = matchResult
         ? matchResult[1]
         : String(idx + 1).padStart(2, '0');
 
-      const lessonId = `${courseId}_l${numMatch}`;
+      const lessonId =
+        `${courseId}_l${numMatch}`;
 
       return {
         id: lessonId,
@@ -188,7 +217,7 @@ export default async function CourseLessonsPage({
   }
 
   // ---------------------------------------------------------
-  // Course totals
+  // COURSE TOTALS
   // ---------------------------------------------------------
 
   const totalWords = lessons.reduce(
@@ -215,14 +244,18 @@ export default async function CourseLessonsPage({
   );
 
   // ---------------------------------------------------------
-  // Page
+  // PAGE
   // ---------------------------------------------------------
 
   return (
     <div className="min-h-screen bg-[#f5f6f8] text-[#111827] pb-24 selection:bg-[#D7AD35] selection:text-[#111827]">
 
-      {/* Premium Course Hero */}
+      {/* =====================================================
+          PREMIUM COURSE HERO
+      ===================================================== */}
+
       <section className="relative overflow-hidden bg-[#111827] text-white">
+
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_82%_18%,rgba(215,173,53,0.18),transparent_32%),radial-gradient(circle_at_8%_100%,rgba(255,255,255,0.05),transparent_28%)] pointer-events-none" />
 
         <div className="absolute -right-32 -top-40 h-[480px] w-[480px] rounded-full border border-[#D7AD35]/10" />
@@ -233,7 +266,14 @@ export default async function CourseLessonsPage({
 
           <div className="mb-10 flex flex-wrap items-center justify-between gap-4">
 
-            {/* Back to correct dashboard */}
+            {/* =================================================
+                BACK TO CORRECT DASHBOARD
+
+                WitStart → /dashboard/witstart
+                Admin   → /dashboard/admin
+                General → /dashboard/general
+            ================================================= */}
+
             <Link
               href={dashboardHref}
               className="group inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.06] px-4 py-2.5 text-xs font-bold text-slate-200 backdrop-blur hover:border-[#D7AD35]/40 hover:bg-white/[0.1] hover:text-white transition"
@@ -250,6 +290,7 @@ export default async function CourseLessonsPage({
                 {course.track}
               </span>
             )}
+
           </div>
 
           <div className="grid gap-10 lg:grid-cols-[1fr_320px] lg:items-end">
@@ -321,6 +362,7 @@ export default async function CourseLessonsPage({
             </div>
 
             <div className="hidden lg:block">
+
               <div className="rounded-3xl border border-white/10 bg-white/[0.06] p-6 backdrop-blur-md">
 
                 <p className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-[#F2D477]">
@@ -338,6 +380,7 @@ export default async function CourseLessonsPage({
                 <div className="mt-5 h-px bg-white/10" />
 
                 <div className="mt-4 flex items-center justify-between text-xs">
+
                   <span className="text-slate-400">
                     Content volume
                   </span>
@@ -345,21 +388,29 @@ export default async function CourseLessonsPage({
                   <span className="font-bold text-slate-200">
                     {totalWords.toLocaleString()} words
                   </span>
+
                 </div>
 
               </div>
+
             </div>
 
           </div>
+
         </div>
       </section>
 
-      {/* Curriculum */}
+
+      {/* =====================================================
+          CURRICULUM
+      ===================================================== */}
+
       <main className="mx-auto max-w-[1120px] px-5 pt-10 sm:px-8 sm:pt-14 lg:px-10">
 
         <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
 
           <div>
+
             <p className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-[#B08A1E]">
               Learning path
             </p>
@@ -371,6 +422,7 @@ export default async function CourseLessonsPage({
             <p className="mt-2 text-sm text-slate-500">
               Work through the curriculum in sequence or jump directly into a lesson.
             </p>
+
           </div>
 
           <div className="inline-flex w-fit items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-600 shadow-sm">
@@ -378,12 +430,19 @@ export default async function CourseLessonsPage({
             <span className="h-2 w-2 rounded-full bg-[#D7AD35]" />
 
             {lessons.length}{' '}
+
             {lessons.length === 1
               ? 'lesson'
               : 'lessons'}
 
           </div>
+
         </div>
+
+
+        {/* ===================================================
+            NO LESSONS
+        =================================================== */}
 
         {lessons.length === 0 ? (
 
@@ -412,21 +471,33 @@ export default async function CourseLessonsPage({
             <div className="space-y-4">
 
               {lessons.map(
-                (lesson: any, idx: number) => {
+                (
+                  lesson: any,
+                  idx: number
+                ) => {
 
                   const num =
                     lesson.order ||
                     idx + 1;
 
-                  // Preserve the dashboard type when
-                  // opening the individual lesson.
-                  //
-                  // Examples:
-                  // ?type=general
-                  // ?type=witstart
-                  // ?type=admin
+                  /*
+                   * IMPORTANT:
+                   *
+                   * The lesson URL ALWAYS carries
+                   * the dashboard type.
+                   *
+                   * WitStart:
+                   * /dashboard/course/abc/abc_l01?type=witstart
+                   *
+                   * General:
+                   * /dashboard/course/abc/abc_l01?type=general
+                   *
+                   * Admin:
+                   * /dashboard/course/abc/abc_l01?type=admin
+                   */
+
                   const lessonHref =
-                    `/dashboard/course/${courseId}/${lesson.id}?type=${safeDashboardType}`;
+                    `/dashboard/course/${courseId}/${lesson.id}${typeQuery}`;
 
                   return (
                     <Link
@@ -462,8 +533,7 @@ export default async function CourseLessonsPage({
                               {lesson.duration}
                             </span>
 
-                            {lesson.wordCount >
-                              0 && (
+                            {lesson.wordCount > 0 && (
                               <>
                                 <span className="h-1 w-1 rounded-full bg-slate-300" />
 
@@ -502,9 +572,13 @@ export default async function CourseLessonsPage({
               )}
 
             </div>
+
           </div>
+
         )}
+
       </main>
+
     </div>
   );
 }
