@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
+const API_URL = 'https://learnora-backend.vercel.app';
 const PAYSTACK_KEY = process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY || '';
 // Paystack's `new PaystackPop().newTransaction()` API only exists in the V2 script.
 const PAYSTACK_SRC = 'https://js.paystack.co/v2/inline.js';
