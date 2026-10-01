@@ -1025,6 +1025,9 @@ export default function StaffAdminDashboard() {
     localStorage.removeItem(
       'phx_plan',
     );
+    localStorage.removeItem(
+      'phx_account_type',
+    );
 
     router.replace('/');
   };

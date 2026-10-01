@@ -665,6 +665,8 @@ export default function WitStartAdminPage() {
               onClick={() => {
                 localStorage.removeItem("phx_token");
                 localStorage.removeItem("phx_name");
+                localStorage.removeItem("phx_email");
+                localStorage.removeItem("phx_role");
                 localStorage.removeItem("phx_account_type");
                 router.replace("/");
               }}

@@ -8,6 +8,8 @@ import { useRouter } from 'next/navigation';
 import courses from '@/data/courses.json';
 import myImage from '@/public/logo.png';
 
+const API_URL = 'https://learnora-backend.vercel.app';
+
 interface CourseRecord {
   id?: string;
   slug?: string;
@@ -24,10 +26,39 @@ interface TrackCard {
   description: string;
   progress: number;
   image: string;
+  locked: boolean;
 }
 
-type PlanTier = 'trial' | 'pro';
-type ActiveView = 'overview' | 'tracks' | 'community';
+interface AllowedAccess {
+  courses?: number;
+  tracks?: string[];
+  is_admin?: boolean;
+  admin_role?: string;
+  redirect_view?: string;
+  permissions?: string[];
+}
+
+interface AuthenticatedUser {
+  id?: string;
+  name?: string | null;
+  email: string;
+  role: string;
+  sub_status?: string | null;
+  account_type?: string;
+  is_paid?: boolean;
+  trial_ends_at?: string | null;
+  expires_at?: string | null;
+  subscription_tier?: string | null;
+  allowed?: AllowedAccess;
+}
+
+type MembershipState = 'trial' | 'paid' | 'expired';
+
+type ActiveView =
+  | 'overview'
+  | 'tracks'
+  | 'community'
+  | 'settings';
 
 const TRIAL_LENGTH_DAYS = 7;
 
@@ -182,71 +213,250 @@ const IconLogout = (p: { className?: string }) => (
   </Icon>
 );
 
+const IconLock = (p: { className?: string }) => (
+  <Icon className={p.className}>
+    <rect x="4" y="10" width="16" height="11" rx="2" />
+    <path d="M8 10V7a4 4 0 0 1 8 0v3" />
+  </Icon>
+);
+
+const IconEye = (p: { className?: string }) => (
+  <Icon className={p.className}>
+    <path d="M2.5 12s3.2-5 9.5-5 9.5 5 9.5 5-3.2 5-9.5 5-9.5-5-9.5-5Z" />
+    <circle cx="12" cy="12" r="2.2" />
+  </Icon>
+);
+
 const logo = myImage;
+
+/* -------------------------------------------------------------------------- */
+/* Main dashboard                                                             */
+/* -------------------------------------------------------------------------- */
 
 export default function GeneralDashboard() {
   const router = useRouter();
 
-  const [email, setEmail] = useState('');
+  const [user, setUser] = useState<AuthenticatedUser | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+
   const [activeView, setActiveView] =
     useState<ActiveView>('overview');
-  const [plan, setPlan] = useState<PlanTier>('trial');
-  const [trialDaysLeft, setTrialDaysLeft] =
-    useState(TRIAL_LENGTH_DAYS);
+
   const [query, setQuery] = useState('');
   const [carouselIndex, setCarouselIndex] = useState(0);
   const [lastCourseId, setLastCourseId] = useState<string | null>(null);
 
+  const [passwordForm, setPasswordForm] = useState({
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: '',
+  });
+
+  const [passwordMessage, setPasswordMessage] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [showPasswords, setShowPasswords] = useState(false);
+
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    const storedEmail =
-      localStorage.getItem('phx_email') ||
-      'learner@example.com';
+  /* ------------------------------------------------------------------------ */
+  /* Authentication                                                           */
+  /* ------------------------------------------------------------------------ */
 
-    setEmail(storedEmail);
+  const clearSession = () => {
+    localStorage.removeItem('phx_token');
+    localStorage.removeItem('phx_email');
+    localStorage.removeItem('phx_role');
+    localStorage.removeItem('phx_plan');
+    localStorage.removeItem('phx_name');
+    localStorage.removeItem('phx_account_type');
+    localStorage.removeItem('phx_last_course_id');
+    localStorage.removeItem('phx_trial_started_at');
+  };
 
-    const storedPlan =
-      (localStorage.getItem('phx_plan') as PlanTier) || 'trial';
-
-    setPlan(storedPlan);
-
-    const storedLastCourse =
-      localStorage.getItem('phx_last_course_id');
-
-    setLastCourseId(storedLastCourse);
-
-    if (storedPlan === 'trial') {
-      let startedAt = localStorage.getItem(
-        'phx_trial_started_at',
-      );
-
-      if (!startedAt) {
-        startedAt = new Date().toISOString();
-
-        localStorage.setItem(
-          'phx_trial_started_at',
-          startedAt,
-        );
+  const redirectForAuthenticatedUser = (
+    authenticatedUser: AuthenticatedUser,
+  ) => {
+    if (authenticatedUser.account_type === 'admin') {
+      if (authenticatedUser.role === 'super_admin') {
+        router.replace('/dashboard/admin/super_admin');
+        return;
       }
 
-      const elapsedDays = Math.floor(
-        (Date.now() -
-          new Date(startedAt).getTime()) /
-          86_400_000,
-      );
+      if (authenticatedUser.role === 'staff_admin') {
+        router.replace('/dashboard/admin/staff_admin');
+        return;
+      }
 
-      setTrialDaysLeft(
-        Math.max(
-          TRIAL_LENGTH_DAYS - elapsedDays,
-          0,
-        ),
-      );
+      if (authenticatedUser.role === 'witstart_admin') {
+        router.replace('/dashboard/admin/witstart_admin');
+        return;
+      }
     }
 
-    const handleClickOutside = (event: MouseEvent) => {
+    if (authenticatedUser.role === 'witstart') {
+      router.replace('/dashboard/witstart');
+      return;
+    }
+
+    if (
+      authenticatedUser.account_type !== 'learner' &&
+      authenticatedUser.account_type !== undefined
+    ) {
+      clearSession();
+      router.replace('/');
+      return;
+    }
+
+    if (authenticatedUser.role !== 'normal') {
+      clearSession();
+      router.replace('/');
+    }
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const authenticate = async () => {
+      const token = localStorage.getItem('phx_token');
+
+      /*
+       * Critical security rule:
+       * There is NO fallback identity.
+       *
+       * A visitor without a JWT is not a learner.
+       */
+      if (!token) {
+        if (!cancelled) {
+          setAuthLoading(false);
+          router.replace('/');
+        }
+        return;
+      }
+
+      try {
+        const response = await fetch(
+          `${API_URL}/api/auth/me`,
+          {
+            method: 'GET',
+            headers: {
+              Authorization: `Bearer ${token}`,
+              Accept: 'application/json',
+            },
+            cache: 'no-store',
+          },
+        );
+
+        if (!response.ok) {
+          throw new Error('Authentication failed');
+        }
+
+        const data =
+          (await response.json()) as AuthenticatedUser;
+
+        if (cancelled) return;
+
+        /*
+         * The backend is authoritative.
+         * Never trust localStorage for identity, role or payment state.
+         */
+        if (!data.email || !data.role) {
+          throw new Error('Invalid authentication response');
+        }
+
+        if (
+          data.account_type === 'admin' ||
+          data.role !== 'normal'
+        ) {
+          redirectForAuthenticatedUser(data);
+          return;
+        }
+
+        setUser(data);
+
+        /*
+         * Keep localStorage only as a convenience cache.
+         * It is NOT used to authenticate the user.
+         */
+        localStorage.setItem(
+          'phx_email',
+          data.email,
+        );
+
+        if (data.name) {
+          localStorage.setItem(
+            'phx_name',
+            data.name,
+          );
+        }
+
+        localStorage.setItem(
+          'phx_role',
+          data.role,
+        );
+
+        if (data.account_type) {
+          localStorage.setItem(
+            'phx_account_type',
+            data.account_type,
+          );
+        }
+
+        if (data.is_paid) {
+          localStorage.setItem(
+            'phx_plan',
+            'pro',
+          );
+        } else {
+          localStorage.setItem(
+            'phx_plan',
+            'trial',
+          );
+        }
+
+        const storedLastCourse =
+          localStorage.getItem(
+            'phx_last_course_id',
+          );
+
+        setLastCourseId(
+          storedLastCourse,
+        );
+      } catch (error) {
+        console.error(
+          'Dashboard authentication failed:',
+          error,
+        );
+
+        if (!cancelled) {
+          clearSession();
+          router.replace('/');
+        }
+      } finally {
+        if (!cancelled) {
+          setAuthLoading(false);
+        }
+      }
+    };
+
+    authenticate();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [router]);
+
+  /* ------------------------------------------------------------------------ */
+  /* UI effects                                                               */
+  /* ------------------------------------------------------------------------ */
+
+  useEffect(() => {
+    const handleClickOutside = (
+      event: MouseEvent,
+    ) => {
       if (
         dropdownRef.current &&
         !dropdownRef.current.contains(
@@ -273,98 +483,189 @@ export default function GeneralDashboard() {
     const timer = window.setInterval(() => {
       setCarouselIndex(
         (current) =>
-          (current + 1) % learningScenes.length,
+          (current + 1) %
+          learningScenes.length,
       );
     }, 5500);
 
-    return () => window.clearInterval(timer);
+    return () =>
+      window.clearInterval(timer);
   }, []);
 
-  const courseList = courses as CourseRecord[];
+  /* ------------------------------------------------------------------------ */
+  /* Membership                                                               */
+  /* ------------------------------------------------------------------------ */
 
-  const tracksList: TrackCard[] = useMemo(() => {
-    const trackMap: Record<
-      string,
-      {
-        count: number;
-        description: string;
-        progress: number;
-      }
-    > = {};
+  const membershipState: MembershipState = useMemo(() => {
+    if (!user) return 'expired';
 
-    courseList.forEach((course) => {
-      if (!course.track) return;
+    if (user.is_paid === true) {
+      return 'paid';
+    }
 
-      if (!trackMap[course.track]) {
-        trackMap[course.track] = {
-          count: 0,
+    if (
+      user.sub_status === 'trialing' ||
+      user.sub_status === 'active'
+    ) {
+      return 'trial';
+    }
+
+    return 'expired';
+  }, [user]);
+
+  const trialDaysLeft = useMemo(() => {
+    if (!user?.trial_ends_at) {
+      return 0;
+    }
+
+    const expiry =
+      new Date(user.trial_ends_at).getTime();
+
+    if (Number.isNaN(expiry)) {
+      return 0;
+    }
+
+    return Math.max(
+      0,
+      Math.ceil(
+        (expiry - Date.now()) /
+          86_400_000,
+      ),
+    );
+  }, [user]);
+
+  const trialPct = Math.min(
+    100,
+    Math.max(
+      0,
+      Math.round(
+        (trialDaysLeft /
+          TRIAL_LENGTH_DAYS) *
+          100,
+      ),
+    ),
+  );
+
+  const hasCourseAccess =
+    membershipState === 'trial' ||
+    membershipState === 'paid';
+
+  const isPaid =
+    membershipState === 'paid';
+
+  /* ------------------------------------------------------------------------ */
+  /* Course data                                                              */
+  /* ------------------------------------------------------------------------ */
+
+  const courseList =
+    courses as CourseRecord[];
+
+  const tracksList: TrackCard[] =
+    useMemo(() => {
+      const trackMap: Record<
+        string,
+        {
+          count: number;
+          description: string;
+          progress: number;
+        }
+      > = {};
+
+      courseList.forEach((course) => {
+        if (!course.track) return;
+
+        if (!trackMap[course.track]) {
+          trackMap[course.track] = {
+            count: 0,
+            description:
+              course.track_description ||
+              'Structured lessons, practical projects and guided learning.',
+            progress: 0,
+          };
+        }
+
+        trackMap[course.track].count += 1;
+
+        trackMap[
+          course.track
+        ].progress = Math.max(
+          trackMap[course.track]
+            .progress,
+          typeof course.progress ===
+            'number'
+            ? Math.min(
+                100,
+                Math.max(
+                  0,
+                  course.progress,
+                ),
+              )
+            : 0,
+        );
+      });
+
+      return Object.keys(trackMap).map(
+        (track, index) => ({
+          track,
+          count:
+            trackMap[track].count,
           description:
-            course.track_description ||
-            'Structured lessons, practical projects and guided learning.',
-          progress: 0,
-        };
+            trackMap[track].description,
+          progress:
+            trackMap[track].progress,
+          image:
+            trackVisuals[
+              index %
+                trackVisuals.length
+            ],
+          locked:
+            !hasCourseAccess,
+        }),
+      );
+    }, [courseList, hasCourseAccess]);
+
+  const filteredTracks =
+    useMemo(() => {
+      const term = query
+        .trim()
+        .toLowerCase();
+
+      if (!term) {
+        return tracksList;
       }
 
-      trackMap[course.track].count += 1;
-
-      trackMap[course.track].progress = Math.max(
-        trackMap[course.track].progress,
-        typeof course.progress === 'number'
-          ? Math.min(
-              100,
-              Math.max(0, course.progress),
-            )
-          : 0,
+      return tracksList.filter(
+        (item) =>
+          item.track
+            .toLowerCase()
+            .includes(term) ||
+          item.description
+            .toLowerCase()
+            .includes(term),
       );
-    });
+    }, [query, tracksList]);
 
-    return Object.keys(trackMap).map(
-      (track, index) => ({
-        track,
-        count: trackMap[track].count,
-        description:
-          trackMap[track].description,
-        progress:
-          trackMap[track].progress,
-        image:
-          trackVisuals[
-            index % trackVisuals.length
-          ],
-      }),
-    );
-  }, [courseList]);
+  const continueCourse =
+    useMemo(() => {
+      const match = lastCourseId
+        ? courseList.find(
+            (course) =>
+              course.id ===
+                lastCourseId ||
+              course.slug ===
+                lastCourseId,
+          )
+        : null;
 
-  const filteredTracks = useMemo(() => {
-    const term = query.trim().toLowerCase();
-
-    if (!term) return tracksList;
-
-    return tracksList.filter(
-      (item) =>
-        item.track
-          .toLowerCase()
-          .includes(term) ||
-        item.description
-          .toLowerCase()
-          .includes(term),
-    );
-  }, [query, tracksList]);
-
-  const continueCourse = useMemo(() => {
-    const match = lastCourseId
-      ? courseList.find(
-          (course) =>
-            course.id === lastCourseId ||
-            course.slug === lastCourseId,
-        )
-      : null;
-
-    return (
-      match ||
-      courseList[0] ||
-      null
-    );
-  }, [courseList, lastCourseId]);
+      return (
+        match ||
+        courseList[0] ||
+        null
+      );
+    }, [
+      courseList,
+      lastCourseId,
+    ]);
 
   const continueTitle =
     continueCourse?.title ||
@@ -388,34 +689,38 @@ export default function GeneralDashboard() {
         )
       : 0;
 
-  const totalLessons = courseList.length;
+  const totalLessons =
+    courseList.length;
 
   const completedLessons =
     courseList.filter(
       (course) =>
-        typeof course.progress === 'number' &&
+        typeof course.progress ===
+          'number' &&
         course.progress >= 100,
     ).length;
 
   const activeTracks =
     tracksList.filter(
-      (track) => track.progress > 0,
+      (track) =>
+        track.progress > 0,
     ).length;
 
-  const trialPct = Math.round(
-    (trialDaysLeft / TRIAL_LENGTH_DAYS) *
-      100,
-  );
-
   /* ------------------------------------------------------------------------ */
-  /* General dashboard course routing                                        */
+  /* Navigation                                                               */
   /* ------------------------------------------------------------------------ */
 
   const openGeneralCourse = (
     courseId?: string,
   ) => {
+    if (!hasCourseAccess) {
+      router.push(
+        '/dashboard/upgrade',
+      );
+      return;
+    }
+
     if (!courseId) {
-      router.push('/dashboard/general');
       return;
     }
 
@@ -429,54 +734,208 @@ export default function GeneralDashboard() {
   const handleTrackClick = (
     trackName: string,
   ) => {
+    if (!hasCourseAccess) {
+      router.push(
+        '/dashboard/upgrade',
+      );
+      return;
+    }
+
     const targetCourse =
       courseList.find(
         (course) =>
-          course.track === trackName,
+          course.track ===
+          trackName,
       );
 
     const targetId =
       targetCourse?.id ||
       targetCourse?.slug;
 
-    if (!targetId) {
-      return;
-    }
+    if (!targetId) return;
 
     openGeneralCourse(targetId);
   };
 
   const handleResume = () => {
+    if (!hasCourseAccess) {
+      router.push(
+        '/dashboard/upgrade',
+      );
+      return;
+    }
+
     const target =
       continueCourse?.id ||
       continueCourse?.slug;
 
     if (target) {
       openGeneralCourse(target);
-      return;
     }
-
-    router.push('/dashboard/general');
   };
 
   const handleLogout = () => {
-    localStorage.clear();
-    router.push('/');
+    clearSession();
+    router.replace('/');
   };
 
-  const goTo = (view: ActiveView) => {
+  const goTo = (
+    view: ActiveView,
+  ) => {
     setActiveView(view);
     setMobileNavOpen(false);
   };
 
+  /* ------------------------------------------------------------------------ */
+  /* Password change                                                          */
+  /* ------------------------------------------------------------------------ */
+
+  const handlePasswordChange = async (
+    event: React.FormEvent,
+  ) => {
+    event.preventDefault();
+
+    setPasswordMessage('');
+    setPasswordError('');
+
+    if (
+      passwordForm.newPassword.length <
+      8
+    ) {
+      setPasswordError(
+        'Your new password must be at least 8 characters long.',
+      );
+      return;
+    }
+
+    if (
+      passwordForm.newPassword !==
+      passwordForm.confirmPassword
+    ) {
+      setPasswordError(
+        'The new passwords do not match.',
+      );
+      return;
+    }
+
+    const token =
+      localStorage.getItem(
+        'phx_token',
+      );
+
+    if (!token) {
+      clearSession();
+      router.replace('/');
+      return;
+    }
+
+    setChangingPassword(true);
+
+    try {
+      const response =
+        await fetch(
+          `${API_URL}/api/auth/change-password`,
+          {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'Content-Type':
+                'application/json',
+              Accept:
+                'application/json',
+            },
+            body: JSON.stringify({
+              current_password:
+                passwordForm.currentPassword,
+              new_password:
+                passwordForm.newPassword,
+            }),
+          },
+        );
+
+      const data =
+        await response
+          .json()
+          .catch(
+            () => ({}) as Record<
+              string,
+              unknown
+            >,
+          );
+
+      if (!response.ok) {
+        if (
+          response.status === 401
+        ) {
+          clearSession();
+          router.replace('/');
+          return;
+        }
+
+        throw new Error(
+          typeof data.detail ===
+            'string'
+            ? data.detail
+            : 'Unable to change your password.',
+        );
+      }
+
+      setPasswordMessage(
+        'Your password has been changed successfully.',
+      );
+
+      setPasswordForm({
+        currentPassword: '',
+        newPassword: '',
+        confirmPassword: '',
+      });
+    } catch (error) {
+      setPasswordError(
+        error instanceof Error
+          ? error.message
+          : 'Unable to change your password.',
+      );
+    } finally {
+      setChangingPassword(false);
+    }
+  };
+
+  /* ------------------------------------------------------------------------ */
+  /* Loading                                                                  */
+  /* ------------------------------------------------------------------------ */
+
+  if (authLoading || !user) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#f6f7fb]">
+        <div className="text-center">
+          <Image
+            src={logo}
+            alt="Learnora Me"
+            className="mx-auto h-12 w-12 object-contain"
+          />
+
+          <div className="mt-5 h-1.5 w-32 overflow-hidden rounded-full bg-[#e5e8ee]">
+            <div className="h-full w-1/2 animate-pulse rounded-full bg-[#c99e2c]" />
+          </div>
+
+          <p className="mt-3 text-xs font-medium text-[#8a919e]">
+            Verifying your account...
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#f6f7fb] text-[#151821]">
 
-      {/* Desktop sidebar */}
+      {/* ------------------------------------------------------------------ */}
+      {/* Desktop sidebar                                                    */}
+      {/* ------------------------------------------------------------------ */}
+
       <aside className="fixed inset-y-0 left-0 z-40 hidden w-[248px] flex-col border-r border-[#e7e9ef] bg-[#111827] text-white lg:flex">
 
         <div className="flex h-[76px] items-center gap-3 border-b border-white/10 px-6">
-
           <Image
             src={logo}
             alt="Learnora Me logo"
@@ -574,43 +1033,57 @@ export default function GeneralDashboard() {
               </span>
             </button>
 
-            <button className="flex w-full items-center gap-3 rounded-xl px-3.5 py-3 text-left text-[13px] font-medium text-white/35">
+            <button
+              onClick={() =>
+                goTo('settings')
+              }
+              className={`flex w-full items-center gap-3 rounded-xl px-3.5 py-3 text-left text-[13px] font-medium transition ${
+                activeView ===
+                'settings'
+                  ? 'bg-white text-[#111827]'
+                  : 'text-white/65 hover:bg-white/7 hover:text-white'
+              }`}
+            >
               <IconGear className="h-[18px] w-[18px]" />
               Settings
-
-              <span className="ml-auto text-[9px] uppercase tracking-wide">
-                Soon
-              </span>
             </button>
 
           </nav>
         </div>
 
-        {plan === 'trial' && (
+        {!isPaid && (
           <div className="m-3 rounded-2xl border border-[#d7ad35]/30 bg-[#d7ad35]/10 p-4">
 
             <div className="flex items-center justify-between">
 
               <span className="text-[10px] font-bold uppercase tracking-[.12em] text-[#f2d477]">
-                Free trial
+                {membershipState ===
+                'trial'
+                  ? 'Free trial'
+                  : 'Access expired'}
               </span>
 
-              <span className="text-[10px] font-semibold text-white/65">
-                {trialDaysLeft} days
-              </span>
+              {membershipState ===
+                'trial' && (
+                <span className="text-[10px] font-semibold text-white/65">
+                  {trialDaysLeft}{' '}
+                  days
+                </span>
+              )}
 
             </div>
 
-            <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/10">
-
-              <div
-                className="h-full rounded-full bg-[#d7ad35] transition-all"
-                style={{
-                  width: `${trialPct}%`,
-                }}
-              />
-
-            </div>
+            {membershipState ===
+              'trial' && (
+              <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/10">
+                <div
+                  className="h-full rounded-full bg-[#d7ad35] transition-all"
+                  style={{
+                    width: `${trialPct}%`,
+                  }}
+                />
+              </div>
+            )}
 
             <button
               onClick={() =>
@@ -620,7 +1093,10 @@ export default function GeneralDashboard() {
               }
               className="mt-3 w-full rounded-xl bg-[#d7ad35] py-2.5 text-xs font-bold text-[#111827] transition hover:bg-[#e4bf50]"
             >
-              Unlock full access
+              {membershipState ===
+              'expired'
+                ? 'Unlock full access'
+                : 'Upgrade to Pro'}
             </button>
 
           </div>
@@ -639,7 +1115,10 @@ export default function GeneralDashboard() {
         </div>
       </aside>
 
-      {/* Mobile sidebar */}
+      {/* ------------------------------------------------------------------ */}
+      {/* Mobile sidebar                                                     */}
+      {/* ------------------------------------------------------------------ */}
+
       {mobileNavOpen && (
         <div className="fixed inset-0 z-50 lg:hidden">
 
@@ -671,7 +1150,9 @@ export default function GeneralDashboard() {
 
               <button
                 onClick={() =>
-                  setMobileNavOpen(false)
+                  setMobileNavOpen(
+                    false,
+                  )
                 }
                 className="rounded-lg p-2 text-white/60 hover:bg-white/10 hover:text-white"
               >
@@ -698,6 +1179,11 @@ export default function GeneralDashboard() {
                   'Community',
                   <IconMessage className="h-5 w-5" />,
                 ],
+                [
+                  'settings',
+                  'Settings',
+                  <IconGear className="h-5 w-5" />,
+                ],
               ].map(
                 ([id, label, icon]) => (
                   <button
@@ -708,7 +1194,8 @@ export default function GeneralDashboard() {
                       )
                     }
                     className={`flex w-full items-center gap-3 rounded-xl px-3.5 py-3 text-left text-sm font-medium ${
-                      activeView === id
+                      activeView ===
+                      id
                         ? 'bg-white text-[#111827]'
                         : 'text-white/65 hover:bg-white/10 hover:text-white'
                     }`}
@@ -726,14 +1213,19 @@ export default function GeneralDashboard() {
 
       <div className="lg:pl-[248px]">
 
-        {/* Top navigation */}
+        {/* ---------------------------------------------------------------- */}
+        {/* Top navigation                                                   */}
+        {/* ---------------------------------------------------------------- */}
+
         <header className="sticky top-0 z-30 border-b border-[#e7e9ef] bg-[#f6f7fb]/90 px-4 py-3 backdrop-blur-xl sm:px-6 lg:px-8">
 
           <div className="mx-auto flex max-w-[1440px] items-center gap-3">
 
             <button
               onClick={() =>
-                setMobileNavOpen(true)
+                setMobileNavOpen(
+                  true,
+                )
               }
               className="rounded-xl border border-[#e2e5eb] bg-white p-2.5 text-[#3f4654] lg:hidden"
             >
@@ -782,9 +1274,12 @@ export default function GeneralDashboard() {
 
                 <span className="h-1.5 w-1.5 rounded-full bg-[#d7ad35]" />
 
-                {plan === 'trial'
+                {isPaid
+                  ? 'Learnora Pro'
+                  : membershipState ===
+                    'trial'
                   ? `${trialDaysLeft} days left`
-                  : 'Learnora Pro'}
+                  : 'Access expired'}
 
               </div>
 
@@ -812,8 +1307,13 @@ export default function GeneralDashboard() {
                 >
 
                   <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#111827] text-xs font-bold uppercase text-white">
-                    {email.charAt(0) ||
-                      'L'}
+                    {(
+                      user.name ||
+                      user.email ||
+                      'L'
+                    )
+                      .charAt(0)
+                      .toUpperCase()}
                   </span>
 
                   <IconChevron className="hidden h-3.5 w-3.5 text-[#9299a7] sm:block" />
@@ -821,7 +1321,7 @@ export default function GeneralDashboard() {
                 </button>
 
                 {dropdownOpen && (
-                  <div className="absolute right-0 mt-2 w-60 overflow-hidden rounded-2xl border border-[#e2e5eb] bg-white py-1 shadow-2xl shadow-[#111827]/10">
+                  <div className="absolute right-0 mt-2 w-64 overflow-hidden rounded-2xl border border-[#e2e5eb] bg-white py-1 shadow-2xl shadow-[#111827]/10">
 
                     <div className="border-b border-[#eef0f4] px-4 py-3">
 
@@ -829,14 +1329,30 @@ export default function GeneralDashboard() {
                         Signed in as
                       </p>
 
-                      <p className="mt-1 truncate text-xs font-semibold text-[#252a35]">
-                        {email}
+                      <p className="mt-1 truncate text-xs font-bold text-[#252a35]">
+                        {user.name ||
+                          'Learner'}
+                      </p>
+
+                      <p className="mt-0.5 truncate text-[11px] text-[#7d8492]">
+                        {user.email}
                       </p>
 
                     </div>
 
-                    {plan ===
-                      'trial' && (
+                    <button
+                      onClick={() =>
+                        goTo(
+                          'settings',
+                        )
+                      }
+                      className="flex w-full items-center gap-2 px-4 py-3 text-left text-xs font-semibold text-[#343a47] hover:bg-[#f7f8fa]"
+                    >
+                      <IconGear className="h-4 w-4" />
+                      Settings
+                    </button>
+
+                    {!isPaid && (
                       <button
                         onClick={() =>
                           router.push(
@@ -845,7 +1361,10 @@ export default function GeneralDashboard() {
                         }
                         className="w-full px-4 py-3 text-left text-xs font-semibold text-[#8d6a12] hover:bg-[#fff9e9]"
                       >
-                        Upgrade to Learnora Pro
+                        {membershipState ===
+                        'expired'
+                          ? 'Unlock full access'
+                          : 'Upgrade to Learnora Pro'}
                       </button>
                     )}
 
@@ -869,496 +1388,631 @@ export default function GeneralDashboard() {
 
         <main className="mx-auto max-w-[1440px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
 
-          {/* Hero */}
-          <section className="relative min-h-[310px] overflow-hidden rounded-[28px] bg-[#111827] shadow-[0_22px_60px_rgba(17,24,39,.12)]">
+          {/* ---------------------------------------------------------------- */}
+          {/* Settings                                                         */}
+          {/* ---------------------------------------------------------------- */}
 
-            {learningScenes.map(
-              (scene, index) => (
-                <div
-                  key={scene.image}
-                  className={`absolute inset-0 transition-opacity duration-1000 ${
-                    index ===
-                    carouselIndex
-                      ? 'opacity-100'
-                      : 'opacity-0'
-                  }`}
-                >
-                  <img
-                    src={scene.image}
-                    alt=""
-                    className="h-full w-full object-cover opacity-45"
-                  />
-                </div>
-              ),
-            )}
+          {activeView ===
+          'settings' ? (
+            <SettingsPanel
+              user={user}
+              passwordForm={
+                passwordForm
+              }
+              setPasswordForm={
+                setPasswordForm
+              }
+              showPasswords={
+                showPasswords
+              }
+              setShowPasswords={
+                setShowPasswords
+              }
+              changingPassword={
+                changingPassword
+              }
+              passwordMessage={
+                passwordMessage
+              }
+              passwordError={
+                passwordError
+              }
+              onSubmit={
+                handlePasswordChange
+              }
+            />
+          ) : (
+            <>
+              {/* ---------------------------------------------------------- */}
+              {/* Hero                                                        */}
+              {/* ---------------------------------------------------------- */}
 
-            <div className="absolute inset-0 bg-gradient-to-r from-[#111827] via-[#111827]/90 to-[#111827]/25" />
+              <section className="relative min-h-[310px] overflow-hidden rounded-[28px] bg-[#111827] shadow-[0_22px_60px_rgba(17,24,39,.12)]">
 
-            <div className="absolute inset-y-0 right-0 hidden w-1/2 bg-gradient-to-l from-[#111827]/10 to-transparent lg:block" />
-
-            <div className="relative flex min-h-[310px] flex-col justify-center p-7 sm:p-10 lg:max-w-[700px] lg:p-12">
-
-              <div className="mb-4 inline-flex w-fit items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[.13em] text-[#f2d477] backdrop-blur">
-
-                <IconSpark className="h-3.5 w-3.5" />
-
-                {
-                  learningScenes[
-                    carouselIndex
-                  ].eyebrow
-                }
-
-              </div>
-
-              <h1 className="max-w-2xl text-3xl font-bold leading-[1.08] tracking-[-.035em] text-white sm:text-4xl lg:text-[46px]">
-
-                {
-                  learningScenes[
-                    carouselIndex
-                  ].title
-                }
-
-              </h1>
-
-              <p className="mt-4 max-w-xl text-sm leading-6 text-white/65 sm:text-[15px]">
-                Welcome back. Continue a course, explore a new track, or ask the community when you get stuck.
-              </p>
-
-              <div className="mt-7 flex flex-wrap gap-3">
-
-                <button
-                  onClick={
-                    handleResume
-                  }
-                  className="inline-flex items-center gap-2 rounded-xl bg-[#d7ad35] px-5 py-3 text-xs font-bold text-[#111827] transition hover:bg-[#e5c04f]"
-                >
-                  <IconPlay className="h-4 w-4" />
-
-                  {continueProgress >
-                  0
-                    ? 'Resume learning'
-                    : 'Start learning'}
-                </button>
-
-                <button
-                  onClick={() =>
-                    goTo('tracks')
-                  }
-                  className="rounded-xl border border-white/15 bg-white/10 px-5 py-3 text-xs font-bold text-white backdrop-blur transition hover:bg-white/15"
-                >
-                  Explore tracks
-                </button>
-
-              </div>
-            </div>
-
-            <div className="absolute bottom-5 right-6 flex gap-1.5">
-
-              {learningScenes.map(
-                (_, index) => (
-                  <button
-                    key={index}
-                    onClick={() =>
-                      setCarouselIndex(
-                        index,
-                      )
-                    }
-                    aria-label={`Show learning scene ${
-                      index + 1
-                    }`}
-                    className={`h-1.5 rounded-full transition-all ${
-                      index ===
-                      carouselIndex
-                        ? 'w-7 bg-[#d7ad35]'
-                        : 'w-1.5 bg-white/40'
-                    }`}
-                  />
-                ),
-              )}
-
-            </div>
-          </section>
-
-          {/* Status strip */}
-          <section className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
-
-            {[
-              {
-                label: 'Courses available',
-                value:
-                  totalLessons.toLocaleString(),
-                detail:
-                  'in your catalogue',
-              },
-              {
-                label: 'Tracks started',
-                value:
-                  activeTracks.toString(),
-                detail:
-                  'based on your progress',
-              },
-              {
-                label: 'Completed',
-                value:
-                  completedLessons.toString(),
-                detail:
-                  'courses finished',
-              },
-              {
-                label:
-                  plan === 'trial'
-                    ? 'Trial access'
-                    : 'Membership',
-                value:
-                  plan === 'trial'
-                    ? `${trialDaysLeft}d`
-                    : 'PRO',
-                detail:
-                  plan === 'trial'
-                    ? 'remaining'
-                    : 'active',
-              },
-            ].map((stat) => (
-              <div
-                key={stat.label}
-                className="rounded-2xl border border-[#e5e8ee] bg-white px-4 py-4 shadow-sm"
-              >
-
-                <p className="text-[10px] font-bold uppercase tracking-[.1em] text-[#9299a7]">
-                  {stat.label}
-                </p>
-
-                <div className="mt-1 flex items-end gap-2">
-
-                  <span className="text-xl font-bold tracking-tight text-[#151821]">
-                    {stat.value}
-                  </span>
-
-                  <span className="pb-0.5 text-[10px] font-medium text-[#9299a7]">
-                    {stat.detail}
-                  </span>
-
-                </div>
-              </div>
-            ))}
-
-          </section>
-
-          <div className="mt-7 grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
-
-            <div className="min-w-0">
-
-              {activeView ===
-              'community' ? (
-                <CommunityPanel />
-              ) : activeView ===
-                'tracks' ? (
-                <TracksPanel
-                  tracks={
-                    filteredTracks
-                  }
-                  query={query}
-                  onTrack={
-                    handleTrackClick
-                  }
-                />
-              ) : (
-                <>
-                  {/* Continue learning */}
-                  <section className="overflow-hidden rounded-[24px] border border-[#e5e8ee] bg-white shadow-sm">
-
-                    <div className="flex flex-col gap-5 p-5 sm:flex-row sm:items-center sm:p-6">
-
-                      <div className="relative h-[155px] w-full shrink-0 overflow-hidden rounded-2xl bg-[#dfe3ea] sm:w-[245px]">
-
-                        <img
-                          src={
-                            trackVisuals[0]
-                          }
-                          alt=""
-                          className="h-full w-full object-cover"
-                        />
-
-                        <div className="absolute inset-0 bg-gradient-to-t from-[#111827]/70 via-transparent to-transparent" />
-
-                        <div className="absolute bottom-3 left-3 rounded-lg bg-white/90 px-2.5 py-1 text-[9px] font-bold uppercase tracking-[.1em] text-[#111827] backdrop-blur">
-                          {
-                            continueTrack
-                          }
-                        </div>
-
-                      </div>
-
-                      <div className="min-w-0 flex-1">
-
-                        <div className="flex items-center justify-between gap-3">
-
-                          <p className="text-[10px] font-bold uppercase tracking-[.12em] text-[#b08722]">
-                            Continue where you left off
-                          </p>
-
-                          <span className="text-xs font-bold text-[#596171]">
-                            {
-                              continueProgress
-                            }
-                            %
-                          </span>
-
-                        </div>
-
-                        <h2 className="mt-2 line-clamp-2 text-xl font-bold tracking-tight text-[#151821] sm:text-2xl">
-                          {
-                            continueTitle
-                          }
-                        </h2>
-
-                        <p className="mt-2 text-xs leading-5 text-[#7d8492]">
-                          Pick up your next lesson and keep your learning streak moving.
-                        </p>
-
-                        <div className="mt-5 h-2 overflow-hidden rounded-full bg-[#edf0f4]">
-
-                          <div
-                            className="h-full rounded-full bg-[#c99e2c] transition-all"
-                            style={{
-                              width: `${Math.max(
-                                continueProgress,
-                                2,
-                              )}%`,
-                            }}
-                          />
-
-                        </div>
-
-                        <button
-                          onClick={
-                            handleResume
-                          }
-                          className="mt-4 inline-flex items-center gap-2 rounded-xl bg-[#111827] px-4 py-2.5 text-xs font-bold text-white transition hover:bg-[#1c273a]"
-                        >
-                          {continueProgress >
-                          0
-                            ? 'Resume lesson'
-                            : 'Open course'}
-
-                          <IconArrow className="h-4 w-4" />
-                        </button>
-
-                      </div>
+                {learningScenes.map(
+                  (
+                    scene,
+                    index,
+                  ) => (
+                    <div
+                      key={
+                        scene.image
+                      }
+                      className={`absolute inset-0 transition-opacity duration-1000 ${
+                        index ===
+                        carouselIndex
+                          ? 'opacity-100'
+                          : 'opacity-0'
+                      }`}
+                    >
+                      <img
+                        src={
+                          scene.image
+                        }
+                        alt=""
+                        className="h-full w-full object-cover opacity-45"
+                      />
                     </div>
-                  </section>
+                  ),
+                )}
 
-                  {/* Tracks */}
-                  <section className="mt-7">
+                <div className="absolute inset-0 bg-gradient-to-r from-[#111827] via-[#111827]/90 to-[#111827]/25" />
 
-                    <div className="mb-4 flex items-end justify-between gap-4">
+                <div className="relative flex min-h-[310px] flex-col justify-center p-7 sm:p-10 lg:max-w-[700px] lg:p-12">
 
-                      <div>
+                  <div className="mb-4 inline-flex w-fit items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[.13em] text-[#f2d477] backdrop-blur">
 
-                        <p className="text-[10px] font-bold uppercase tracking-[.14em] text-[#b08722]">
-                          Explore Learnora Me
-                        </p>
+                    <IconSpark className="h-3.5 w-3.5" />
 
-                        <h2 className="mt-1 text-2xl font-bold tracking-tight text-[#151821]">
-                          Learning tracks
-                        </h2>
+                    {
+                      learningScenes[
+                        carouselIndex
+                      ].eyebrow
+                    }
 
-                      </div>
+                  </div>
 
+                  <h1 className="max-w-2xl text-3xl font-bold leading-[1.08] tracking-[-.035em] text-white sm:text-4xl lg:text-[46px]">
+                    {
+                      learningScenes[
+                        carouselIndex
+                      ].title
+                    }
+                  </h1>
+
+                  <p className="mt-4 max-w-xl text-sm leading-6 text-white/65 sm:text-[15px]">
+                    Welcome back
+                    {user.name
+                      ? `, ${user.name.split(' ')[0]}`
+                      : ''}. Continue a
+                    course, explore a
+                    new track, or ask
+                    the community when
+                    you get stuck.
+                  </p>
+
+                  <div className="mt-7 flex flex-wrap gap-3">
+
+                    <button
+                      onClick={
+                        handleResume
+                      }
+                      className="inline-flex items-center gap-2 rounded-xl bg-[#d7ad35] px-5 py-3 text-xs font-bold text-[#111827] transition hover:bg-[#e5c04f]"
+                    >
+                      <IconPlay className="h-4 w-4" />
+
+                      {!hasCourseAccess
+                        ? 'Unlock access'
+                        : continueProgress >
+                            0
+                        ? 'Resume learning'
+                        : 'Start learning'}
+                    </button>
+
+                    <button
+                      onClick={() =>
+                        goTo(
+                          'tracks',
+                        )
+                      }
+                      className="rounded-xl border border-white/15 bg-white/10 px-5 py-3 text-xs font-bold text-white backdrop-blur transition hover:bg-white/15"
+                    >
+                      Explore tracks
+                    </button>
+
+                  </div>
+                </div>
+
+                <div className="absolute bottom-5 right-6 flex gap-1.5">
+
+                  {learningScenes.map(
+                    (
+                      _,
+                      index,
+                    ) => (
                       <button
+                        key={
+                          index
+                        }
                         onClick={() =>
-                          goTo(
-                            'tracks',
+                          setCarouselIndex(
+                            index,
                           )
                         }
-                        className="hidden text-xs font-bold text-[#687080] hover:text-[#151821] sm:block"
-                      >
-                        View all →
-                      </button>
+                        aria-label={`Show learning scene ${
+                          index +
+                          1
+                        }`}
+                        className={`h-1.5 rounded-full transition-all ${
+                          index ===
+                          carouselIndex
+                            ? 'w-7 bg-[#d7ad35]'
+                            : 'w-1.5 bg-white/40'
+                        }`}
+                      />
+                    ),
+                  )}
 
+                </div>
+              </section>
+
+              {/* ---------------------------------------------------------- */}
+              {/* Status strip                                                */}
+              {/* ---------------------------------------------------------- */}
+
+              <section className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+
+                {[
+                  {
+                    label:
+                      'Courses available',
+                    value:
+                      totalLessons.toLocaleString(),
+                    detail:
+                      'in your catalogue',
+                  },
+                  {
+                    label:
+                      'Tracks started',
+                    value:
+                      activeTracks.toString(),
+                    detail:
+                      'based on your progress',
+                  },
+                  {
+                    label:
+                      'Completed',
+                    value:
+                      completedLessons.toString(),
+                    detail:
+                      'courses finished',
+                  },
+                  {
+                    label:
+                      isPaid
+                        ? 'Membership'
+                        : membershipState ===
+                          'trial'
+                        ? 'Trial access'
+                        : 'Access',
+                    value:
+                      isPaid
+                        ? 'PRO'
+                        : membershipState ===
+                          'trial'
+                        ? `${trialDaysLeft}d`
+                        : 'LOCKED',
+                    detail:
+                      isPaid
+                        ? 'active'
+                        : membershipState ===
+                          'trial'
+                        ? 'remaining'
+                        : 'upgrade required',
+                  },
+                ].map(
+                  (stat) => (
+                    <div
+                      key={
+                        stat.label
+                      }
+                      className="rounded-2xl border border-[#e5e8ee] bg-white px-4 py-4 shadow-sm"
+                    >
+                      <p className="text-[10px] font-bold uppercase tracking-[.1em] text-[#9299a7]">
+                        {
+                          stat.label
+                        }
+                      </p>
+
+                      <div className="mt-1 flex items-end gap-2">
+
+                        <span className="text-xl font-bold tracking-tight text-[#151821]">
+                          {
+                            stat.value
+                          }
+                        </span>
+
+                        <span className="pb-0.5 text-[10px] font-medium text-[#9299a7]">
+                          {
+                            stat.detail
+                          }
+                        </span>
+
+                      </div>
                     </div>
+                  ),
+                )}
 
+              </section>
+
+              <div className="mt-7 grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
+
+                <div className="min-w-0">
+
+                  {activeView ===
+                  'community' ? (
+                    <CommunityPanel />
+                  ) : activeView ===
+                    'tracks' ? (
                     <TracksPanel
-                      tracks={filteredTracks.slice(
-                        0,
-                        6,
-                      )}
-                      query={query}
+                      tracks={
+                        filteredTracks
+                      }
+                      query={
+                        query
+                      }
                       onTrack={
                         handleTrackClick
                       }
                     />
+                  ) : (
+                    <>
+                      {/* ------------------------------------------------ */}
+                      {/* Continue learning                                 */}
+                      {/* ------------------------------------------------ */}
 
-                  </section>
-                </>
-              )}
+                      <section className="overflow-hidden rounded-[24px] border border-[#e5e8ee] bg-white shadow-sm">
 
-            </div>
+                        <div className="flex flex-col gap-5 p-5 sm:flex-row sm:items-center sm:p-6">
 
-            {/* Right rail */}
-            <aside className="space-y-5">
+                          <div className="relative h-[155px] w-full shrink-0 overflow-hidden rounded-2xl bg-[#dfe3ea] sm:w-[245px]">
 
-              {/* Trial status */}
-              <div
-                className={`overflow-hidden rounded-[24px] border p-5 shadow-sm ${
-                  plan === 'trial'
-                    ? 'border-[#ead99d] bg-[#fffaf0]'
-                    : 'border-[#d9dee7] bg-white'
-                }`}
-              >
+                            <img
+                              src={
+                                trackVisuals[0]
+                              }
+                              alt=""
+                              className="h-full w-full object-cover"
+                            />
 
-                <div className="flex items-center justify-between">
+                            <div className="absolute inset-0 bg-gradient-to-t from-[#111827]/70 via-transparent to-transparent" />
 
-                  <div>
+                            <div className="absolute bottom-3 left-3 rounded-lg bg-white/90 px-2.5 py-1 text-[9px] font-bold uppercase tracking-[.1em] text-[#111827] backdrop-blur">
+                              {
+                                continueTrack
+                              }
+                            </div>
 
-                    <p className="text-[10px] font-bold uppercase tracking-[.13em] text-[#8d6a12]">
-                      {plan ===
-                      'trial'
-                        ? 'Free trial'
-                        : 'Membership'}
-                    </p>
+                          </div>
 
-                    <h3 className="mt-1 text-lg font-bold tracking-tight text-[#151821]">
-                      {plan ===
-                      'trial'
-                        ? `${trialDaysLeft} days remaining`
-                        : 'Learnora Pro'}
-                    </h3>
+                          <div className="min-w-0 flex-1">
 
-                  </div>
+                            <div className="flex items-center justify-between gap-3">
 
-                  <span
-                    className={`rounded-full px-2.5 py-1 text-[9px] font-bold uppercase tracking-wide ${
-                      plan ===
-                      'trial'
-                        ? 'bg-[#f5e7b6] text-[#806010]'
-                        : 'bg-[#111827] text-white'
-                    }`}
-                  >
-                    {plan ===
-                    'trial'
-                      ? 'Trial'
-                      : 'Active'}
-                  </span>
+                              <p className="text-[10px] font-bold uppercase tracking-[.12em] text-[#b08722]">
+                                Continue where you left off
+                              </p>
+
+                              <span className="text-xs font-bold text-[#596171]">
+                                {
+                                  continueProgress
+                                }
+                                %
+                              </span>
+
+                            </div>
+
+                            <h2 className="mt-2 line-clamp-2 text-xl font-bold tracking-tight text-[#151821] sm:text-2xl">
+                              {
+                                continueTitle
+                              }
+                            </h2>
+
+                            <p className="mt-2 text-xs leading-5 text-[#7d8492]">
+                              Pick up your
+                              next lesson
+                              and keep
+                              your learning
+                              streak moving.
+                            </p>
+
+                            <div className="mt-5 h-2 overflow-hidden rounded-full bg-[#edf0f4]">
+
+                              <div
+                                className="h-full rounded-full bg-[#c99e2c] transition-all"
+                                style={{
+                                  width: `${Math.max(
+                                    continueProgress,
+                                    2,
+                                  )}%`,
+                                }}
+                              />
+
+                            </div>
+
+                            <button
+                              onClick={
+                                handleResume
+                              }
+                              className="mt-4 inline-flex items-center gap-2 rounded-xl bg-[#111827] px-4 py-2.5 text-xs font-bold text-white transition hover:bg-[#1c273a]"
+                            >
+                              {!hasCourseAccess
+                                ? 'Unlock access'
+                                : continueProgress >
+                                    0
+                                ? 'Resume lesson'
+                                : 'Open course'}
+
+                              <IconArrow className="h-4 w-4" />
+                            </button>
+
+                          </div>
+                        </div>
+                      </section>
+
+                      {/* ------------------------------------------------ */}
+                      {/* Tracks                                              */}
+                      {/* ------------------------------------------------ */}
+
+                      <section className="mt-7">
+
+                        <div className="mb-4 flex items-end justify-between gap-4">
+
+                          <div>
+
+                            <p className="text-[10px] font-bold uppercase tracking-[.14em] text-[#b08722]">
+                              Explore Learnora Me
+                            </p>
+
+                            <h2 className="mt-1 text-2xl font-bold tracking-tight text-[#151821]">
+                              Learning tracks
+                            </h2>
+
+                          </div>
+
+                          <button
+                            onClick={() =>
+                              goTo(
+                                'tracks',
+                              )
+                            }
+                            className="hidden text-xs font-bold text-[#687080] hover:text-[#151821] sm:block"
+                          >
+                            View all →
+                          </button>
+
+                        </div>
+
+                        <TracksPanel
+                          tracks={filteredTracks.slice(
+                            0,
+                            6,
+                          )}
+                          query={
+                            query
+                          }
+                          onTrack={
+                            handleTrackClick
+                          }
+                        />
+
+                      </section>
+                    </>
+                  )}
 
                 </div>
 
-                <div className="mt-4 h-2 overflow-hidden rounded-full bg-white">
+                {/* -------------------------------------------------------- */}
+                {/* Right rail                                                */}
+                {/* -------------------------------------------------------- */}
+
+                <aside className="space-y-5">
+
+                  {/* Membership */}
 
                   <div
-                    className="h-full rounded-full bg-[#c99e2c]"
-                    style={{
-                      width: `${
-                        plan ===
-                        'trial'
-                          ? trialPct
-                          : 100
-                      }%`,
-                    }}
-                  />
-
-                </div>
-
-                <p className="mt-3 text-[11px] leading-5 text-[#81765b]">
-                  {plan ===
-                  'trial'
-                    ? 'Your trial gives you access to learning tracks and the learner community. Upgrade to keep uninterrupted access.'
-                    : 'Your Pro membership keeps your learning workspace fully unlocked.'}
-                </p>
-
-                {plan ===
-                  'trial' && (
-                  <button
-                    onClick={() =>
-                      router.push(
-                        '/dashboard/upgrade',
-                      )
-                    }
-                    className="mt-4 w-full rounded-xl bg-[#111827] py-2.5 text-xs font-bold text-white transition hover:bg-[#1c273a]"
+                    className={`overflow-hidden rounded-[24px] border p-5 shadow-sm ${
+                      !isPaid
+                        ? 'border-[#ead99d] bg-[#fffaf0]'
+                        : 'border-[#d9dee7] bg-white'
+                    }`}
                   >
-                    Upgrade to Pro
-                  </button>
-                )}
 
-              </div>
+                    <div className="flex items-center justify-between">
 
-              {/* Community card */}
-              <div className="rounded-[24px] border border-[#e5e8ee] bg-white p-5 shadow-sm">
+                      <div>
 
-                <div className="flex items-start justify-between">
+                        <p className="text-[10px] font-bold uppercase tracking-[.13em] text-[#8d6a12]">
+                          {isPaid
+                            ? 'Membership'
+                            : membershipState ===
+                              'trial'
+                            ? 'Free trial'
+                            : 'Access expired'}
+                        </p>
 
-                  <div>
+                        <h3 className="mt-1 text-lg font-bold tracking-tight text-[#151821]">
+                          {isPaid
+                            ? 'Learnora Pro'
+                            : membershipState ===
+                              'trial'
+                            ? `${trialDaysLeft} days remaining`
+                            : 'Upgrade required'}
+                        </h3>
 
-                    <div className="flex items-center gap-2">
+                      </div>
 
-                      <span className="h-2 w-2 rounded-full bg-emerald-500" />
-
-                      <p className="text-[10px] font-bold uppercase tracking-[.13em] text-[#747c8c]">
-                        Learner community
-                      </p>
+                      <span
+                        className={`rounded-full px-2.5 py-1 text-[9px] font-bold uppercase tracking-wide ${
+                          isPaid
+                            ? 'bg-[#111827] text-white'
+                            : membershipState ===
+                              'trial'
+                            ? 'bg-[#f5e7b6] text-[#806010]'
+                            : 'bg-[#f4d5d1] text-[#8c3b31]'
+                        }`}
+                      >
+                        {isPaid
+                          ? 'Active'
+                          : membershipState ===
+                            'trial'
+                          ? 'Trial'
+                          : 'Locked'}
+                      </span>
 
                     </div>
 
-                    <h3 className="mt-2 text-lg font-bold tracking-tight text-[#151821]">
-                      Learn out loud.
-                    </h3>
+                    {!isPaid && (
+                      <>
+                        {membershipState ===
+                          'trial' && (
+                          <div className="mt-4 h-2 overflow-hidden rounded-full bg-white">
+
+                            <div
+                              className="h-full rounded-full bg-[#c99e2c]"
+                              style={{
+                                width: `${trialPct}%`,
+                              }}
+                            />
+
+                          </div>
+                        )}
+
+                        <p className="mt-3 text-[11px] leading-5 text-[#81765b]">
+                          {membershipState ===
+                          'trial'
+                            ? 'Your free trial gives you temporary access to the learning platform. Upgrade at any time to keep uninterrupted access.'
+                            : 'Your free trial has ended. Upgrade to regain access to the course catalogue.'}
+                        </p>
+
+                        <button
+                          onClick={() =>
+                            router.push(
+                              '/dashboard/upgrade',
+                            )
+                          }
+                          className="mt-4 w-full rounded-xl bg-[#111827] py-2.5 text-xs font-bold text-white transition hover:bg-[#1c273a]"
+                        >
+                          {membershipState ===
+                          'trial'
+                            ? 'Upgrade to Pro'
+                            : 'Unlock full access'}
+                        </button>
+                      </>
+                    )}
+
+                    {isPaid && (
+                      <p className="mt-3 text-[11px] leading-5 text-[#7d8492]">
+                        Your Learnora Pro
+                        membership is
+                        active. Course access
+                        remains available while
+                        your subscription is
+                        successfully renewed.
+                      </p>
+                    )}
 
                   </div>
 
-                  <IconMessage className="h-5 w-5 text-[#b28c2a]" />
+                  {/* Community */}
 
-                </div>
+                  <div className="rounded-[24px] border border-[#e5e8ee] bg-white p-5 shadow-sm">
 
-                <p className="mt-2 text-xs leading-5 text-[#7d8492]">
-                  Ask questions, explain what you know, and find people working through the same problems.
-                </p>
+                    <div className="flex items-start justify-between">
 
-                <button
-                  onClick={() =>
-                    goTo(
-                      'community',
-                    )
-                  }
-                  className="mt-4 flex w-full items-center justify-between rounded-xl border border-[#e5e8ee] px-3.5 py-3 text-xs font-bold text-[#303644] transition hover:border-[#c9a12c] hover:bg-[#fffcf2]"
-                >
-                  Open community
-                  <IconArrow className="h-4 w-4" />
-                </button>
+                      <div>
 
+                        <div className="flex items-center gap-2">
+
+                          <span className="h-2 w-2 rounded-full bg-emerald-500" />
+
+                          <p className="text-[10px] font-bold uppercase tracking-[.13em] text-[#747c8c]">
+                            Learner community
+                          </p>
+
+                        </div>
+
+                        <h3 className="mt-2 text-lg font-bold tracking-tight text-[#151821]">
+                          Learn out loud.
+                        </h3>
+
+                      </div>
+
+                      <IconMessage className="h-5 w-5 text-[#b28c2a]" />
+
+                    </div>
+
+                    <p className="mt-2 text-xs leading-5 text-[#7d8492]">
+                      Ask questions,
+                      explain what you
+                      know, and find
+                      people working
+                      through the same
+                      problems.
+                    </p>
+
+                    <button
+                      onClick={() =>
+                        goTo(
+                          'community',
+                        )
+                      }
+                      className="mt-4 flex w-full items-center justify-between rounded-xl border border-[#e5e8ee] px-3.5 py-3 text-xs font-bold text-[#303644] transition hover:border-[#c9a12c] hover:bg-[#fffcf2]"
+                    >
+                      Open community
+                      <IconArrow className="h-4 w-4" />
+                    </button>
+
+                  </div>
+
+                  {/* Learning image reel */}
+
+                  <div className="group relative h-[205px] overflow-hidden rounded-[24px] bg-[#111827]">
+
+                    <img
+                      src={
+                        learningScenes[
+                          (carouselIndex +
+                            1) %
+                            learningScenes.length
+                        ].image
+                      }
+                      alt="People learning together"
+                      className="h-full w-full object-cover opacity-75 transition duration-700 group-hover:scale-105"
+                    />
+
+                    <div className="absolute inset-0 bg-gradient-to-t from-[#111827] via-[#111827]/20 to-transparent" />
+
+                    <div className="absolute bottom-0 left-0 right-0 p-5">
+
+                      <p className="text-[9px] font-bold uppercase tracking-[.14em] text-[#f2d477]">
+                        The Learnora mindset
+                      </p>
+
+                      <p className="mt-1 text-base font-bold leading-snug text-white">
+                        Small lessons.
+                        Real projects.
+                        Visible progress.
+                      </p>
+
+                    </div>
+                  </div>
+
+                </aside>
               </div>
+            </>
+          )}
 
-              {/* Learning image reel */}
-              <div className="group relative h-[205px] overflow-hidden rounded-[24px] bg-[#111827]">
-
-                <img
-                  src={
-                    learningScenes[
-                      (carouselIndex +
-                        1) %
-                        learningScenes.length
-                    ].image
-                  }
-                  alt="People learning together"
-                  className="h-full w-full object-cover opacity-75 transition duration-700 group-hover:scale-105"
-                />
-
-                <div className="absolute inset-0 bg-gradient-to-t from-[#111827] via-[#111827]/20 to-transparent" />
-
-                <div className="absolute bottom-0 left-0 right-0 p-5">
-
-                  <p className="text-[9px] font-bold uppercase tracking-[.14em] text-[#f2d477]">
-                    The Learnora mindset
-                  </p>
-
-                  <p className="mt-1 text-base font-bold leading-snug text-white">
-                    Small lessons. Real projects. Visible progress.
-                  </p>
-
-                </div>
-              </div>
-
-            </aside>
-          </div>
         </main>
 
         <footer className="border-t border-[#e7e9ef] px-6 py-7 text-center text-[10px] font-medium text-[#9aa0ad]">
@@ -1369,6 +2023,305 @@ export default function GeneralDashboard() {
     </div>
   );
 }
+
+/* -------------------------------------------------------------------------- */
+/* Settings                                                                   */
+/* -------------------------------------------------------------------------- */
+
+function SettingsPanel({
+  user,
+  passwordForm,
+  setPasswordForm,
+  showPasswords,
+  setShowPasswords,
+  changingPassword,
+  passwordMessage,
+  passwordError,
+  onSubmit,
+}: {
+  user: AuthenticatedUser;
+  passwordForm: {
+    currentPassword: string;
+    newPassword: string;
+    confirmPassword: string;
+  };
+  setPasswordForm: React.Dispatch<
+    React.SetStateAction<{
+      currentPassword: string;
+      newPassword: string;
+      confirmPassword: string;
+    }>
+  >;
+  showPasswords: boolean;
+  setShowPasswords: React.Dispatch<
+    React.SetStateAction<boolean>
+  >;
+  changingPassword: boolean;
+  passwordMessage: string;
+  passwordError: string;
+  onSubmit: (
+    event: React.FormEvent,
+  ) => void;
+}) {
+  return (
+    <div className="space-y-6">
+
+      <section>
+        <p className="text-[10px] font-bold uppercase tracking-[.14em] text-[#b08722]">
+          Account settings
+        </p>
+
+        <h1 className="mt-1 text-3xl font-bold tracking-tight text-[#151821]">
+          Settings
+        </h1>
+
+        <p className="mt-2 max-w-2xl text-sm leading-6 text-[#7d8492]">
+          Manage your Learnora Me account and security settings.
+        </p>
+      </section>
+
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
+
+        {/* Account information */}
+
+        <section className="rounded-[24px] border border-[#e5e8ee] bg-white p-6 shadow-sm">
+
+          <div className="flex items-center gap-4 border-b border-[#edf0f4] pb-5">
+
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#111827] text-lg font-bold uppercase text-white">
+              {(
+                user.name ||
+                user.email
+              )
+                .charAt(0)
+                .toUpperCase()}
+            </div>
+
+            <div>
+              <h2 className="text-lg font-bold text-[#151821]">
+                {user.name ||
+                  'Learner'}
+              </h2>
+
+              <p className="mt-0.5 text-xs text-[#7d8492]">
+                {user.email}
+              </p>
+            </div>
+
+          </div>
+
+          <div className="mt-6 grid gap-4 sm:grid-cols-2">
+
+            <div className="rounded-2xl border border-[#edf0f4] bg-[#fafbfc] p-4">
+
+              <p className="text-[9px] font-bold uppercase tracking-[.12em] text-[#9299a7]">
+                Account type
+              </p>
+
+              <p className="mt-2 text-sm font-bold capitalize text-[#252a35]">
+                Learner
+              </p>
+
+            </div>
+
+            <div className="rounded-2xl border border-[#edf0f4] bg-[#fafbfc] p-4">
+
+              <p className="text-[9px] font-bold uppercase tracking-[.12em] text-[#9299a7]">
+                Membership
+              </p>
+
+              <p className="mt-2 text-sm font-bold text-[#252a35]">
+                {user.is_paid
+                  ? 'Learnora Pro'
+                  : 'Free access'}
+              </p>
+
+            </div>
+
+          </div>
+
+        </section>
+
+        {/* Password */}
+
+        <section className="rounded-[24px] border border-[#e5e8ee] bg-white p-6 shadow-sm">
+
+          <div className="flex items-start gap-3">
+
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#fff7dc] text-[#96731d]">
+              <IconLock className="h-5 w-5" />
+            </div>
+
+            <div>
+              <h2 className="text-base font-bold text-[#151821]">
+                Change password
+              </h2>
+
+              <p className="mt-1 text-[11px] leading-5 text-[#7d8492]">
+                Choose a strong password you do not use on another website.
+              </p>
+            </div>
+
+          </div>
+
+          <form
+            onSubmit={onSubmit}
+            className="mt-5 space-y-4"
+          >
+
+            <PasswordField
+              label="Current password"
+              value={
+                passwordForm.currentPassword
+              }
+              onChange={(value) =>
+                setPasswordForm(
+                  (current) => ({
+                    ...current,
+                    currentPassword:
+                      value,
+                  }),
+                )
+              }
+              visible={
+                showPasswords
+              }
+            />
+
+            <PasswordField
+              label="New password"
+              value={
+                passwordForm.newPassword
+              }
+              onChange={(value) =>
+                setPasswordForm(
+                  (current) => ({
+                    ...current,
+                    newPassword:
+                      value,
+                  }),
+                )
+              }
+              visible={
+                showPasswords
+              }
+            />
+
+            <PasswordField
+              label="Confirm new password"
+              value={
+                passwordForm.confirmPassword
+              }
+              onChange={(value) =>
+                setPasswordForm(
+                  (current) => ({
+                    ...current,
+                    confirmPassword:
+                      value,
+                  }),
+                )
+              }
+              visible={
+                showPasswords
+              }
+            />
+
+            <button
+              type="button"
+              onClick={() =>
+                setShowPasswords(
+                  (current) =>
+                    !current,
+                )
+              }
+              className="flex items-center gap-2 text-[11px] font-semibold text-[#6f7785] hover:text-[#151821]"
+            >
+              <IconEye className="h-4 w-4" />
+              {showPasswords
+                ? 'Hide passwords'
+                : 'Show passwords'}
+            </button>
+
+            {passwordError && (
+              <div className="rounded-xl border border-[#efcbc6] bg-[#fff4f2] px-3.5 py-3 text-[11px] font-medium leading-5 text-[#9b4338]">
+                {passwordError}
+              </div>
+            )}
+
+            {passwordMessage && (
+              <div className="rounded-xl border border-[#cce7d5] bg-[#f0fbf3] px-3.5 py-3 text-[11px] font-medium leading-5 text-[#2c7541]">
+                {passwordMessage}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={
+                changingPassword
+              }
+              className="w-full rounded-xl bg-[#111827] px-4 py-3 text-xs font-bold text-white transition hover:bg-[#1c273a] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {changingPassword
+                ? 'Changing password...'
+                : 'Change password'}
+            </button>
+
+          </form>
+
+        </section>
+
+      </div>
+
+    </div>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Password field                                                             */
+/* -------------------------------------------------------------------------- */
+
+function PasswordField({
+  label,
+  value,
+  onChange,
+  visible,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  visible: boolean;
+}) {
+  return (
+    <label className="block">
+
+      <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-[.1em] text-[#737b8a]">
+        {label}
+      </span>
+
+      <input
+        type={
+          visible
+            ? 'text'
+            : 'password'
+        }
+        value={value}
+        onChange={(event) =>
+          onChange(
+            event.target.value,
+          )
+        }
+        autoComplete="new-password"
+        className="h-11 w-full rounded-xl border border-[#e2e5eb] bg-[#fafbfc] px-3.5 text-xs font-medium text-[#151821] outline-none transition placeholder:text-[#a2a8b4] focus:border-[#c9a12c] focus:bg-white focus:ring-4 focus:ring-[#c9a12c]/10"
+        required
+      />
+
+    </label>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Tracks                                                                     */
+/* -------------------------------------------------------------------------- */
 
 function TracksPanel({
   tracks,
@@ -1418,29 +2371,40 @@ function TracksPanel({
             <img
               src={item.image}
               alt=""
-              className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
+              className={`h-full w-full object-cover transition duration-500 ${
+                item.locked
+                  ? 'scale-105 opacity-45 grayscale'
+                  : 'group-hover:scale-105'
+              }`}
             />
 
-            <div className="absolute inset-0 bg-gradient-to-t from-[#111827]/75 via-transparent to-transparent" />
+            <div className="absolute inset-0 bg-gradient-to-t from-[#111827]/80 via-transparent to-transparent" />
 
             <div className="absolute bottom-3 left-3 flex items-center gap-2">
 
               <span className="rounded-lg bg-white/90 px-2 py-1 text-[9px] font-bold text-[#202632] backdrop-blur">
                 {item.count}{' '}
-                {item.count ===
-                1
+                {item.count === 1
                   ? 'course'
                   : 'courses'}
               </span>
 
-              {item.progress >
-                0 && (
-                <span className="rounded-lg bg-[#d7ad35] px-2 py-1 text-[9px] font-bold text-[#111827]">
-                  {item.progress}% done
-                </span>
-              )}
+              {item.progress > 0 &&
+                !item.locked && (
+                  <span className="rounded-lg bg-[#d7ad35] px-2 py-1 text-[9px] font-bold text-[#111827]">
+                    {item.progress}% done
+                  </span>
+                )}
 
             </div>
+
+            {item.locked && (
+              <div className="absolute right-3 top-3 flex items-center gap-1.5 rounded-lg bg-[#111827]/90 px-2.5 py-1.5 text-[9px] font-bold text-white backdrop-blur">
+                <IconLock className="h-3 w-3" />
+                Locked
+              </div>
+            )}
+
           </div>
 
           <div className="p-4">
@@ -1482,6 +2446,10 @@ function TracksPanel({
     </div>
   );
 }
+
+/* -------------------------------------------------------------------------- */
+/* Community                                                                  */
+/* -------------------------------------------------------------------------- */
 
 function CommunityPanel() {
   const [isAsking, setIsAsking] =
@@ -1529,7 +2497,10 @@ function CommunityPanel() {
           </h2>
 
           <p className="mt-1 text-xs leading-5 text-[#858c99]">
-            Questions, explanations, project feedback and conversations around your learning.
+            Questions, explanations,
+            project feedback and
+            conversations around your
+            learning.
           </p>
 
         </div>
@@ -1574,7 +2545,7 @@ function CommunityPanel() {
                 e.target.value,
               )
             }
-            placeholder="Type your question here... Include errors or links if relevant."
+            placeholder="Type your question here..."
             className="min-h-[100px] w-full rounded-xl border border-[#e2e5eb] bg-white p-3 text-xs text-[#151821] outline-none focus:border-[#c9a12c] focus:ring-2 focus:ring-[#c9a12c]/10"
             required
           />
@@ -1648,7 +2619,12 @@ function CommunityPanel() {
         </h3>
 
         <p className="mt-1 max-w-lg text-xs leading-5 text-white/55">
-          Connect this view to your community API and every new question, answer, vote and reply can flow into this learner dashboard without changing the layout.
+          Connect this view to
+          your community API and
+          every new question,
+          answer, vote and reply
+          can flow into this learner
+          dashboard.
         </p>
 
         <div className="mt-4 flex flex-wrap gap-2">
