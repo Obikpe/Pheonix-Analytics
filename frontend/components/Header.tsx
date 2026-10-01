@@ -5,19 +5,40 @@ import { useRouter } from 'next/navigation';
 
 const API_URL = 'https://learnora-backend.vercel.app';
 const PAYSTACK_KEY = process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY || '';
-// Paystack's `new PaystackPop().newTransaction()` API only exists in the V2 script.
 const PAYSTACK_SRC = 'https://js.paystack.co/v2/inline.js';
 
 type Interval = 'monthly' | 'yearly';
 type Region = 'NG' | 'AFR' | 'US';
 
-// Amounts are in the smallest unit (kobo / cents). When a plan code is passed,
-// Paystack charges the plan's amount, so these MUST match the plans on your dashboard.
+type LoginRole =
+  | 'normal'
+  | 'witstart'
+  | 'super_admin'
+  | 'staff_admin'
+  | 'witstart_admin';
+
+type AuthResponse = {
+  access_token?: string;
+  token?: string;
+  email: string;
+  role: LoginRole;
+  name: string;
+  account_type?: 'learner' | 'admin';
+  sub_status?: string | null;
+  is_paid?: boolean;
+  allowed?: string;
+};
+
+// Amounts are in the smallest unit (kobo / cents).
 const PRICING: Record<
   Region,
   Record<
     Interval,
-    { currency: 'NGN' | 'USD'; amount: number; plan?: string }
+    {
+      currency: 'NGN' | 'USD';
+      amount: number;
+      plan?: string;
+    }
   >
 > = {
   NG: {
@@ -32,6 +53,7 @@ const PRICING: Record<
       plan: process.env.NEXT_PUBLIC_PAYSTACK_PLAN_NGN_YEARLY,
     },
   },
+
   AFR: {
     monthly: {
       currency: 'USD',
@@ -44,6 +66,7 @@ const PRICING: Record<
       plan: process.env.NEXT_PUBLIC_PAYSTACK_PLAN_AFR_YEARLY,
     },
   },
+
   US: {
     monthly: {
       currency: 'USD',
@@ -78,8 +101,6 @@ function loadPaystackScript(): Promise<any> {
   return new Promise((resolve, reject) => {
     const w = window as any;
 
-    // Only reuse if the V2 class is already loaded
-    // (V1 is a plain object, not a constructor).
     if (typeof w.PaystackPop === 'function') {
       return resolve(w.PaystackPop);
     }
@@ -91,6 +112,7 @@ function loadPaystackScript(): Promise<any> {
     if (existing) existing.remove();
 
     const script = document.createElement('script');
+
     script.id = 'paystack-v2';
     script.src = PAYSTACK_SRC;
     script.async = true;
@@ -115,6 +137,7 @@ export default function Header() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+
   const [billingInterval, setBillingInterval] =
     useState<Interval>('monthly');
 
@@ -131,37 +154,44 @@ export default function Header() {
     setError('');
   }, [loading]);
 
-  // Open modal from anywhere via window event
+  // Open authentication modal from anywhere via window event.
   useEffect(() => {
     const handleOpenAuth = (e: Event) => {
       const detail = (e as CustomEvent).detail;
 
-      setAuthMode(detail?.mode === 'register' ? 'register' : 'login');
+      setAuthMode(
+        detail?.mode === 'register' ? 'register' : 'login'
+      );
+
       setError('');
       setShowModal(true);
     };
 
     window.addEventListener('open-auth', handleOpenAuth);
 
-    return () => window.removeEventListener('open-auth', handleOpenAuth);
+    return () =>
+      window.removeEventListener('open-auth', handleOpenAuth);
   }, []);
 
-  // Escape to close + lock background scroll while modal is open
+  // Escape to close + lock background scroll while modal is open.
   useEffect(() => {
     if (!showModal) return;
 
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') closeModal();
+      if (e.key === 'Escape') {
+        closeModal();
+      }
     };
 
     document.addEventListener('keydown', onKey);
 
-    const prev = document.body.style.overflow;
+    const previousOverflow = document.body.style.overflow;
+
     document.body.style.overflow = 'hidden';
 
     return () => {
       document.removeEventListener('keydown', onKey);
-      document.body.style.overflow = prev;
+      document.body.style.overflow = previousOverflow;
     };
   }, [showModal, closeModal]);
 
@@ -180,28 +210,74 @@ export default function Header() {
     setShowModal(true);
   };
 
+  /**
+   * Route every authenticated account to its actual dashboard.
+   *
+   * Learners:
+   *   normal   -> /dashboard/general
+   *   witstart -> /dashboard/witstart
+   *
+   * Administrators:
+   *   super_admin    -> /dashboard/admin/super_admin
+   *   staff_admin    -> /dashboard/admin/staff_admin
+   *   witstart_admin -> /dashboard/admin/witstart_admin
+   */
   const routeByRole = (role: string) => {
-    if (role === 'admin') {
-      router.push('/dashboard/admin');
-    } else if (role === 'witstart') {
-      router.push('/dashboard/witstart');
-    } else {
-      router.push('/dashboard/general');
+    switch (role) {
+      case 'super_admin':
+        router.replace('/dashboard/admin/super_admin');
+        return;
+
+      case 'staff_admin':
+        router.replace('/dashboard/admin/staff_admin');
+        return;
+
+      case 'witstart_admin':
+        router.replace('/dashboard/admin/witstart_admin');
+        return;
+
+      case 'witstart':
+        router.replace('/dashboard/witstart');
+        return;
+
+      case 'normal':
+        router.replace('/dashboard/general');
+        return;
+
+      default:
+        /*
+         * Do not send unknown roles into an admin area.
+         * The backend is the authority, so an unexpected role
+         * should fall back to the normal learner dashboard only
+         * if the account is not explicitly an admin.
+         */
+        router.replace('/dashboard/general');
+        return;
     }
   };
 
-  const saveSession = (data: {
-    access_token: string;
-    email: string;
-    role: string;
-    name: string;
-  }) => {
-    // NOTE: localStorage tokens are readable by any XSS.
-    // Prefer an httpOnly cookie set by the API.
-    localStorage.setItem('phx_token', data.access_token);
+  const saveSession = (data: AuthResponse) => {
+    /*
+     * Backend currently returns `token`.
+     * `access_token` is retained as a compatibility fallback.
+     */
+    const token = data.token || data.access_token || '';
+
+    localStorage.setItem('phx_token', token);
     localStorage.setItem('phx_email', data.email);
     localStorage.setItem('phx_role', data.role);
     localStorage.setItem('phx_name', data.name || '');
+
+    /*
+     * Keep the account type available to the frontend as well.
+     * Existing keys remain unchanged.
+     */
+    if (data.account_type) {
+      localStorage.setItem(
+        'phx_account_type',
+        data.account_type
+      );
+    }
   };
 
   const launchPaystackModal = async (
@@ -223,6 +299,7 @@ export default function Header() {
     }
 
     const region = getRegion();
+
     const { currency, amount, plan } =
       PRICING[region][billingInterval];
 
@@ -241,6 +318,7 @@ export default function Header() {
 
     try {
       const PaystackPop = await loadPaystackScript();
+
       const paystack = new PaystackPop();
 
       paystack.newTransaction({
@@ -265,8 +343,11 @@ export default function Header() {
 
         onSuccess: async (response: { reference: string }) => {
           try {
-            // Verify Paystack BEFORE registering.
-            // Backend verifies reference with secret key.
+            /*
+             * Verify Paystack BEFORE registering the learner.
+             * The backend verifies the reference with Paystack's
+             * secret key.
+             */
             const regRes = await fetch(
               `${API_URL}/api/billing/verify-and-register`,
               {
@@ -274,6 +355,7 @@ export default function Header() {
                 headers: {
                   'Content-Type': 'application/json',
                 },
+
                 body: JSON.stringify({
                   name: userName,
                   email: userEmail,
@@ -286,11 +368,14 @@ export default function Header() {
               }
             );
 
-            const regData = await regRes.json().catch(() => ({}));
+            const regData = await regRes
+              .json()
+              .catch(() => ({}));
 
             if (!regRes.ok) {
               throw new Error(
-                (regData.detail || 'Registration failed') +
+                (regData.detail ||
+                  'Registration failed') +
                   `. Your payment reference is ${response.reference} - please contact support.`
               );
             }
@@ -303,13 +388,18 @@ export default function Header() {
 
             routeByRole(regData.role);
           } catch (regErr: any) {
-            setError(regErr.message);
+            setError(
+              regErr.message ||
+                'Registration could not be completed.'
+            );
+
             setLoading(false);
           }
         },
 
         onCancel: () => {
           setLoading(false);
+
           setError(
             'Card setup was cancelled. Account was not created.'
           );
@@ -317,8 +407,10 @@ export default function Header() {
 
         onError: (err: { message?: string }) => {
           setLoading(false);
+
           setError(
-            err?.message || 'Payment failed. Please try again.'
+            err?.message ||
+              'Payment failed. Please try again.'
           );
         },
       });
@@ -355,7 +447,10 @@ export default function Header() {
       return;
     }
 
-    if (authMode === 'register' && password.length < 8) {
+    if (
+      authMode === 'register' &&
+      password.length < 8
+    ) {
       setError('Password must be at least 8 characters.');
       return;
     }
@@ -365,25 +460,37 @@ export default function Header() {
 
     if (authMode === 'login') {
       try {
-        const res = await fetch(`${API_URL}/api/auth/login`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            email: cleanEmail,
-            password,
-          }),
-        });
+        const res = await fetch(
+          `${API_URL}/api/auth/login`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
 
-        const data = await res.json().catch(() => ({}));
+            body: JSON.stringify({
+              email: cleanEmail,
+              password,
+            }),
+          }
+        );
+
+        const data: AuthResponse = await res
+          .json()
+          .catch(() => ({} as AuthResponse));
 
         if (!res.ok) {
           throw new Error(
-            data.detail || 'Authentication failed'
+            (data as any).detail ||
+              'Authentication failed'
           );
         }
 
+        /*
+         * Save the exact role returned by the backend.
+         * This is important because the role now determines
+         * which isolated dashboard the user enters.
+         */
         saveSession(data);
 
         setShowModal(false);
@@ -443,7 +550,6 @@ export default function Header() {
               />
             </span>
 
-            {/* Single wordmark — no separate "The" span */}
             <span className="text-left leading-none whitespace-nowrap">
               <span className="block text-[13px] sm:text-[15px] font-extrabold tracking-[0.055em] text-[#111827]">
                 LEARNORA ME
@@ -491,7 +597,9 @@ export default function Header() {
               setShowMobileMenu(!showMobileMenu)
             }
             aria-label={
-              showMobileMenu ? 'Close menu' : 'Open menu'
+              showMobileMenu
+                ? 'Close menu'
+                : 'Open menu'
             }
             aria-expanded={showMobileMenu}
             className="md:hidden w-11 h-11 rounded-xl border border-slate-200 bg-white flex items-center justify-center text-[#111827] hover:bg-slate-50 transition"
@@ -607,7 +715,6 @@ export default function Header() {
                       : 'Start your journey'}
                   </p>
 
-                  {/* Updated brand name */}
                   <p className="text-sm font-bold text-white">
                     Learnora Me
                   </p>

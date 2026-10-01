@@ -1,4 +1,20 @@
-"""Authentication and user management using Supabase PostgreSQL."""
+"""
+Learnora authentication and user management.
+
+Account architecture
+--------------------
+Learners are stored in public.users:
+    - normal
+    - witstart
+
+Administrators are stored in public.admins:
+    - super_admin
+    - staff_admin
+    - witstart_admin
+
+The same JWT authentication mechanism is used for both account types, but
+authorization is handled according to the account type and role.
+"""
 
 import hashlib
 import hmac
@@ -14,16 +30,16 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 from pydantic import BaseModel
-from supabase import create_client, Client
+from supabase import Client, create_client
 
 
 router = APIRouter()
 bearer = HTTPBearer(auto_error=False)
 
 
-# ============================================================
-# CONFIGURATION
-# ============================================================
+# ---------------------------------------------------------------------------
+# ENVIRONMENT
+# ---------------------------------------------------------------------------
 
 APP_ENV = os.getenv("APP_ENV", "production")
 
@@ -36,27 +52,17 @@ if not SUPABASE_URL or not SUPABASE_KEY:
             "SUPABASE_URL and SUPABASE_SECRET_KEY must be set."
         )
 
-supabase: Client = create_client(
-    SUPABASE_URL,
-    SUPABASE_KEY,
-)
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+
+# ---------------------------------------------------------------------------
+# JWT
+# ---------------------------------------------------------------------------
 
 ALGORITHM = "HS256"
 
 TOKEN_TTL = int(
     os.getenv("TOKEN_TTL_SECONDS", "86400")
-)
-
-ACTIVE_STATUSES = {"trialing", "active"}
-
-ROLES = {
-    "normal",
-    "witstart",
-    "admin",
-}
-
-EMAIL_RE = re.compile(
-    r"^[^\s@]+@[^\s@]+\.[^\s@]+$"
 )
 
 JWT_SECRET = os.getenv("JWT_SECRET", "")
@@ -70,20 +76,75 @@ if len(JWT_SECRET) < 32:
     JWT_SECRET = os.urandom(32).hex()
 
 
-# Used when an email does not exist, so password verification
-# still takes time and does not immediately reveal whether an
-# account exists.
-_DUMMY_HASH = (
-    "$2b$12$5pR3p5R3p5R3p5R3p5R3p5R3p5R3p5R3p5R3p5R3p5"
+# ---------------------------------------------------------------------------
+# ROLES
+# ---------------------------------------------------------------------------
+
+LEARNER_ROLES = {
+    "normal",
+    "witstart",
+}
+
+ADMIN_ROLES = {
+    "super_admin",
+    "staff_admin",
+    "witstart_admin",
+}
+
+# Compatibility alias.
+# Other backend modules may import ROLES when dealing with learners.
+ROLES = LEARNER_ROLES
+
+ACTIVE_STATUSES = {
+    "trialing",
+    "active",
+}
+
+
+# ---------------------------------------------------------------------------
+# VALIDATION
+# ---------------------------------------------------------------------------
+
+EMAIL_RE = re.compile(
+    r"^[^\s@]+@[^\s@]+\.[^\s@]+$"
 )
 
 
-# ============================================================
-# PASSWORD FUNCTIONS
-# ============================================================
+def norm_email(email: str) -> str:
+    normalized = (email or "").lower().strip()
+
+    if (
+        not EMAIL_RE.match(normalized)
+        or len(normalized) > 254
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid email format",
+        )
+
+    return normalized
+
+
+def check_password_rules(password: str):
+    if len(password) < 8:
+        raise HTTPException(
+            status_code=400,
+            detail="Password must be at least 8 characters long",
+        )
+
+    # bcrypt only supports 72 bytes.
+    if len(password.encode("utf-8")) > 72:
+        raise HTTPException(
+            status_code=400,
+            detail="Password is too long (72 bytes maximum)",
+        )
+
+
+# ---------------------------------------------------------------------------
+# PASSWORDS
+# ---------------------------------------------------------------------------
 
 def hash_password(password: str) -> str:
-    """Hash a password using bcrypt."""
     return bcrypt.hashpw(
         password.encode("utf-8"),
         bcrypt.gensalt(12),
@@ -95,21 +156,20 @@ def verify_password(
     stored: str,
 ) -> tuple[bool, bool]:
     """
-    Verify a password.
-
     Returns:
-        (is_valid, needs_rehash)
+        (password_is_valid, needs_rehash)
 
     bcrypt passwords:
-        needs_rehash = False
+        valid, False
 
-    Legacy SHA-256 passwords:
-        needs_rehash = True when valid
+    Legacy SHA256 passwords:
+        valid, True
     """
 
     if not stored:
         return False, False
 
+    # Current bcrypt password.
     if stored.startswith("$2"):
         try:
             return (
@@ -122,7 +182,7 @@ def verify_password(
         except (ValueError, TypeError):
             return False, False
 
-    # Legacy SHA-256 support
+    # Legacy SHA256 support.
     try:
         hashed_password = hashlib.sha256(
             password.encode("utf-8")
@@ -139,94 +199,9 @@ def verify_password(
         return False, False
 
 
-def check_password_rules(password: str):
-    """Validate password requirements."""
-
-    if len(password) < 8:
-        raise HTTPException(
-            status_code=400,
-            detail="Password must be at least 8 characters long",
-        )
-
-    if len(password.encode("utf-8")) > 72:
-        raise HTTPException(
-            status_code=400,
-            detail="Password is too long (72 bytes maximum)",
-        )
-
-
-# ============================================================
-# GENERAL HELPERS
-# ============================================================
-
-def norm_email(email: str) -> str:
-    """Normalize and validate an email address."""
-
-    normalized = (email or "").lower().strip()
-
-    if (
-        not EMAIL_RE.match(normalized)
-        or len(normalized) > 254
-    ):
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid email format",
-        )
-
-    return normalized
-
-
-def make_token(email: str, role: str) -> str:
-    """
-    Create the authentication JWT.
-
-    The user's email is stored as the subject and is used
-    to retrieve the user's current database record.
-    """
-
-    now = int(time.time())
-
-    return jwt.encode(
-        {
-            "sub": email,
-            "email": email,
-            "role": role,
-            "iat": now,
-            "exp": now + TOKEN_TTL,
-        },
-        JWT_SECRET,
-        algorithm=ALGORITHM,
-    )
-
-
-def allowed_for(role: str) -> dict:
-    """Return permissions/configuration for a user role."""
-
-    if role == "witstart":
-        return {
-            "courses": 12,
-            "tracks": ["Witstart Private"],
-            "redirect_view": "/witstart",
-        }
-
-    if role == "admin":
-        return {
-            "courses": 85,
-            "tracks": ["all"],
-            "is_admin": True,
-            "redirect_view": "/admin",
-        }
-
-    return {
-        "courses": 85,
-        "tracks": ["all"],
-        "redirect_view": "/general",
-    }
-
-
-# ============================================================
+# ---------------------------------------------------------------------------
 # LOGIN RATE LIMITING
-# ============================================================
+# ---------------------------------------------------------------------------
 
 _FAILS: dict[str, deque] = defaultdict(deque)
 
@@ -235,8 +210,6 @@ WINDOW = 900  # 15 minutes
 
 
 def _limited(key: str) -> bool:
-    """Check whether an IP/email combination is rate limited."""
-
     queue = _FAILS[key]
 
     cutoff = time.time() - WINDOW
@@ -251,9 +224,120 @@ def _limited(key: str) -> bool:
     return len(queue) >= MAX_FAILS
 
 
-# ============================================================
-# CURRENT USER MODEL
-# ============================================================
+def _record_failure(key: str):
+    _FAILS[key].append(time.time())
+
+
+def _clear_failures(key: str):
+    _FAILS.pop(key, None)
+
+
+# ---------------------------------------------------------------------------
+# JWT
+# ---------------------------------------------------------------------------
+
+def make_token(
+    email: str,
+    role: str,
+    account_type: str,
+) -> str:
+    now = int(time.time())
+
+    return jwt.encode(
+        {
+            "sub": email,
+            "email": email,
+            "role": role,
+            "account_type": account_type,
+            "iat": now,
+            "exp": now + TOKEN_TTL,
+        },
+        JWT_SECRET,
+        algorithm=ALGORITHM,
+    )
+
+
+# ---------------------------------------------------------------------------
+# ACCOUNT PERMISSIONS
+# ---------------------------------------------------------------------------
+
+def allowed_for(
+    role: str,
+    account_type: str,
+) -> dict:
+    """
+    Describes frontend capabilities.
+
+    This is informational for the frontend.
+    Actual authorization is enforced server-side.
+    """
+
+    if account_type == "admin":
+
+        if role == "super_admin":
+            return {
+                "courses": 85,
+                "tracks": ["all"],
+                "is_admin": True,
+                "admin_role": role,
+                "redirect_view": "/dashboard/admin/super_admin",
+                "permissions": [
+                    "manage_all_learners",
+                    "manage_admins",
+                    "manage_witstart",
+                    "grant_free_month",
+                    "view_activity",
+                    "view_traffic",
+                    "view_security_logs",
+                ],
+            }
+
+        if role == "staff_admin":
+            return {
+                "courses": 85,
+                "tracks": ["Learnora"],
+                "is_admin": True,
+                "admin_role": role,
+                "redirect_view": "/dashboard/admin/staff_admin",
+                "permissions": [
+                    "manage_normal_learners",
+                    "view_learnora_activity",
+                ],
+            }
+
+        if role == "witstart_admin":
+            return {
+                "courses": 12,
+                "tracks": ["WitStart Private"],
+                "is_admin": True,
+                "admin_role": role,
+                "redirect_view": "/dashboard/admin/witstart_admin",
+                "permissions": [
+                    "manage_witstart_learners",
+                    "view_witstart_activity",
+                ],
+            }
+
+    # Learners
+    if role == "witstart":
+        return {
+            "courses": 12,
+            "tracks": ["Witstart Private"],
+            "is_admin": False,
+            "redirect_view": "/dashboard/witstart",
+        }
+
+    return {
+        "courses": 85,
+        "tracks": ["all"],
+        "is_admin": False,
+        "redirect_view": "/dashboard/general",
+    }
+
+
+# ---------------------------------------------------------------------------
+# CURRENT USER
+# ---------------------------------------------------------------------------
 
 class CurrentUser(BaseModel):
     id: Optional[str] = None
@@ -261,26 +345,141 @@ class CurrentUser(BaseModel):
     email: str
     role: str
     sub_status: str
+    account_type: str
+    is_paid: bool = False
 
 
-# ============================================================
-# CURRENT USER / JWT AUTHENTICATION
-# ============================================================
+# ---------------------------------------------------------------------------
+# AUDIT LOGGING
+# ---------------------------------------------------------------------------
+
+def _get_client_ip(request: Optional[Request]) -> Optional[str]:
+    if not request:
+        return None
+
+    forwarded = request.headers.get("x-forwarded-for")
+
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+
+    return request.client.host if request.client else None
+
+
+def log_audit_event(
+    *,
+    action: str,
+    email: Optional[str] = None,
+    account_type: Optional[str] = None,
+    role: Optional[str] = None,
+    request: Optional[Request] = None,
+    metadata: Optional[dict] = None,
+):
+    """
+    Writes an event to audit_logs.
+
+    This function intentionally fails silently so an audit logging problem
+    cannot prevent authentication or normal application functionality.
+    """
+
+    try:
+        row = {
+            "action": action,
+            "email": email,
+            "account_type": account_type,
+            "role": role,
+            "ip": _get_client_ip(request),
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+        if metadata is not None:
+            row["metadata"] = metadata
+
+        supabase.table("audit_logs").insert(row).execute()
+
+    except Exception as exc:
+        print(f"Audit logging failed: {exc}")
+
+
+def log_security_event(
+    *,
+    action: str,
+    email: Optional[str] = None,
+    request: Optional[Request] = None,
+    metadata: Optional[dict] = None,
+):
+    """
+    Writes security-related events to security_logs.
+
+    Like audit logging, this must never break the main request.
+    """
+
+    try:
+        row = {
+            "action": action,
+            "email": email,
+            "ip": _get_client_ip(request),
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+        if metadata is not None:
+            row["metadata"] = metadata
+
+        supabase.table("security_logs").insert(row).execute()
+
+    except Exception as exc:
+        print(f"Security logging failed: {exc}")
+
+
+# ---------------------------------------------------------------------------
+# FIND ACCOUNT
+# ---------------------------------------------------------------------------
+
+def _find_admin(email: str):
+    response = (
+        supabase
+        .table("admins")
+        .select(
+            "id, email, name, password_hash, role, "
+            "is_active, last_login_at"
+        )
+        .eq("email", email)
+        .limit(1)
+        .execute()
+    )
+
+    rows = response.data or []
+
+    return rows[0] if rows else None
+
+
+def _find_user(email: str):
+    response = (
+        supabase
+        .table("users")
+        .select(
+            "id, name, email, password_hash, role, "
+            "sub_status, is_paid, subscription_tier, "
+            "expires_at, trial_ends_at"
+        )
+        .eq("email", email)
+        .limit(1)
+        .execute()
+    )
+
+    rows = response.data or []
+
+    return rows[0] if rows else None
+
+
+# ---------------------------------------------------------------------------
+# AUTH DEPENDENCY
+# ---------------------------------------------------------------------------
 
 def get_current_user(
-    creds: Optional[HTTPAuthorizationCredentials] = Depends(bearer),
+    creds: Optional[
+        HTTPAuthorizationCredentials
+    ] = Depends(bearer),
 ) -> CurrentUser:
-    """
-    Validate the JWT and retrieve the CURRENT user directly
-    from the Supabase users table.
-
-    The database is the source of truth for:
-        - id
-        - name
-        - email
-        - role
-        - subscription status
-    """
 
     if not creds:
         raise HTTPException(
@@ -313,59 +512,140 @@ def get_current_user(
             detail="Invalid or expired token",
         )
 
-    # IMPORTANT:
-    # Always retrieve the current user from Supabase.
-    # We do NOT trust the role/name stored in the JWT.
-    response = (
-        supabase
-        .table("users")
-        .select(
-            "id, name, email, role, sub_status, is_paid"
+    token_role = payload.get("role")
+    token_account_type = payload.get("account_type")
+
+    # ---------------------------------------------------------------
+    # ADMIN ACCOUNT
+    # ---------------------------------------------------------------
+
+    admin = _find_admin(email)
+
+    if admin:
+        if not admin.get("is_active", False):
+            raise HTTPException(
+                status_code=403,
+                detail="Administrator account is disabled",
+            )
+
+        role = admin.get("role")
+
+        if role not in ADMIN_ROLES:
+            raise HTTPException(
+                status_code=403,
+                detail="Invalid administrator role",
+            )
+
+        # Ensure the token has not been manipulated into another role.
+        if token_role and token_role != role:
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid authentication token",
+            )
+
+        if (
+            token_account_type
+            and token_account_type != "admin"
+        ):
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid authentication token",
+            )
+
+        return CurrentUser(
+            id=(
+                str(admin["id"])
+                if admin.get("id") is not None
+                else None
+            ),
+            name=(
+                str(admin.get("name")).strip()
+                if admin.get("name")
+                else None
+            ),
+            email=(
+                admin.get("email")
+                or email
+            ).lower().strip(),
+            role=role,
+            sub_status="active",
+            account_type="admin",
+            is_paid=True,
         )
-        .eq("email", email)
-        .limit(1)
-        .execute()
-    )
 
-    rows = response.data or []
+    # ---------------------------------------------------------------
+    # LEARNER ACCOUNT
+    # ---------------------------------------------------------------
 
-    if not rows:
+    user = _find_user(email)
+
+    if not user:
         raise HTTPException(
             status_code=401,
             detail="User account not found",
         )
 
-    row = rows[0]
+    role = user.get("role") or "normal"
+
+    if role not in LEARNER_ROLES:
+        raise HTTPException(
+            status_code=403,
+            detail="Invalid learner role",
+        )
+
+    if token_role and token_role != role:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid authentication token",
+        )
+
+    if (
+        token_account_type
+        and token_account_type != "learner"
+    ):
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid authentication token",
+        )
 
     sub_status = (
-        row.get("sub_status")
+        user.get("sub_status")
         or (
             "active"
-            if row.get("is_paid")
+            if user.get("is_paid")
             else "pending"
         )
     )
 
     return CurrentUser(
-        id=str(row["id"]) if row.get("id") is not None else None,
+        id=(
+            str(user["id"])
+            if user.get("id") is not None
+            else None
+        ),
         name=(
-            str(row.get("name")).strip()
-            if row.get("name")
+            str(user.get("name")).strip()
+            if user.get("name")
             else None
         ),
         email=(
-            row.get("email")
+            user.get("email")
             or email
         ).lower().strip(),
-        role=row.get("role", "normal"),
+        role=role,
         sub_status=sub_status,
+        account_type="learner",
+        is_paid=bool(user.get("is_paid")),
     )
 
+
+# ---------------------------------------------------------------------------
+# AUTHORIZATION DEPENDENCIES
+# ---------------------------------------------------------------------------
 
 def require_active(
     user: CurrentUser = Depends(get_current_user),
 ) -> CurrentUser:
-    """Require an active subscription."""
 
     if user.sub_status not in ACTIVE_STATUSES:
         raise HTTPException(
@@ -379,9 +659,14 @@ def require_active(
 def require_admin(
     user: CurrentUser = Depends(get_current_user),
 ) -> CurrentUser:
-    """Require administrator privileges."""
 
-    if user.role != "admin":
+    if user.account_type != "admin":
+        raise HTTPException(
+            status_code=403,
+            detail="Administrators only",
+        )
+
+    if user.role not in ADMIN_ROLES:
         raise HTTPException(
             status_code=403,
             detail="Administrators only",
@@ -390,9 +675,69 @@ def require_admin(
     return user
 
 
-# ============================================================
+def require_super_admin(
+    user: CurrentUser = Depends(get_current_user),
+) -> CurrentUser:
+
+    if (
+        user.account_type != "admin"
+        or user.role != "super_admin"
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="Super administrator access required",
+        )
+
+    return user
+
+
+def require_learnora_admin(
+    user: CurrentUser = Depends(get_current_user),
+) -> CurrentUser:
+
+    if user.account_type != "admin":
+        raise HTTPException(
+            status_code=403,
+            detail="Administrator access required",
+        )
+
+    if user.role not in {
+        "super_admin",
+        "staff_admin",
+    }:
+        raise HTTPException(
+            status_code=403,
+            detail="Learnora administrator access required",
+        )
+
+    return user
+
+
+def require_witstart_admin(
+    user: CurrentUser = Depends(get_current_user),
+) -> CurrentUser:
+
+    if user.account_type != "admin":
+        raise HTTPException(
+            status_code=403,
+            detail="Administrator access required",
+        )
+
+    if user.role not in {
+        "super_admin",
+        "witstart_admin",
+    }:
+        raise HTTPException(
+            status_code=403,
+            detail="WitStart administrator access required",
+        )
+
+    return user
+
+
+# ---------------------------------------------------------------------------
 # REQUEST MODELS
-# ============================================================
+# ---------------------------------------------------------------------------
 
 class LoginRequest(BaseModel):
     email: str
@@ -400,89 +745,157 @@ class LoginRequest(BaseModel):
 
 
 class RegisterRequest(BaseModel):
-    name: Optional[str] = None
     email: str
     password: str
-
-
-class AdminCreateUser(BaseModel):
     name: Optional[str] = None
-    email: str
-    password: str
-    role: str = "normal"
 
 
-# ============================================================
+# ---------------------------------------------------------------------------
 # LOGIN
-# ============================================================
+# ---------------------------------------------------------------------------
 
 @router.post("/login")
 def login(
-    body: LoginRequest,
+    payload: LoginRequest,
     request: Request,
 ):
-    """
-    Authenticate a user against the Supabase users table.
+    email = norm_email(payload.email)
 
-    IMPORTANT:
-    The user's name is retrieved from Supabase and returned
-    directly in the login response.
-    """
+    # Prevent obvious brute-force attacks.
+    rate_key = f"{email}:{_get_client_ip(request) or 'unknown'}"
 
-    email = norm_email(body.email)
-
-    if not body.password:
-        raise HTTPException(
-            status_code=400,
-            detail="Password is required",
+    if _limited(rate_key):
+        log_security_event(
+            action="login_rate_limited",
+            email=email,
+            request=request,
         )
 
-    client_ip = (
-        request.client.host
-        if request.client
-        else "unknown"
-    )
-
-    rate_limit_key = f"{client_ip}|{email}"
-
-    if _limited(rate_limit_key):
         raise HTTPException(
             status_code=429,
-            detail=(
-                "Too many failed attempts. "
-                "Try again in 15 minutes."
+            detail="Too many failed login attempts. Try again later.",
+        )
+
+    # ---------------------------------------------------------------
+    # ADMIN FIRST
+    # ---------------------------------------------------------------
+
+    admin = _find_admin(email)
+
+    if admin:
+
+        if not admin.get("is_active", False):
+            _record_failure(rate_key)
+
+            log_security_event(
+                action="disabled_admin_login_attempt",
+                email=email,
+                request=request,
+            )
+
+            raise HTTPException(
+                status_code=403,
+                detail="This administrator account is disabled.",
+            )
+
+        valid, needs_rehash = verify_password(
+            payload.password,
+            admin.get("password_hash", ""),
+        )
+
+        if not valid:
+            _record_failure(rate_key)
+
+            log_security_event(
+                action="failed_admin_login",
+                email=email,
+                request=request,
+            )
+
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid email or password",
+            )
+
+        _clear_failures(rate_key)
+
+        role = admin["role"]
+
+        # Upgrade legacy SHA256 admin password.
+        if needs_rehash:
+            try:
+                supabase.table("admins").update(
+                    {
+                        "password_hash": hash_password(
+                            payload.password
+                        )
+                    }
+                ).eq(
+                    "id",
+                    admin["id"],
+                ).execute()
+            except Exception as exc:
+                print(
+                    f"Admin password rehash failed: {exc}"
+                )
+
+        now = datetime.now(timezone.utc).isoformat()
+
+        try:
+            supabase.table("admins").update(
+                {
+                    "last_login_at": now,
+                }
+            ).eq(
+                "id",
+                admin["id"],
+            ).execute()
+        except Exception as exc:
+            print(
+                f"Failed to update admin last_login_at: {exc}"
+            )
+
+        token = make_token(
+            email=email,
+            role=role,
+            account_type="admin",
+        )
+
+        log_audit_event(
+            action="admin_login",
+            email=email,
+            account_type="admin",
+            role=role,
+            request=request,
+        )
+
+        return {
+            "status": "success",
+            "token": token,
+            "email": email,
+            "name": admin.get("name"),
+            "role": role,
+            "account_type": "admin",
+            "sub_status": "active",
+            "allowed": allowed_for(
+                role,
+                "admin",
             ),
-        )
+        }
 
-    # --------------------------------------------------------
-    # ALWAYS retrieve the user from Supabase.
-    # No environment/test accounts are used.
-    # --------------------------------------------------------
+    # ---------------------------------------------------------------
+    # LEARNER
+    # ---------------------------------------------------------------
 
-    response = (
-        supabase
-        .table("users")
-        .select(
-            "id, name, email, password_hash, "
-            "role, sub_status, is_paid"
-        )
-        .eq("email", email)
-        .limit(1)
-        .execute()
-    )
+    user = _find_user(email)
 
-    rows = response.data or []
+    if not user:
+        _record_failure(rate_key)
 
-    if not rows:
-        # Perform dummy verification to reduce timing
-        # differences between existing/non-existing accounts.
-        verify_password(
-            body.password,
-            _DUMMY_HASH,
-        )
-
-        _FAILS[rate_limit_key].append(
-            time.time()
+        log_security_event(
+            action="failed_login_unknown_email",
+            email=email,
+            request=request,
         )
 
         raise HTTPException(
@@ -490,21 +903,18 @@ def login(
             detail="Invalid email or password",
         )
 
-    row = rows[0]
-
-    stored_password = (
-        row.get("password_hash")
-        or ""
+    valid, needs_rehash = verify_password(
+        payload.password,
+        user.get("password_hash", ""),
     )
 
-    valid_password, needs_rehash = verify_password(
-        body.password,
-        stored_password,
-    )
+    if not valid:
+        _record_failure(rate_key)
 
-    if not valid_password:
-        _FAILS[rate_limit_key].append(
-            time.time()
+        log_security_event(
+            action="failed_learner_login",
+            email=email,
+            request=request,
         )
 
         raise HTTPException(
@@ -512,320 +922,177 @@ def login(
             detail="Invalid email or password",
         )
 
-    # --------------------------------------------------------
-    # Retrieve all user information from the database.
-    # --------------------------------------------------------
+    _clear_failures(rate_key)
 
-    role = row.get("role") or "normal"
+    role = user.get("role") or "normal"
 
-    name = (
-        str(row.get("name")).strip()
-        if row.get("name")
-        else None
-    )
+    if role not in LEARNER_ROLES:
+        raise HTTPException(
+            status_code=403,
+            detail="Invalid learner account role",
+        )
+
+    if needs_rehash:
+        try:
+            supabase.table("users").update(
+                {
+                    "password_hash": hash_password(
+                        payload.password
+                    )
+                }
+            ).eq(
+                "id",
+                user["id"],
+            ).execute()
+        except Exception as exc:
+            print(
+                f"Learner password rehash failed: {exc}"
+            )
 
     sub_status = (
-        row.get("sub_status")
+        user.get("sub_status")
         or (
             "active"
-            if row.get("is_paid")
+            if user.get("is_paid")
             else "pending"
         )
     )
 
-    # --------------------------------------------------------
-    # Rehash legacy passwords with bcrypt when necessary.
-    # --------------------------------------------------------
-
-    if needs_rehash:
-        new_hash = hash_password(
-            body.password
-        )
-
-        (
-            supabase
-            .table("users")
-            .update(
-                {
-                    "password_hash": new_hash
-                }
-            )
-            .eq("id", row["id"])
-            .execute()
-        )
-
-    # --------------------------------------------------------
-    # Pending users cannot log in.
-    # --------------------------------------------------------
-
-    if sub_status == "pending":
-        raise HTTPException(
-            status_code=402,
-            detail=(
-                "Payment pending - please complete "
-                "checkout. Check your email."
-            ),
-        )
-
-    # Successful login: clear failed attempts.
-    _FAILS.pop(rate_limit_key, None)
-
-    access_token = make_token(
+    token = make_token(
         email=email,
         role=role,
+        account_type="learner",
     )
 
-    # --------------------------------------------------------
-    # IMPORTANT:
-    # name comes directly from the Supabase users table.
-    # --------------------------------------------------------
+    log_audit_event(
+        action="learner_login",
+        email=email,
+        account_type="learner",
+        role=role,
+        request=request,
+    )
 
     return {
-        "ok": True,
-        "access_token": access_token,
+        "status": "success",
+        "token": token,
         "email": email,
-        "name": name,
+        "name": user.get("name"),
         "role": role,
-        "subscription_status": sub_status,
-        "allowed": allowed_for(role),
+        "account_type": "learner",
+        "sub_status": sub_status,
+        "allowed": allowed_for(
+            role,
+            "learner",
+        ),
     }
 
 
-# ============================================================
+# ---------------------------------------------------------------------------
 # REGISTER
-# ============================================================
+# ---------------------------------------------------------------------------
 
 @router.post("/register", status_code=201)
-def register(body: RegisterRequest):
-    """
-    Create a new user in the Supabase users table.
+def register(
+    payload: RegisterRequest,
+    request: Request,
+):
+    email = norm_email(payload.email)
 
-    New accounts start as pending until payment/activation.
-    """
-
-    email = norm_email(body.email)
-
-    check_password_rules(
-        body.password
-    )
+    check_password_rules(payload.password)
 
     name = (
-        (body.name or "").strip()[:100]
+        (payload.name or "").strip()[:100]
         or None
     )
 
-    password_hash = hash_password(
-        body.password
-    )
-
-    # --------------------------------------------------------
-    # Check whether the email already exists.
-    # --------------------------------------------------------
-
-    response = (
-        supabase
-        .table("users")
-        .select(
-            "id, password_hash, sub_status"
-        )
-        .eq("email", email)
-        .limit(1)
-        .execute()
-    )
-
-    rows = response.data or []
-
-    if rows:
-        row = rows[0]
-
-        # Existing active/non-pending account
-        if row.get("sub_status") != "pending":
-            raise HTTPException(
-                status_code=400,
-                detail="Email already registered",
-            )
-
-        # Existing pending account
-        stored_password = (
-            row.get("password_hash")
-            or ""
+    # Never allow a learner to register using an
+    # existing administrator email.
+    if _find_admin(email):
+        raise HTTPException(
+            status_code=400,
+            detail="An account with this email already exists",
         )
 
-        valid_password, _ = verify_password(
-            body.password,
-            stored_password,
+    if _find_user(email):
+        raise HTTPException(
+            status_code=400,
+            detail="An account with this email already exists",
         )
 
-        if not valid_password:
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    "An account with this email is "
-                    "pending payment. Use the original "
-                    "password or check your email to "
-                    "complete checkout."
-                ),
-            )
+    now = datetime.now(timezone.utc)
 
-        # Update name if supplied.
-        if name:
-            (
-                supabase
-                .table("users")
-                .update(
-                    {
-                        "name": name
-                    }
-                )
-                .eq("id", row["id"])
-                .execute()
-            )
-
-        return {
-            "ok": True,
-            "email": email,
-            "role": "normal",
-            "subscription_status": "pending",
-            "detail": (
-                "Payment pending - complete checkout"
-            ),
-        }
-
-    # --------------------------------------------------------
-    # Create new user.
-    # --------------------------------------------------------
-
-    new_user_data = {
+    row = {
         "email": email,
-        "password_hash": password_hash,
-        "role": "normal",
         "name": name,
+        "password_hash": hash_password(
+            payload.password
+        ),
+        "role": "normal",
         "sub_status": "pending",
         "is_paid": False,
         "subscription_tier": "free",
-        "created_at": datetime.now(
-            timezone.utc
-        ).isoformat(),
+        "created_at": now.isoformat(),
     }
 
     try:
-        (
+        response = (
             supabase
             .table("users")
-            .insert(new_user_data)
+            .insert(row)
             .execute()
         )
 
-    except Exception as e:
+    except Exception as exc:
+        print(f"Registration failed: {exc}")
+
         raise HTTPException(
-            status_code=400,
-            detail=f"Registration failed: {str(e)}",
+            status_code=500,
+            detail="Unable to create account",
         )
 
+    if not response.data:
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to create account",
+        )
+
+    log_audit_event(
+        action="learner_registered",
+        email=email,
+        account_type="learner",
+        role="normal",
+        request=request,
+    )
+
     return {
-        "ok": True,
+        "status": "success",
+        "message": "Account created successfully",
         "email": email,
+        "name": name,
         "role": "normal",
-        "subscription_status": "pending",
-        "detail": (
-            "Account created. "
-            "Complete payment to activate."
-        ),
+        "account_type": "learner",
     }
 
 
-# ============================================================
-# ADMIN CREATE USER
-# ============================================================
-
-@router.post(
-    "/admin/users",
-    status_code=201,
-)
-def admin_create_user(
-    body: AdminCreateUser,
-    _: CurrentUser = Depends(require_admin),
-):
-    """Allow an administrator to create a user."""
-
-    email = norm_email(body.email)
-
-    check_password_rules(
-        body.password
-    )
-
-    if body.role not in ROLES:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                "Role must be one of: "
-                + ", ".join(sorted(ROLES))
-            ),
-        )
-
-    name = (
-        (body.name or "").strip()[:100]
-        or None
-    )
-
-    new_user_data = {
-        "email": email,
-        "password_hash": hash_password(
-            body.password
-        ),
-        "role": body.role,
-        "name": name,
-        "sub_status": "active",
-        "is_paid": True,
-        "subscription_tier": "paid",
-        "created_at": datetime.now(
-            timezone.utc
-        ).isoformat(),
-    }
-
-    try:
-        (
-            supabase
-            .table("users")
-            .insert(new_user_data)
-            .execute()
-        )
-
-    except Exception:
-        raise HTTPException(
-            status_code=400,
-            detail="Email already registered",
-        )
-
-    return {
-        "ok": True,
-        "email": email,
-        "role": body.role,
-        "name": name,
-    }
-
-
-# ============================================================
-# CURRENT USER
-# ============================================================
+# ---------------------------------------------------------------------------
+# CURRENT ACCOUNT
+# ---------------------------------------------------------------------------
 
 @router.get("/me")
 def me(
     user: CurrentUser = Depends(get_current_user),
 ):
-    """
-    Return the currently authenticated user's
-    current database information.
-
-    The frontend should use this endpoint as the
-    authoritative source for the user's name.
-    """
-
     return {
-        "ok": True,
+        "status": "success",
         "id": user.id,
         "name": user.name,
         "email": user.email,
         "role": user.role,
-        "subscription_status": user.sub_status,
+        "sub_status": user.sub_status,
+        "account_type": user.account_type,
+        "is_paid": user.is_paid,
+        "allowed": allowed_for(
+            user.role,
+            user.account_type,
+        ),
     }
