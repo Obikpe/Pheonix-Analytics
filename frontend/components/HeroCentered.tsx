@@ -5,7 +5,7 @@ import { motion } from 'framer-motion';
 export default function HeroCentered() {
   const [code, setCode] = useState('');
   const fullCode = `import pandas as pd
-from pheonix import Analytics
+from learnora import Analytics
 
 df = Analytics.load('sales_q4.csv')
 insights = df.analyze()
@@ -104,7 +104,7 @@ insights.visualize()
                 <span className="w-3 h-3 rounded-full bg-emerald-500/80" />
               </div>
               <span className="text-[11px] font-mono tracking-wider text-slate-400 uppercase">
-                pheonix_terminal.py
+                learnora_terminal.py
               </span>
             </div>
             <pre className="text-xs sm:text-sm text-slate-200 font-mono whitespace-pre-wrap min-h-[140px] leading-relaxed">
