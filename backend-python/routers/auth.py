@@ -184,18 +184,18 @@ def login(body: LoginRequest, request: Request):
         if not role:
             verify_password(body.password, _DUMMY_HASH)
     else:
-        response = supabase.table("users").select("id, hashed_password, password, role, sub_status, is_paid").eq("email", email).execute()
+        response = supabase.table("users").select("id, password_hash,role, sub_status, is_paid").eq("email", email).execute()
         rows = response.data
         if rows:
             row = rows[0]
-            stored_pw = row.get("hashed_password") or row.get("password") or ""
+            stored_pw = row.get("password_hash") or ""
             ok, rehash = verify_password(body.password, stored_pw)
             if ok:
                 role = row.get("role", "normal")
                 sub_status = row.get("sub_status") or ("active" if row.get("is_paid") else "pending")
                 if rehash:
                     new_hash = hash_password(body.password)
-                    supabase.table("users").update({"hashed_password": new_hash}).eq("email", email).execute()
+                    supabase.table("users").update({"password_hash": new_hash}).eq("email", email).execute()
             else:
                 verify_password(body.password, _DUMMY_HASH)
         else:
@@ -229,14 +229,14 @@ def register(body: RegisterRequest):
     pw_hash = hash_password(body.password)
     
     # Check if user already exists in Supabase
-    response = supabase.table("users").select("id, hashed_password, password, sub_status").eq("email", email).execute()
+    response = supabase.table("users").select("id, password_hash, sub_status").eq("email", email).execute()
     rows = response.data
     
     if rows:
         row = rows[0]
         if row.get("sub_status") != "pending":
             raise HTTPException(400, "Email already registered")
-        stored_pw = row.get("hashed_password") or row.get("password") or ""
+        stored_pw = row.get("password_hash") or row.get("password") or ""
         ok, _ = verify_password(body.password, stored_pw)
         if not ok:
             raise HTTPException(400, "An account with this email is pending payment. Use the original password or check your email to complete checkout.")
@@ -253,7 +253,7 @@ def register(body: RegisterRequest):
     # Save new user to Supabase SQL table with timestamp compatible with TIMESTAMPTZ
     new_user_data = {
         "email": email,
-        "hashed_password": pw_hash,
+        "password_hash": pw_hash,
         "role": "normal",
         "name": name,
         "sub_status": "pending",
@@ -284,7 +284,7 @@ def admin_create_user(body: AdminCreateUser, _: CurrentUser = Depends(require_ad
     
     new_user_data = {
         "email": email,
-        "hashed_password": hash_password(body.password),
+        "password_hash": hash_password(body.password),
         "role": body.role,
         "name": (body.name or "").strip()[:100] or None,
         "sub_status": "active",
