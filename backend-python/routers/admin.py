@@ -248,12 +248,22 @@ def _can_manage_admin(
 
 @router.get("/stats")
 def get_admin_stats(
-    admin: CurrentUser = Depends(require_super_admin),
+    admin: CurrentUser = Depends(require_admin),
 ):
     """
-    High-level platform statistics for the Super Admin dashboard.
+    Role-scoped administrator statistics.
 
-    These are actual database counts, not estimated/fake values.
+    super_admin:
+        Full platform statistics.
+
+    staff_admin:
+        Learnora/normal learner statistics only.
+
+    witstart_admin:
+        WitStart learner statistics only.
+
+    Statistics are calculated from actual database records.
+    No revenue or other values are estimated.
     """
 
     try:
@@ -268,37 +278,70 @@ def get_admin_stats(
 
         users = users_result.data or []
 
-        admins_result = (
-            supabase
-            .table("admins")
-            .select(
-                "id, role, is_active",
-            )
-            .execute()
-        )
+        # Only Super Admin needs administrator-account statistics.
+        admins = []
 
-        admins = admins_result.data or []
+        if admin.role == "super_admin":
+            admins_result = (
+                supabase
+                .table("admins")
+                .select(
+                    "id, role, is_active",
+                )
+                .execute()
+            )
+
+            admins = admins_result.data or []
 
     except Exception as exc:
         print(f"Failed to load admin stats: {exc}")
 
         raise HTTPException(
             status_code=500,
-            detail="Failed to load platform statistics",
+            detail="Failed to load administrator statistics",
         )
 
+    # ---------------------------------------------------------------
+    # SCOPE USERS BY ADMIN ROLE
+    # ---------------------------------------------------------------
+
+    if admin.role == "super_admin":
+        scoped_users = users
+
+    elif admin.role == "staff_admin":
+        scoped_users = [
+            u for u in users
+            if u.get("role") == "normal"
+        ]
+
+    elif admin.role == "witstart_admin":
+        scoped_users = [
+            u for u in users
+            if u.get("role") == "witstart"
+        ]
+
+    else:
+        raise HTTPException(
+            status_code=403,
+            detail="Invalid administrator role",
+        )
+
+    # ---------------------------------------------------------------
+    # LEARNER COUNTS
+    # ---------------------------------------------------------------
+
     normal = [
-        u for u in users
+        u for u in scoped_users
         if u.get("role") == "normal"
     ]
 
     witstart = [
-        u for u in users
+        u for u in scoped_users
         if u.get("role") == "witstart"
     ]
 
     active = [
-        u for u in users
+        u for u in scoped_users
         if u.get("sub_status") in {
             "active",
             "trialing",
@@ -306,34 +349,48 @@ def get_admin_stats(
     ]
 
     paid = [
-        u for u in users
+        u for u in scoped_users
         if u.get("is_paid") is True
     ]
 
     pending = [
-        u for u in users
+        u for u in scoped_users
         if u.get("sub_status") not in {
             "active",
             "trialing",
         }
     ]
 
-    active_admins = [
-        a for a in admins
-        if a.get("is_active") is True
-    ]
-
-    return {
+    response = {
         "status": "success",
+        "scope": admin.role,
         "users": {
-            "total": len(users),
+            "total": len(scoped_users),
             "normal": len(normal),
             "witstart": len(witstart),
             "active": len(active),
             "paid": len(paid),
             "pending": len(pending),
         },
-        "admins": {
+        "billing": {
+            "note": (
+                "Revenue is not calculated here because the current "
+                "endpoint does not have authoritative payment transaction data."
+            ),
+        },
+    }
+
+    # ---------------------------------------------------------------
+    # SUPER ADMIN ONLY
+    # ---------------------------------------------------------------
+
+    if admin.role == "super_admin":
+        active_admins = [
+            a for a in admins
+            if a.get("is_active") is True
+        ]
+
+        response["admins"] = {
             "total": len(admins),
             "active": len(active_admins),
             "super_admin": len([
@@ -348,14 +405,9 @@ def get_admin_stats(
                 a for a in admins
                 if a.get("role") == "witstart_admin"
             ]),
-        },
-        "billing": {
-            "note": (
-                "Revenue is not calculated here because the current "
-                "endpoint does not have authoritative payment transaction data."
-            ),
-        },
-    }
+        }
+
+    return response
 
 
 # ---------------------------------------------------------------------------
