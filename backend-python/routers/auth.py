@@ -86,7 +86,7 @@ def _env_accounts() -> dict[str, tuple[str, str]]:
 
 def allowed_for(role: str) -> dict:
     if role == "witstart":
-        return {"courses": 12, "tracks": ["Witstart Private"], "redirect_view": "/general"}
+        return {"courses": 12, "tracks": ["Witstart Private"], "redirect_view": "/witstart"}
     if role == "admin":
         return {"courses": 85, "tracks": ["all"], "is_admin": True, "redirect_view": "/admin"}
     return {"courses": 85, "tracks": ["all"], "redirect_view": "/general"}
