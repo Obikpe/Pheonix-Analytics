@@ -442,7 +442,7 @@ def _find_admin(email: str):
             "id, email, name, password_hash, role, "
             "is_active, last_login_at"
         )
-        .eq("email", email)
+        .ilike("email", email)
         .limit(1)
         .execute()
     )
@@ -461,7 +461,7 @@ def _find_user(email: str):
             "sub_status, is_paid, subscription_tier, "
             "expires_at, trial_ends_at"
         )
-        .eq("email", email)
+        .ilike("email", email)
         .limit(1)
         .execute()
     )
