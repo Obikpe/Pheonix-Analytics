@@ -367,14 +367,58 @@ function WitStartDashboardContent() {
     } | null>(null);
 
   // ---------------------------------------------------------
-  // Load Local Storage State
+  // Load the authenticated user's profile and local progress
   // ---------------------------------------------------------
 
   useEffect(() => {
-    // The backend user record stores the learner's name in `name`.
-    // The login handler should persist the returned value as `phx_name`.
-    const savedName = localStorage.getItem('phx_name') || '';
-    setName(savedName.trim());
+    let cancelled = false;
+
+    const loadCurrentUser = async () => {
+      const token = localStorage.getItem('phx_token');
+
+      if (!token) {
+        if (!cancelled) setName('');
+        return;
+      }
+
+      try {
+        const apiBaseUrl = (
+          process.env.NEXT_PUBLIC_API_URL ||
+          'http://127.0.0.1:8000'
+        ).replace(/\/$/, '');
+
+        const response = await fetch(`${apiBaseUrl}/auth/me`, {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: 'application/json',
+          },
+          cache: 'no-store',
+        });
+
+        if (!response.ok) {
+          if (!cancelled) setName('');
+          return;
+        }
+
+        const user = await response.json();
+
+        // Always use the name returned by the authenticated backend.
+        // The learner's name is never read from or written to localStorage.
+        if (!cancelled) {
+          setName(
+            typeof user.name === 'string' && user.name.trim()
+              ? user.name.trim()
+              : ''
+          );
+        }
+      } catch (error) {
+        console.error('Unable to load the current WitStart user:', error);
+        if (!cancelled) setName('');
+      }
+    };
+
+    void loadCurrentUser();
 
     const savedProgress = JSON.parse(
       localStorage.getItem('phx_progress') ||
@@ -418,11 +462,13 @@ function WitStartDashboardContent() {
       handleClickOutside
     );
 
-    return () =>
+    return () => {
+      cancelled = true;
       document.removeEventListener(
         'mousedown',
         handleClickOutside
       );
+    };
   }, []);
 
   // ---------------------------------------------------------
@@ -993,8 +1039,7 @@ function WitStartDashboardContent() {
 
           </div>
 
-          {name !== undefined && (
-            <div
+          <div
               className="relative"
               ref={dropdownRef}
             >
@@ -1053,7 +1098,6 @@ function WitStartDashboardContent() {
               )}
 
             </div>
-          )}
 
         </div>
 

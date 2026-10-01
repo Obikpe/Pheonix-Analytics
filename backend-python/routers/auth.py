@@ -106,6 +106,7 @@ def _limited(key: str) -> bool:
 
 class CurrentUser(BaseModel):
     id: Optional[str] = None
+    name: Optional[str] = None
     email: str
     role: str
     sub_status: str
@@ -126,13 +127,19 @@ def get_current_user(creds: Optional[HTTPAuthorizationCredentials] = Depends(bea
     if env:
         return CurrentUser(email=email, role=env[0], sub_status="active")
 
-    response = supabase.table("users").select("id, role, sub_status, is_paid").eq("email", email).execute()
+    response = supabase.table("users").select("id, name, role, sub_status, is_paid").eq("email", email).execute()
     rows = response.data
     if not rows:
         raise HTTPException(401, "Invalid or expired token")
     row = rows[0]
     sub_status = row.get("sub_status") or ("active" if row.get("is_paid") else "pending")
-    return CurrentUser(id=str(row["id"]), email=email, role=row.get("role", "normal"), sub_status=sub_status)
+    return CurrentUser(
+    id=str(row["id"]),
+    name=(row.get("name") or "").strip() or None,
+    email=email,
+    role=row.get("role", "normal"),
+    sub_status=sub_status,
+    )
 
 def require_active(user: CurrentUser = Depends(get_current_user)) -> CurrentUser:
     if user.sub_status not in ACTIVE_STATUSES:
@@ -170,6 +177,7 @@ def login(body: LoginRequest, request: Request):
         raise HTTPException(429, "Too many failed attempts. Try again in 15 minutes.")
     
     role: Optional[str] = None
+    name: Optional[str] = None
     sub_status = "active"
     
     env = _env_accounts().get(email)
@@ -184,7 +192,7 @@ def login(body: LoginRequest, request: Request):
         if not role:
             verify_password(body.password, _DUMMY_HASH)
     else:
-        response = supabase.table("users").select("id, password_hash,role, sub_status, is_paid").eq("email", email).execute()
+        response = supabase.table("users").select("id, name, password_hash, role, sub_status, is_paid").eq("email", email).execute()
         rows = response.data
         if rows:
             row = rows[0]
@@ -192,6 +200,7 @@ def login(body: LoginRequest, request: Request):
             ok, rehash = verify_password(body.password, stored_pw)
             if ok:
                 role = row.get("role", "normal")
+                name = (row.get("name") or "").strip() or None
                 sub_status = row.get("sub_status") or ("active" if row.get("is_paid") else "pending")
                 if rehash:
                     new_hash = hash_password(body.password)
@@ -212,6 +221,7 @@ def login(body: LoginRequest, request: Request):
         "ok": True,
         "access_token": make_token(email, role),
         "email": email,
+        "name": name,
         "role": role,
         "subscription_status": sub_status,
         "allowed": allowed_for(role),
@@ -302,4 +312,11 @@ def admin_create_user(body: AdminCreateUser, _: CurrentUser = Depends(require_ad
 
 @router.get("/me")
 def me(user: CurrentUser = Depends(get_current_user)):
-    return {"ok": True, "email": user.email, "role": user.role, "subscription_status": user.sub_status}
+    return {
+        "ok": True,
+        "id": user.id,
+        "name": user.name,
+        "email": user.email,
+        "role": user.role,
+        "subscription_status": user.sub_status,
+    }
