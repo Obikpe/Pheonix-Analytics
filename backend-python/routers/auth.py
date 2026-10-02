@@ -45,6 +45,19 @@ Forgot-password requests generate short-lived, single-use reset tokens.
 The API intentionally returns a generic response so attackers cannot use
 the endpoint to discover whether an email address belongs to a Learnora
 account.
+
+Email delivery
+--------------
+Email is sent through the Resend HTTP API.
+
+Required environment variables:
+
+    RESEND_API_KEY=re_xxxxxxxxxxxxxxxxx
+    RESEND_FROM_EMAIL=onboarding@resend.dev
+    RESEND_FROM_NAME=Learnora Me
+
+For production with a custom domain, replace RESEND_FROM_EMAIL with an
+email address belonging to a domain authenticated in Resend.
 """
 
 import hashlib
@@ -52,17 +65,16 @@ import hmac
 import os
 import re
 import secrets
-import smtplib
 import time
 
 from collections import defaultdict, deque
 from datetime import datetime, timedelta, timezone
-from email.message import EmailMessage
 from typing import Optional
 
 import bcrypt
+import httpx
+
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import RedirectResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 from pydantic import BaseModel
@@ -77,10 +89,20 @@ bearer = HTTPBearer(auto_error=False)
 # ENVIRONMENT
 # ---------------------------------------------------------------------------
 
-APP_ENV = os.getenv("APP_ENV", "production")
+APP_ENV = os.getenv(
+    "APP_ENV",
+    "production",
+).strip().lower()
 
-SUPABASE_URL = os.getenv("SUPABASE_URL", "")
-SUPABASE_KEY = os.getenv("SUPABASE_SECRET_KEY", "")
+SUPABASE_URL = os.getenv(
+    "SUPABASE_URL",
+    "",
+).strip()
+
+SUPABASE_KEY = os.getenv(
+    "SUPABASE_SECRET_KEY",
+    "",
+).strip()
 
 if not SUPABASE_URL or not SUPABASE_KEY:
     if APP_ENV != "development":
@@ -103,37 +125,59 @@ FRONTEND_URL = (
         "FRONTEND_URL",
         "https://learnora-me.vercel.app",
     )
+    .strip()
     .rstrip("/")
 )
 
-EMAIL_VERIFICATION_PATH = "/verify-email"
-PASSWORD_RESET_PATH = "/reset-password"
+EMAIL_VERIFICATION_PATH = (
+    os.getenv(
+        "EMAIL_VERIFICATION_PATH",
+        "/verify-email",
+    )
+    .strip()
+)
+
+PASSWORD_RESET_PATH = (
+    os.getenv(
+        "PASSWORD_RESET_PATH",
+        "/reset-password",
+    )
+    .strip()
+)
 
 
 # ---------------------------------------------------------------------------
-# EMAIL / SMTP
+# EMAIL / RESEND
 # ---------------------------------------------------------------------------
 
-SMTP_HOST = os.getenv("SMTP_HOST", "")
-SMTP_PORT = int(
-    os.getenv("SMTP_PORT", "587")
+RESEND_API_URL = (
+    "https://api.resend.com/emails"
 )
-SMTP_USERNAME = os.getenv(
-    "SMTP_USERNAME",
-    "",
+
+RESEND_API_KEY = (
+    os.getenv(
+        "RESEND_API_KEY",
+        "",
+    )
+    .strip()
 )
-SMTP_PASSWORD = os.getenv(
-    "SMTP_PASSWORD",
-    "",
+
+RESEND_FROM_EMAIL = (
+    os.getenv(
+        "RESEND_FROM_EMAIL",
+        "",
+    )
+    .strip()
 )
-SMTP_FROM_EMAIL = os.getenv(
-    "SMTP_FROM_EMAIL",
-    SMTP_USERNAME,
+
+RESEND_FROM_NAME = (
+    os.getenv(
+        "RESEND_FROM_NAME",
+        "Learnora Me",
+    )
+    .strip()
 )
-SMTP_FROM_NAME = os.getenv(
-    "SMTP_FROM_NAME",
-    "Learnora Me",
-)
+
 
 EMAIL_VERIFICATION_TTL_MINUTES = int(
     os.getenv(
@@ -170,18 +214,23 @@ TOKEN_TTL = int(
     )
 )
 
-JWT_SECRET = os.getenv(
-    "JWT_SECRET",
-    "",
+JWT_SECRET = (
+    os.getenv(
+        "JWT_SECRET",
+        "",
+    )
+    .strip()
 )
 
 if len(JWT_SECRET) < 32:
+
     if APP_ENV != "development":
+
         raise RuntimeError(
             "JWT_SECRET must be set to a random string of 32+ characters."
         )
 
-    JWT_SECRET = os.urandom(32).hex()
+    JWT_SECRET = secrets.token_hex(32)
 
 
 # ---------------------------------------------------------------------------
@@ -199,8 +248,6 @@ ADMIN_ROLES = {
     "witstart_admin",
 }
 
-ROLES = LEARNER_ROLES
-
 ACTIVE_STATUSES = {
     "trialing",
     "active",
@@ -216,7 +263,10 @@ EMAIL_RE = re.compile(
 )
 
 
-def norm_email(email: str) -> str:
+def norm_email(
+    email: str,
+) -> str:
+
     normalized = (
         email or ""
     ).lower().strip()
@@ -225,6 +275,7 @@ def norm_email(email: str) -> str:
         not EMAIL_RE.match(normalized)
         or len(normalized) > 254
     ):
+
         raise HTTPException(
             status_code=400,
             detail="Invalid email format",
@@ -236,18 +287,27 @@ def norm_email(email: str) -> str:
 def check_password_rules(
     password: str,
 ):
+
     if len(password) < 8:
+
         raise HTTPException(
             status_code=400,
-            detail="Password must be at least 8 characters long",
+            detail=(
+                "Password must be at least "
+                "8 characters long"
+            ),
         )
 
     if len(
         password.encode("utf-8")
     ) > 72:
+
         raise HTTPException(
             status_code=400,
-            detail="Password is too long (72 bytes maximum)",
+            detail=(
+                "Password is too long "
+                "(72 bytes maximum)"
+            ),
         )
 
 
@@ -258,6 +318,7 @@ def check_password_rules(
 def hash_password(
     password: str,
 ) -> str:
+
     return bcrypt.hashpw(
         password.encode("utf-8"),
         bcrypt.gensalt(12),
@@ -268,8 +329,10 @@ def verify_password(
     password: str,
     stored: str,
 ) -> tuple[bool, bool]:
+
     """
     Returns:
+
         (password_is_valid, needs_rehash)
 
     bcrypt:
@@ -283,7 +346,9 @@ def verify_password(
         return False, False
 
     if stored.startswith("$2"):
+
         try:
+
             return (
                 bcrypt.checkpw(
                     password.encode("utf-8"),
@@ -296,9 +361,11 @@ def verify_password(
             ValueError,
             TypeError,
         ):
+
             return False, False
 
     try:
+
         hashed_password = hashlib.sha256(
             password.encode("utf-8")
         ).hexdigest()
@@ -311,6 +378,7 @@ def verify_password(
         return ok, ok
 
     except Exception:
+
         return False, False
 
 
@@ -319,6 +387,7 @@ def verify_password(
 # ---------------------------------------------------------------------------
 
 def _generate_raw_token() -> str:
+
     """
     Generates a cryptographically secure random token.
 
@@ -333,6 +402,7 @@ def _generate_raw_token() -> str:
 def _hash_token(
     token: str,
 ) -> str:
+
     return hashlib.sha256(
         token.encode("utf-8")
     ).hexdigest()
@@ -353,6 +423,7 @@ WINDOW = 900
 def _limited(
     key: str,
 ) -> bool:
+
     queue = _FAILS[key]
 
     cutoff = (
@@ -363,9 +434,11 @@ def _limited(
         queue
         and queue[0] < cutoff
     ):
+
         queue.popleft()
 
     if not queue:
+
         _FAILS.pop(
             key,
             None,
@@ -379,6 +452,7 @@ def _limited(
 def _record_failure(
     key: str,
 ):
+
     _FAILS[key].append(
         time.time()
     )
@@ -387,6 +461,7 @@ def _record_failure(
 def _clear_failures(
     key: str,
 ):
+
     _FAILS.pop(
         key,
         None,
@@ -400,6 +475,7 @@ def _clear_failures(
 def _parse_datetime(
     value,
 ) -> Optional[datetime]:
+
     """
     Converts a Supabase/PostgreSQL timestamp into an aware datetime.
     """
@@ -411,15 +487,19 @@ def _parse_datetime(
         value,
         datetime,
     ):
+
         dt = value
 
     else:
+
         try:
+
             text = str(
                 value
             ).strip()
 
             if text.endswith("Z"):
+
                 text = (
                     text[:-1]
                     + "+00:00"
@@ -433,9 +513,11 @@ def _parse_datetime(
             ValueError,
             TypeError,
         ):
+
             return None
 
     if dt.tzinfo is None:
+
         dt = dt.replace(
             tzinfo=timezone.utc
         )
@@ -448,6 +530,7 @@ def _parse_datetime(
 def _iso(
     value,
 ) -> Optional[str]:
+
     dt = _parse_datetime(
         value
     )
@@ -459,15 +542,14 @@ def _iso(
 
 
 # ---------------------------------------------------------------------------
-# EMAIL SENDING
+# EMAIL CONFIGURATION
 # ---------------------------------------------------------------------------
 
 def _email_configured() -> bool:
+
     return bool(
-        SMTP_HOST
-        and SMTP_USERNAME
-        and SMTP_PASSWORD
-        and SMTP_FROM_EMAIL
+        RESEND_API_KEY
+        and RESEND_FROM_EMAIL
     )
 
 
@@ -479,24 +561,34 @@ def _send_email(
     html_body: str,
 ):
     """
-    Sends an email through configured SMTP.
+    Sends an email using the Resend HTTP API.
 
-    SMTP configuration is intentionally kept server-side.
-    No SMTP credentials ever reach the frontend.
+    Required:
+
+        RESEND_API_KEY
+        RESEND_FROM_EMAIL
+
+    Optional:
+
+        RESEND_FROM_NAME
     """
 
     if not _email_configured():
 
         if APP_ENV == "development":
+
             print(
                 "EMAIL DEV MODE"
             )
+
             print(
                 f"To: {recipient}"
             )
+
             print(
                 f"Subject: {subject}"
             )
+
             print(
                 text_body
             )
@@ -504,53 +596,79 @@ def _send_email(
             return
 
         raise RuntimeError(
-            "SMTP email service is not configured."
+            "Resend email service is not configured."
         )
 
-    message = EmailMessage()
-
-    message["Subject"] = subject
-
-    message["From"] = (
-        f"{SMTP_FROM_NAME} <{SMTP_FROM_EMAIL}>"
-        if SMTP_FROM_NAME
-        else SMTP_FROM_EMAIL
+    from_value = (
+        f"{RESEND_FROM_NAME} <{RESEND_FROM_EMAIL}>"
+        if RESEND_FROM_NAME
+        else RESEND_FROM_EMAIL
     )
 
-    message["To"] = recipient
+    payload = {
+        "from": from_value,
+        "to": [recipient],
+        "subject": subject,
+        "text": text_body,
+        "html": html_body,
+    }
 
-    message.set_content(
-        text_body
-    )
-
-    message.add_alternative(
-        html_body,
-        subtype="html",
-    )
+    headers = {
+        "Authorization": (
+            f"Bearer {RESEND_API_KEY}"
+        ),
+        "Content-Type": "application/json",
+    }
 
     try:
-        with smtplib.SMTP(
-            SMTP_HOST,
-            SMTP_PORT,
-            timeout=30,
-        ) as server:
 
-            server.ehlo()
+        with httpx.Client(
+            timeout=30.0
+        ) as client:
 
-            if SMTP_PORT != 25:
-                server.starttls()
-                server.ehlo()
-
-            server.login(
-                SMTP_USERNAME,
-                SMTP_PASSWORD,
+            response = client.post(
+                RESEND_API_URL,
+                headers=headers,
+                json=payload,
             )
 
-            server.send_message(
-                message
+        if not response.is_success:
+
+            print(
+                "Resend email API failed: "
+                f"HTTP {response.status_code}"
             )
+
+            try:
+                print(
+                    f"Resend response: {response.text}"
+                )
+
+            except Exception:
+                pass
+
+            raise RuntimeError(
+                "Unable to send email."
+            )
+
+    except httpx.RequestError as exc:
+
+        print(
+            f"Resend connection failed: {exc}"
+        )
+
+        raise RuntimeError(
+            "Unable to connect to email service."
+        )
 
     except Exception as exc:
+
+        if isinstance(
+            exc,
+            RuntimeError,
+        ):
+            raise
+
         print(
             f"Email sending failed: {exc}"
         )
@@ -620,6 +738,7 @@ Learnora Me
 <html>
 <body style="margin:0;background:#f8fafc;font-family:Arial,sans-serif;color:#111827;">
   <div style="max-width:600px;margin:40px auto;padding:32px;background:#ffffff;border-radius:20px;border:1px solid #e5e7eb;">
+
     <h1 style="margin:0 0 16px;color:#111827;">
       Welcome to Learnora Me
     </h1>
@@ -629,7 +748,7 @@ Learnora Me
     </p>
 
     <p style="line-height:1.7;">
-      Please verify your email address to activate your account.
+      Please verify your email address to activate your Learnora Me account.
     </p>
 
     <p style="margin:28px 0;">
@@ -643,12 +762,13 @@ Learnora Me
 
     <p style="font-size:13px;color:#64748b;line-height:1.6;">
       This link expires in {EMAIL_VERIFICATION_TTL_MINUTES} minutes.
-      After verification, your 7-day free trial will begin.
+      Your 7-day free trial begins after successful verification.
     </p>
 
     <p style="font-size:13px;color:#94a3b8;line-height:1.6;">
       If you did not create a Learnora Me account, you can safely ignore this email.
     </p>
+
   </div>
 </body>
 </html>
@@ -720,6 +840,7 @@ Learnora Me
 <html>
 <body style="margin:0;background:#f8fafc;font-family:Arial,sans-serif;color:#111827;">
   <div style="max-width:600px;margin:40px auto;padding:32px;background:#ffffff;border-radius:20px;border:1px solid #e5e7eb;">
+
     <h1 style="margin:0 0 16px;color:#111827;">
       Reset your password
     </h1>
@@ -748,6 +869,7 @@ Learnora Me
     <p style="font-size:13px;color:#94a3b8;line-height:1.6;">
       If you did not request this, you can safely ignore this email.
     </p>
+
   </div>
 </body>
 </html>
@@ -804,6 +926,7 @@ def allowed_for(
     if account_type == "admin":
 
         if role == "super_admin":
+
             return {
                 "courses": 85,
                 "tracks": ["all"],
@@ -824,6 +947,7 @@ def allowed_for(
             }
 
         if role == "staff_admin":
+
             return {
                 "courses": 85,
                 "tracks": ["Learnora"],
@@ -839,6 +963,7 @@ def allowed_for(
             }
 
         if role == "witstart_admin":
+
             return {
                 "courses": 12,
                 "tracks": [
@@ -856,6 +981,7 @@ def allowed_for(
             }
 
     if role == "witstart":
+
         return {
             "courses": 12,
             "tracks": [
@@ -882,6 +1008,7 @@ def allowed_for(
 # ---------------------------------------------------------------------------
 
 class CurrentUser(BaseModel):
+
     id: Optional[str] = None
     name: Optional[str] = None
     email: str
@@ -913,6 +1040,7 @@ def _get_client_ip(
     )
 
     if forwarded:
+
         return (
             forwarded
             .split(",")[0]
@@ -937,6 +1065,7 @@ def log_audit_event(
 ):
 
     try:
+
         row = {
             "action": action,
             "email": email,
@@ -958,6 +1087,7 @@ def log_audit_event(
         ).insert(row).execute()
 
     except Exception as exc:
+
         print(
             f"Audit logging failed: {exc}"
         )
@@ -972,6 +1102,7 @@ def log_security_event(
 ):
 
     try:
+
         row = {
             "action": action,
             "email": email,
@@ -991,6 +1122,7 @@ def log_security_event(
         ).insert(row).execute()
 
     except Exception as exc:
+
         print(
             f"Security logging failed: {exc}"
         )
@@ -1003,6 +1135,7 @@ def log_security_event(
 def _find_admin(
     email: str,
 ):
+
     response = (
         supabase
         .table("admins")
@@ -1030,13 +1163,14 @@ def _find_admin(
 def _find_user(
     email: str,
 ):
+
     response = (
         supabase
         .table("users")
         .select(
             "id, name, email, password_hash, role, "
             "sub_status, is_paid, subscription_tier, "
-            "expires_at, trial_ends_at"
+            "expires_at, trial_ends_at, email_verified_at"
         )
         .ilike(
             "email",
@@ -1100,6 +1234,7 @@ def _resolve_learner_access(
         ):
 
             try:
+
                 supabase.table(
                     "users"
                 ).update(
@@ -1114,6 +1249,7 @@ def _resolve_learner_access(
                 ).execute()
 
             except Exception as exc:
+
                 print(
                     "Failed to expire "
                     f"paid membership: {exc}"
@@ -1155,6 +1291,7 @@ def _resolve_learner_access(
             trial_ends
             and trial_ends > now
         ):
+
             return {
                 "sub_status": "trialing",
                 "is_paid": False,
@@ -1169,6 +1306,7 @@ def _resolve_learner_access(
             }
 
         try:
+
             supabase.table(
                 "users"
             ).update(
@@ -1183,6 +1321,7 @@ def _resolve_learner_access(
             ).execute()
 
         except Exception as exc:
+
             print(
                 f"Failed to expire trial: {exc}"
             )
@@ -1233,12 +1372,14 @@ def get_current_user(
 ) -> CurrentUser:
 
     if not creds:
+
         raise HTTPException(
             status_code=401,
             detail="Not authenticated",
         )
 
     try:
+
         payload = jwt.decode(
             creds.credentials,
             JWT_SECRET,
@@ -1246,6 +1387,7 @@ def get_current_user(
         )
 
     except JWTError:
+
         raise HTTPException(
             status_code=401,
             detail="Invalid or expired token",
@@ -1258,6 +1400,7 @@ def get_current_user(
     ).lower().strip()
 
     if not email:
+
         raise HTTPException(
             status_code=401,
             detail="Invalid or expired token",
@@ -1285,9 +1428,12 @@ def get_current_user(
             "is_active",
             False,
         ):
+
             raise HTTPException(
                 status_code=403,
-                detail="Administrator account is disabled",
+                detail=(
+                    "Administrator account is disabled"
+                ),
             )
 
         role = admin.get(
@@ -1295,46 +1441,49 @@ def get_current_user(
         )
 
         if role not in ADMIN_ROLES:
+
             raise HTTPException(
                 status_code=403,
-                detail="Invalid administrator role",
+                detail=(
+                    "Invalid administrator role"
+                ),
             )
 
         if (
             token_role
             and token_role != role
         ):
+
             raise HTTPException(
                 status_code=401,
-                detail="Invalid authentication token",
+                detail=(
+                    "Invalid authentication token"
+                ),
             )
 
         if (
             token_account_type
-            and token_account_type
-            != "admin"
+            and token_account_type != "admin"
         ):
+
             raise HTTPException(
                 status_code=401,
-                detail="Invalid authentication token",
+                detail=(
+                    "Invalid authentication token"
+                ),
             )
 
         return CurrentUser(
             id=(
                 str(admin["id"])
-                if admin.get("id")
-                is not None
+                if admin.get("id") is not None
                 else None
             ),
             name=(
                 str(
-                    admin.get(
-                        "name"
-                    )
+                    admin.get("name")
                 ).strip()
-                if admin.get(
-                    "name"
-                )
+                if admin.get("name")
                 else None
             ),
             email=(
@@ -1358,6 +1507,7 @@ def get_current_user(
     )
 
     if not user:
+
         raise HTTPException(
             status_code=401,
             detail="User account not found",
@@ -1369,28 +1519,53 @@ def get_current_user(
     )
 
     if role not in LEARNER_ROLES:
+
         raise HTTPException(
             status_code=403,
-            detail="Invalid learner role",
+            detail=(
+                "Invalid learner role"
+            ),
         )
 
     if (
         token_role
         and token_role != role
     ):
+
         raise HTTPException(
             status_code=401,
-            detail="Invalid authentication token",
+            detail=(
+                "Invalid authentication token"
+            ),
         )
 
     if (
         token_account_type
-        and token_account_type
-        != "learner"
+        and token_account_type != "learner"
     ):
+
         raise HTTPException(
             status_code=401,
-            detail="Invalid authentication token",
+            detail=(
+                "Invalid authentication token"
+            ),
+        )
+
+    # ---------------------------------------------------------------
+    # EMAIL VERIFICATION CHECK
+    # ---------------------------------------------------------------
+
+    if (
+        user.get("sub_status")
+        == "pending"
+    ):
+
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "Please verify your email address "
+                "before accessing Learnora."
+            ),
         )
 
     entitlement = (
@@ -1402,19 +1577,14 @@ def get_current_user(
     return CurrentUser(
         id=(
             str(user["id"])
-            if user.get("id")
-            is not None
+            if user.get("id") is not None
             else None
         ),
         name=(
             str(
-                user.get(
-                    "name"
-                )
+                user.get("name")
             ).strip()
-            if user.get(
-                "name"
-            )
+            if user.get("name")
             else None
         ),
         email=(
@@ -1423,35 +1593,23 @@ def get_current_user(
         ).lower().strip(),
         role=role,
         sub_status=(
-            entitlement[
-                "sub_status"
-            ]
+            entitlement["sub_status"]
         ),
         account_type="learner",
         is_paid=(
-            entitlement[
-                "is_paid"
-            ]
+            entitlement["is_paid"]
         ),
         expires_at=(
-            entitlement[
-                "expires_at"
-            ]
+            entitlement["expires_at"]
         ),
         trial_ends_at=(
-            entitlement[
-                "trial_ends_at"
-            ]
+            entitlement["trial_ends_at"]
         ),
         access_state=(
-            entitlement[
-                "access_state"
-            ]
+            entitlement["access_state"]
         ),
         course_access=(
-            entitlement[
-                "course_access"
-            ]
+            entitlement["course_access"]
         ),
     )
 
@@ -1467,6 +1625,7 @@ def require_active(
 ) -> CurrentUser:
 
     if not user.course_access:
+
         raise HTTPException(
             status_code=402,
             detail=(
@@ -1488,12 +1647,14 @@ def require_admin(
         user.account_type
         != "admin"
     ):
+
         raise HTTPException(
             status_code=403,
             detail="Administrators only",
         )
 
     if user.role not in ADMIN_ROLES:
+
         raise HTTPException(
             status_code=403,
             detail="Administrators only",
@@ -1509,11 +1670,10 @@ def require_super_admin(
 ) -> CurrentUser:
 
     if (
-        user.account_type
-        != "admin"
-        or user.role
-        != "super_admin"
+        user.account_type != "admin"
+        or user.role != "super_admin"
     ):
+
         raise HTTPException(
             status_code=403,
             detail=(
@@ -1535,6 +1695,7 @@ def require_learnora_admin(
         user.account_type
         != "admin"
     ):
+
         raise HTTPException(
             status_code=403,
             detail=(
@@ -1547,6 +1708,7 @@ def require_learnora_admin(
         "super_admin",
         "staff_admin",
     }:
+
         raise HTTPException(
             status_code=403,
             detail=(
@@ -1568,6 +1730,7 @@ def require_witstart_admin(
         user.account_type
         != "admin"
     ):
+
         raise HTTPException(
             status_code=403,
             detail=(
@@ -1580,6 +1743,7 @@ def require_witstart_admin(
         "super_admin",
         "witstart_admin",
     }:
+
         raise HTTPException(
             status_code=403,
             detail=(
@@ -1639,6 +1803,7 @@ def login(
     payload: LoginRequest,
     request: Request,
 ):
+
     email = norm_email(
         payload.email
     )
@@ -1737,6 +1902,7 @@ def login(
         if needs_rehash:
 
             try:
+
                 supabase.table(
                     "admins"
                 ).update(
@@ -1751,6 +1917,7 @@ def login(
                 ).execute()
 
             except Exception as exc:
+
                 print(
                     "Admin password rehash "
                     f"failed: {exc}"
@@ -1761,6 +1928,7 @@ def login(
         ).isoformat()
 
         try:
+
             supabase.table(
                 "admins"
             ).update(
@@ -1773,6 +1941,7 @@ def login(
             ).execute()
 
         except Exception as exc:
+
             print(
                 "Failed to update admin "
                 f"last_login_at: {exc}"
@@ -1795,6 +1964,7 @@ def login(
         return {
             "status": "success",
             "token": token,
+            "access_token": token,
             "email": email,
             "name": admin.get("name"),
             "role": role,
@@ -1877,6 +2047,7 @@ def login(
     )
 
     if role not in LEARNER_ROLES:
+
         raise HTTPException(
             status_code=403,
             detail=(
@@ -1893,6 +2064,7 @@ def login(
         user.get("sub_status")
         == "pending"
     ):
+
         log_security_event(
             action=(
                 "login_unverified_account"
@@ -1912,6 +2084,7 @@ def login(
     if needs_rehash:
 
         try:
+
             supabase.table(
                 "users"
             ).update(
@@ -1926,6 +2099,7 @@ def login(
             ).execute()
 
         except Exception as exc:
+
             print(
                 "Learner password rehash "
                 f"failed: {exc}"
@@ -1954,39 +2128,28 @@ def login(
     return {
         "status": "success",
         "token": token,
+        "access_token": token,
         "email": email,
         "name": user.get("name"),
         "role": role,
         "account_type": "learner",
         "sub_status": (
-            entitlement[
-                "sub_status"
-            ]
+            entitlement["sub_status"]
         ),
         "is_paid": (
-            entitlement[
-                "is_paid"
-            ]
+            entitlement["is_paid"]
         ),
         "access_state": (
-            entitlement[
-                "access_state"
-            ]
+            entitlement["access_state"]
         ),
         "course_access": (
-            entitlement[
-                "course_access"
-            ]
+            entitlement["course_access"]
         ),
         "trial_ends_at": (
-            entitlement[
-                "trial_ends_at"
-            ]
+            entitlement["trial_ends_at"]
         ),
         "expires_at": (
-            entitlement[
-                "expires_at"
-            ]
+            entitlement["expires_at"]
         ),
         "allowed": allowed_for(
             role,
@@ -2007,6 +2170,7 @@ def register(
     payload: RegisterRequest,
     request: Request,
 ):
+
     email = norm_email(
         payload.email
     )
@@ -2022,6 +2186,7 @@ def register(
     )
 
     if _find_admin(email):
+
         raise HTTPException(
             status_code=400,
             detail=(
@@ -2036,15 +2201,13 @@ def register(
 
     if existing_user:
 
-        # If the user exists but has never
-        # verified their email, allow them to
-        # request another verification email.
         if (
             existing_user.get(
                 "sub_status"
             )
             == "pending"
         ):
+
             raise HTTPException(
                 status_code=400,
                 detail=(
@@ -2083,6 +2246,7 @@ def register(
         "is_paid": False,
         "subscription_tier": "free",
         "created_at": now.isoformat(),
+        "email_verified_at": None,
     }
 
     try:
@@ -2108,6 +2272,7 @@ def register(
         )
 
     if not response.data:
+
         raise HTTPException(
             status_code=500,
             detail=(
@@ -2115,9 +2280,7 @@ def register(
             ),
         )
 
-    created_user = (
-        response.data[0]
-    )
+    created_user = response.data[0]
 
     # ---------------------------------------------------------------
     # CREATE VERIFICATION TOKEN
@@ -2144,11 +2307,12 @@ def register(
             "email_verification_tokens"
         ).insert(
             {
-                "user_id": created_user[
-                    "id"
-                ],
+                "user_id": created_user["id"],
+                "email": email,
                 "token_hash": token_hash,
-                "expires_at": expires_at.isoformat(),
+                "expires_at": (
+                    expires_at.isoformat()
+                ),
                 "used_at": None,
                 "created_at": now.isoformat(),
             }
@@ -2161,9 +2325,8 @@ def register(
             f"verification token: {exc}"
         )
 
-        # Remove the account if the verification
-        # system could not be initialised.
         try:
+
             supabase.table(
                 "users"
             ).delete().eq(
@@ -2172,6 +2335,7 @@ def register(
             ).execute()
 
         except Exception as cleanup_exc:
+
             print(
                 "Registration cleanup failed: "
                 f"{cleanup_exc}"
@@ -2180,7 +2344,8 @@ def register(
         raise HTTPException(
             status_code=500,
             detail=(
-                "Unable to initialise email verification."
+                "Unable to initialise "
+                "email verification."
             ),
         )
 
@@ -2203,8 +2368,6 @@ def register(
             f"{exc}"
         )
 
-        # Keep the account pending. The user can
-        # use resend-verification later.
         log_security_event(
             action=(
                 "verification_email_failed"
@@ -2255,11 +2418,13 @@ def verify_email(
     payload: VerifyEmailRequest,
     request: Request,
 ):
+
     raw_token = (
         payload.token or ""
     ).strip()
 
     if not raw_token:
+
         raise HTTPException(
             status_code=400,
             detail=(
@@ -2283,7 +2448,8 @@ def verify_email(
                 "email_verification_tokens"
             )
             .select(
-                "id, user_id, token_hash, expires_at, used_at"
+                "id, user_id, email, token_hash, "
+                "expires_at, used_at"
             )
             .eq(
                 "token_hash",
@@ -2309,10 +2475,12 @@ def verify_email(
     rows = response.data or []
 
     if not rows:
+
         raise HTTPException(
             status_code=400,
             detail=(
-                "This verification link is invalid or has expired."
+                "This verification link is invalid "
+                "or has expired."
             ),
         )
 
@@ -2321,10 +2489,12 @@ def verify_email(
     if token_record.get(
         "used_at"
     ):
+
         raise HTTPException(
             status_code=400,
             detail=(
-                "This verification link has already been used."
+                "This verification link "
+                "has already been used."
             ),
         )
 
@@ -2338,6 +2508,7 @@ def verify_email(
         not token_expires
         or token_expires <= now
     ):
+
         raise HTTPException(
             status_code=400,
             detail=(
@@ -2358,7 +2529,8 @@ def verify_email(
             .select(
                 "id, email, name, role, "
                 "sub_status, is_paid, "
-                "trial_ends_at, expires_at"
+                "trial_ends_at, expires_at, "
+                "email_verified_at"
             )
             .eq(
                 "id",
@@ -2387,6 +2559,7 @@ def verify_email(
     )
 
     if not users:
+
         raise HTTPException(
             status_code=404,
             detail="User account not found.",
@@ -2403,6 +2576,7 @@ def verify_email(
     ) != "pending":
 
         try:
+
             supabase.table(
                 "email_verification_tokens"
             ).update(
@@ -2415,6 +2589,7 @@ def verify_email(
             ).execute()
 
         except Exception as exc:
+
             print(
                 "Failed to mark old "
                 f"verification token used: {exc}"
@@ -2451,9 +2626,12 @@ def verify_email(
                 {
                     "sub_status": "trialing",
                     "is_paid": False,
-                    "subscription_tier": "trial",
+                    "subscription_tier": "free",
                     "trial_ends_at": (
                         trial_ends_at.isoformat()
+                    ),
+                    "email_verified_at": (
+                        now.isoformat()
                     ),
                 }
             )
@@ -2482,6 +2660,7 @@ def verify_email(
         )
 
     if not update_response.data:
+
         raise HTTPException(
             status_code=409,
             detail=(
@@ -2508,6 +2687,7 @@ def verify_email(
         ).execute()
 
     except Exception as exc:
+
         print(
             "Failed to mark verification "
             f"token used: {exc}"
@@ -2534,20 +2714,38 @@ def verify_email(
         ).execute()
 
     except Exception as exc:
+
         print(
             "Failed to invalidate old "
             f"verification tokens: {exc}"
         )
 
+    # ---------------------------------------------------------------
+    # CREATE SESSION TOKEN
+    # ---------------------------------------------------------------
+
+    role = (
+        user.get("role")
+        or "normal"
+    )
+
+    email = (
+        user.get("email")
+        or token_record.get("email")
+        or ""
+    ).lower().strip()
+
+    token = make_token(
+        email=email,
+        role=role,
+        account_type="learner",
+    )
+
     log_audit_event(
         action="email_verified",
-        email=user.get(
-            "email"
-        ),
+        email=email,
         account_type="learner",
-        role=user.get(
-            "role"
-        ),
+        role=role,
         request=request,
         metadata={
             "trial_days": TRIAL_DAYS,
@@ -2563,21 +2761,23 @@ def verify_email(
             "Email verified successfully. "
             f"Your {TRIAL_DAYS}-day free trial has started."
         ),
-        "email": user.get(
-            "email"
-        ),
-        "name": user.get(
-            "name"
-        ),
-        "role": user.get(
-            "role"
-        ),
+        "token": token,
+        "access_token": token,
+        "email": email,
+        "name": user.get("name"),
+        "role": role,
         "account_type": "learner",
         "sub_status": "trialing",
+        "is_paid": False,
+        "access_state": "trial",
         "trial_ends_at": (
             trial_ends_at.isoformat()
         ),
         "course_access": True,
+        "allowed": allowed_for(
+            role,
+            "learner",
+        ),
         "redirect_view": (
             "/dashboard/general"
         ),
@@ -2595,13 +2795,10 @@ def resend_verification(
     payload: ResendVerificationRequest,
     request: Request,
 ):
+
     email = norm_email(
         payload.email
     )
-
-    # ---------------------------------------------------------------
-    # GENERIC RESPONSE STRATEGY
-    # ---------------------------------------------------------------
 
     generic_response = {
         "status": "success",
@@ -2629,7 +2826,7 @@ def resend_verification(
     )
 
     # ---------------------------------------------------------------
-    # INVALIDATE PREVIOUS UNUSED TOKENS
+    # INVALIDATE PREVIOUS TOKENS
     # ---------------------------------------------------------------
 
     try:
@@ -2649,6 +2846,7 @@ def resend_verification(
         ).execute()
 
     except Exception as exc:
+
         print(
             "Failed to invalidate old "
             f"verification tokens: {exc}"
@@ -2680,6 +2878,7 @@ def resend_verification(
         ).insert(
             {
                 "user_id": user["id"],
+                "email": email,
                 "token_hash": token_hash,
                 "expires_at": (
                     expires_at.isoformat()
@@ -2756,12 +2955,11 @@ def forgot_password(
     payload: ForgotPasswordRequest,
     request: Request,
 ):
+
     email = norm_email(
         payload.email
     )
 
-    # Always return the same response.
-    # This prevents email/account enumeration.
     generic_response = {
         "status": "success",
         "message": (
@@ -2770,9 +2968,6 @@ def forgot_password(
         ),
     }
 
-    # Admins are deliberately included because
-    # administrators must also be able to recover
-    # their passwords.
     admin = _find_admin(
         email
     )
@@ -2787,9 +2982,7 @@ def forgot_password(
 
         account_id = admin["id"]
         account_type = "admin"
-        account_name = admin.get(
-            "name"
-        )
+        account_name = admin.get("name")
 
     else:
 
@@ -2802,17 +2995,8 @@ def forgot_password(
 
         account_id = user["id"]
         account_type = "learner"
-        account_name = user.get(
-            "name"
-        )
+        account_name = user.get("name")
 
-        # Pending users can still reset their
-        # password, but this does not verify
-        # their email.
-        #
-        # They must still complete verification
-        # before login.
-    
     now = datetime.now(
         timezone.utc
     )
@@ -2838,6 +3022,7 @@ def forgot_password(
         ).execute()
 
     except Exception as exc:
+
         print(
             "Failed to invalidate previous "
             f"reset tokens: {exc}"
@@ -2869,6 +3054,7 @@ def forgot_password(
         ).insert(
             {
                 "account_id": account_id,
+                "email": email,
                 "account_type": account_type,
                 "token_hash": token_hash,
                 "expires_at": (
@@ -2888,7 +3074,6 @@ def forgot_password(
             f"reset token: {exc}"
         )
 
-        # Still return the generic response.
         return generic_response
 
     # ---------------------------------------------------------------
@@ -2918,8 +3103,6 @@ def forgot_password(
             request=request,
         )
 
-        # Do not expose the email-service
-        # failure to the requester.
         return generic_response
 
     log_security_event(
@@ -2945,11 +3128,13 @@ def reset_password(
     payload: ResetPasswordRequest,
     request: Request,
 ):
+
     raw_token = (
         payload.token or ""
     ).strip()
 
     if not raw_token:
+
         raise HTTPException(
             status_code=400,
             detail=(
@@ -2965,6 +3150,7 @@ def reset_password(
         payload.new_password
         != payload.confirm_password
     ):
+
         raise HTTPException(
             status_code=400,
             detail=(
@@ -2988,7 +3174,7 @@ def reset_password(
                 "password_reset_tokens"
             )
             .select(
-                "id, account_id, account_type, "
+                "id, account_id, email, account_type, "
                 "token_hash, expires_at, used_at"
             )
             .eq(
@@ -3015,10 +3201,12 @@ def reset_password(
     rows = response.data or []
 
     if not rows:
+
         raise HTTPException(
             status_code=400,
             detail=(
-                "This password reset link is invalid or has expired."
+                "This password reset link is invalid "
+                "or has expired."
             ),
         )
 
@@ -3027,10 +3215,12 @@ def reset_password(
     if token_record.get(
         "used_at"
     ):
+
         raise HTTPException(
             status_code=400,
             detail=(
-                "This password reset link has already been used."
+                "This password reset link "
+                "has already been used."
             ),
         )
 
@@ -3044,6 +3234,7 @@ def reset_password(
         not token_expires
         or token_expires <= now
     ):
+
         raise HTTPException(
             status_code=400,
             detail=(
@@ -3060,15 +3251,23 @@ def reset_password(
         "account_type"
     ]
 
+    if account_type not in {
+        "admin",
+        "learner",
+    }:
+
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Invalid password reset request."
+            ),
+        )
+
     table = (
         "admins"
         if account_type == "admin"
         else "users"
     )
-
-    # ---------------------------------------------------------------
-    # UPDATE PASSWORD
-    # ---------------------------------------------------------------
 
     new_hash = hash_password(
         payload.new_password
@@ -3105,6 +3304,7 @@ def reset_password(
         )
 
     if not response.data:
+
         raise HTTPException(
             status_code=404,
             detail=(
@@ -3130,13 +3330,14 @@ def reset_password(
         ).execute()
 
     except Exception as exc:
+
         print(
             "Failed to mark reset token "
             f"used: {exc}"
         )
 
     # ---------------------------------------------------------------
-    # INVALIDATE ALL OTHER RESET TOKENS
+    # INVALIDATE OTHER RESET TOKENS
     # ---------------------------------------------------------------
 
     try:
@@ -3156,6 +3357,7 @@ def reset_password(
         ).execute()
 
     except Exception as exc:
+
         print(
             "Failed to invalidate other "
             f"reset tokens: {exc}"
@@ -3202,6 +3404,7 @@ def me(
         get_current_user
     ),
 ):
+
     return {
         "status": "success",
         "id": user.id,
@@ -3234,6 +3437,7 @@ def change_password(
         get_current_user
     ),
 ):
+
     check_password_rules(
         payload.new_password
     )
@@ -3242,15 +3446,19 @@ def change_password(
         payload.new_password
         != payload.confirm_password
     ):
+
         raise HTTPException(
             status_code=400,
-            detail="New passwords do not match",
+            detail=(
+                "New passwords do not match"
+            ),
         )
 
     if (
         payload.current_password
         == payload.new_password
     ):
+
         raise HTTPException(
             status_code=400,
             detail=(
@@ -3273,6 +3481,7 @@ def change_password(
         )
 
         if not account:
+
             raise HTTPException(
                 status_code=404,
                 detail=(
@@ -3290,6 +3499,7 @@ def change_password(
         )
 
         if not account:
+
             raise HTTPException(
                 status_code=404,
                 detail=(
@@ -3365,6 +3575,7 @@ def change_password(
         )
 
     if not response.data:
+
         raise HTTPException(
             status_code=500,
             detail=(

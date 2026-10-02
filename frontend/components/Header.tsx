@@ -28,7 +28,7 @@ type AuthMode =
   | 'login'
   | 'register'
   | 'forgot'
-  | 'verification';
+  | 'emailSent';
 
 const inputClass =
   'w-full border border-slate-200 bg-slate-50 rounded-xl px-4 py-3.5 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:bg-white focus:border-[#D7AD35] focus:ring-4 focus:ring-[#D7AD35]/10 transition disabled:opacity-50';
@@ -54,8 +54,12 @@ export default function Header() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const [verificationEmail, setVerificationEmail] =
-    useState('');
+  const [emailSentType, setEmailSentType] =
+    useState<'verification' | 'password_reset'>(
+      'verification'
+    );
+
+  const [sentEmail, setSentEmail] = useState('');
 
   const router = useRouter();
 
@@ -66,6 +70,8 @@ export default function Header() {
     setPassword('');
     setError('');
     setAuthMode('login');
+    setSentEmail('');
+    setEmailSentType('verification');
   }, [loading]);
 
   /*
@@ -93,6 +99,7 @@ export default function Header() {
       setAuthMode(requestedMode);
       setError('');
       setPassword('');
+      setSentEmail('');
       setShowModal(true);
     };
 
@@ -156,6 +163,7 @@ export default function Header() {
     setAuthMode(mode);
     setError('');
     setPassword('');
+    setSentEmail('');
     setShowModal(true);
   };
 
@@ -197,21 +205,10 @@ export default function Header() {
         return;
 
       case 'normal':
-        /*
-         * Normal learners go DIRECTLY to the
-         * general dashboard.
-         *
-         * They are NOT sent to billing.
-         */
         router.replace('/dashboard/general');
         return;
 
       default:
-        /*
-         * Never guess an administrative role.
-         * Unknown roles are sent to the public
-         * landing page rather than granting access.
-         */
         router.replace('/');
         return;
     }
@@ -222,8 +219,10 @@ export default function Header() {
    * by the backend.
    *
    * Registration does NOT call this function because
-   * a newly registered account must verify its email
-   * before becoming authenticated.
+   * registration does not authenticate the user.
+   *
+   * EmailVerification.tsx handles the session created
+   * after successful email verification.
    */
   const saveSession = (data: AuthResponse) => {
     const token =
@@ -263,6 +262,24 @@ export default function Header() {
         data.account_type
       );
     }
+
+    /*
+     * Keep plan information synchronized when
+     * the backend provides it.
+     */
+    if (data.sub_status) {
+      localStorage.setItem(
+        'phx_plan',
+        data.sub_status
+      );
+    }
+
+    /*
+     * A verified account should no longer carry
+     * an old trial timestamp from a previous session.
+     *
+     * The authoritative entitlement remains the backend.
+     */
   };
 
   /*
@@ -270,18 +287,12 @@ export default function Header() {
    * REGISTRATION
    * -----------------------------
    *
-   * Registration is now completely
-   * independent of billing.
-   *
-   * Backend:
-   * POST /api/auth/register
-   *
-   * Expected backend behaviour:
-   * - create the learner
-   * - hash the password
-   * - create an email verification token
-   * - send the verification email
-   * - DO NOT issue an authenticated session
+   * Registration:
+   * - creates the learner
+   * - hashes the password
+   * - creates verification token
+   * - sends verification email
+   * - does NOT authenticate the user
    */
   const handleRegistration = async (
     cleanEmail: string,
@@ -318,17 +329,18 @@ export default function Header() {
       }
 
       /*
-       * IMPORTANT:
-       * Do NOT save a token here.
+       * Do NOT save a token.
        *
-       * The account must verify its email first.
+       * The user must click the verification
+       * link sent by email.
        */
-      setVerificationEmail(cleanEmail);
+      setSentEmail(cleanEmail);
+      setEmailSentType('verification');
 
       setPassword('');
       setError('');
-      setAuthMode('verification');
       setLoading(false);
+      setAuthMode('emailSent');
     } catch (err: any) {
       setError(
         err?.message ||
@@ -346,10 +358,6 @@ export default function Header() {
    *
    * Backend:
    * POST /api/auth/forgot-password
-   *
-   * The backend should always return a generic
-   * response so that an attacker cannot discover
-   * whether an email exists.
    */
   const handleForgotPassword = async (
     cleanEmail: string
@@ -382,16 +390,11 @@ export default function Header() {
         );
       }
 
-      /*
-       * The API should send the reset email.
-       *
-       * We do not expose whether the account
-       * exists.
-       */
       setError('');
-      setVerificationEmail(cleanEmail);
-      setAuthMode('verification');
+      setSentEmail(cleanEmail);
+      setEmailSentType('password_reset');
       setLoading(false);
+      setAuthMode('emailSent');
     } catch (err: any) {
       setError(
         err?.message ||
@@ -544,19 +547,13 @@ export default function Header() {
         );
       }
 
-      /*
-       * The backend must reject unverified
-       * accounts here.
-       *
-       * Only after successful login do we
-       * create the frontend session.
-       */
       saveSession(data);
 
       setShowModal(false);
       setPassword('');
       setError('');
       setLoading(false);
+      setSentEmail('');
 
       routeByRole(
         data.role || ''
@@ -583,6 +580,7 @@ export default function Header() {
 
     setError('');
     setPassword('');
+    setSentEmail('');
   };
 
   /*
@@ -594,63 +592,20 @@ export default function Header() {
     setAuthMode('login');
     setError('');
     setPassword('');
+    setSentEmail('');
   };
 
   /*
-   * Resend verification email.
-   *
-   * Backend:
-   * POST /api/auth/resend-verification
+   * Return to login from the email-sent
+   * confirmation screen.
    */
-  const resendVerification = async () => {
-    if (
-      loading ||
-      !verificationEmail
-    ) {
-      return;
-    }
+  const backToLoginFromEmail = () => {
+    if (loading) return;
 
-    setLoading(true);
+    setAuthMode('login');
     setError('');
-
-    try {
-      const res = await fetch(
-        `${API_URL}/api/auth/resend-verification`,
-        {
-          method: 'POST',
-
-          headers: {
-            'Content-Type': 'application/json',
-          },
-
-          body: JSON.stringify({
-            email: verificationEmail,
-          }),
-        }
-      );
-
-      const data = await res
-        .json()
-        .catch(() => ({}));
-
-      if (!res.ok) {
-        throw new Error(
-          data?.detail ||
-            data?.message ||
-            'Unable to resend the verification email.'
-        );
-      }
-
-      setError('');
-      setLoading(false);
-    } catch (err: any) {
-      setError(
-        err?.message ||
-          'Unable to resend the verification email.'
-      );
-
-      setLoading(false);
-    }
+    setPassword('');
+    setSentEmail('');
   };
 
   return (
@@ -879,7 +834,7 @@ export default function Header() {
                       : authMode ===
                         'forgot'
                       ? 'Account recovery'
-                      : 'Almost there'}
+                      : 'Check your email'}
                   </p>
 
                   <p className="text-sm font-bold text-white">
@@ -902,7 +857,10 @@ export default function Header() {
                     : authMode ===
                       'forgot'
                     ? 'Reset your password.'
-                    : 'Check your email.'}
+                    : emailSentType ===
+                      'verification'
+                    ? 'Check your email.'
+                    : 'Check your inbox.'}
                 </h3>
 
                 <p className="mt-2 text-sm leading-6 text-slate-300">
@@ -915,14 +873,17 @@ export default function Header() {
                     : authMode ===
                       'forgot'
                     ? 'Enter your email and we will send you a secure password reset link.'
-                    : 'We have sent instructions to your email address.'}
+                    : emailSentType ===
+                      'verification'
+                    ? 'Your account has been created. Verify your email to activate it.'
+                    : 'If the account exists, we have sent password reset instructions to your email.'}
                 </p>
               </div>
             </div>
 
-            {/* VERIFICATION / EMAIL MESSAGE */}
+            {/* EMAIL SENT */}
             {authMode ===
-              'verification' && (
+              'emailSent' && (
               <div className="p-7 sm:p-9">
                 <div className="w-16 h-16 mx-auto rounded-2xl bg-[#D7AD35]/10 border border-[#D7AD35]/20 flex items-center justify-center mb-5">
                   <svg
@@ -943,17 +904,18 @@ export default function Header() {
 
                 <div className="text-center">
                   <h4 className="text-lg font-extrabold text-[#111827]">
-                    {verificationEmail
+                    {emailSentType ===
+                    'verification'
                       ? 'Check your inbox'
                       : 'Email sent'}
                   </h4>
 
                   <p className="mt-2 text-sm leading-6 text-slate-500">
-                    {verificationEmail ? (
+                    {sentEmail ? (
                       <>
                         We sent instructions to{' '}
                         <span className="font-bold text-slate-700 break-all">
-                          {verificationEmail}
+                          {sentEmail}
                         </span>
                         .
                       </>
@@ -962,12 +924,23 @@ export default function Header() {
                     )}
                   </p>
 
-                  <p className="mt-3 text-xs leading-5 text-slate-400">
-                    For registration, you must verify
-                    your email before you can log in.
-                    After verification, return here
-                    and sign in.
-                  </p>
+                  {emailSentType ===
+                    'verification' && (
+                    <p className="mt-3 text-xs leading-5 text-slate-400">
+                      Click the verification button
+                      in the email. The verification
+                      link will open Learnora Me and
+                      complete your account activation.
+                    </p>
+                  )}
+
+                  {emailSentType ===
+                    'password_reset' && (
+                    <p className="mt-3 text-xs leading-5 text-slate-400">
+                      Follow the secure link in the
+                      email to create a new password.
+                    </p>
+                  )}
                 </div>
 
                 {error && (
@@ -985,41 +958,23 @@ export default function Header() {
                   </div>
                 )}
 
-                <div className="mt-6 space-y-2">
+                <div className="mt-6">
                   <button
                     type="button"
-                    onClick={() => {
-                      setAuthMode(
-                        'login'
-                      );
-                      setError('');
-                    }}
+                    onClick={
+                      backToLoginFromEmail
+                    }
                     className="w-full py-3.5 rounded-xl bg-[#111827] text-white font-bold text-sm shadow-lg shadow-slate-900/10 hover:bg-[#1f2937] hover:-translate-y-0.5 transition-all"
                   >
                     Back to Log in
                   </button>
-
-                  {verificationEmail && (
-                    <button
-                      type="button"
-                      disabled={loading}
-                      onClick={
-                        resendVerification
-                      }
-                      className="w-full py-3.5 rounded-xl border border-slate-200 text-slate-700 font-bold text-sm hover:bg-slate-50 transition disabled:opacity-50"
-                    >
-                      {loading
-                        ? 'Sending...'
-                        : 'Resend verification email'}
-                    </button>
-                  )}
                 </div>
               </div>
             )}
 
             {/* FORM */}
             {authMode !==
-              'verification' && (
+              'emailSent' && (
               <form
                 className="p-7 sm:p-9"
                 onSubmit={
