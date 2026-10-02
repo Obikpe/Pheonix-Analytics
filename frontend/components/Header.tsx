@@ -4,11 +4,6 @@ import { useState, useEffect, useCallback, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 
 const API_URL = 'https://learnora-backend.vercel.app';
-const PAYSTACK_KEY = process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY || '';
-const PAYSTACK_SRC = 'https://js.paystack.co/v2/inline.js';
-
-type Interval = 'monthly' | 'yearly';
-type Region = 'NG' | 'AFR' | 'US';
 
 type LoginRole =
   | 'normal'
@@ -20,66 +15,20 @@ type LoginRole =
 type AuthResponse = {
   access_token?: string;
   token?: string;
-  email: string;
-  role: LoginRole;
-  name: string;
+  email?: string;
+  role?: LoginRole;
+  name?: string;
   account_type?: 'learner' | 'admin';
   sub_status?: string | null;
   is_paid?: boolean;
   allowed?: string;
 };
 
-// Amounts are in the smallest unit (kobo / cents).
-const PRICING: Record<
-  Region,
-  Record<
-    Interval,
-    {
-      currency: 'NGN' | 'USD';
-      amount: number;
-      plan?: string;
-    }
-  >
-> = {
-  NG: {
-    monthly: {
-      currency: 'NGN',
-      amount: 1200000,
-      plan: process.env.NEXT_PUBLIC_PAYSTACK_PLAN_NGN_MONTHLY,
-    },
-    yearly: {
-      currency: 'NGN',
-      amount: 12000000,
-      plan: process.env.NEXT_PUBLIC_PAYSTACK_PLAN_NGN_YEARLY,
-    },
-  },
-
-  AFR: {
-    monthly: {
-      currency: 'USD',
-      amount: 1000,
-      plan: process.env.NEXT_PUBLIC_PAYSTACK_PLAN_AFR_MONTHLY,
-    },
-    yearly: {
-      currency: 'USD',
-      amount: 10000,
-      plan: process.env.NEXT_PUBLIC_PAYSTACK_PLAN_AFR_YEARLY,
-    },
-  },
-
-  US: {
-    monthly: {
-      currency: 'USD',
-      amount: 1500,
-      plan: process.env.NEXT_PUBLIC_PAYSTACK_PLAN_US_MONTHLY,
-    },
-    yearly: {
-      currency: 'USD',
-      amount: 15000,
-      plan: process.env.NEXT_PUBLIC_PAYSTACK_PLAN_US_YEARLY,
-    },
-  },
-};
+type AuthMode =
+  | 'login'
+  | 'register'
+  | 'forgot'
+  | 'verification';
 
 const inputClass =
   'w-full border border-slate-200 bg-slate-50 rounded-xl px-4 py-3.5 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:bg-white focus:border-[#D7AD35] focus:ring-4 focus:ring-[#D7AD35]/10 transition disabled:opacity-50';
@@ -89,60 +38,24 @@ const labelClass =
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-function getRegion(): Region {
-  if (typeof window === 'undefined') return 'NG';
-
-  const c = localStorage.getItem('phx_country');
-
-  return c === 'AFR' || c === 'US' || c === 'NG' ? c : 'NG';
-}
-
-function loadPaystackScript(): Promise<any> {
-  return new Promise((resolve, reject) => {
-    const w = window as any;
-
-    if (typeof w.PaystackPop === 'function') {
-      return resolve(w.PaystackPop);
-    }
-
-    const existing = document.getElementById(
-      'paystack-v2'
-    ) as HTMLScriptElement | null;
-
-    if (existing) existing.remove();
-
-    const script = document.createElement('script');
-
-    script.id = 'paystack-v2';
-    script.src = PAYSTACK_SRC;
-    script.async = true;
-
-    script.onload = () =>
-      typeof w.PaystackPop === 'function'
-        ? resolve(w.PaystackPop)
-        : reject(new Error('Paystack V2 failed to initialise'));
-
-    script.onerror = () =>
-      reject(new Error('Failed to load Paystack script'));
-
-    document.body.appendChild(script);
-  });
-}
-
 export default function Header() {
   const [showModal, setShowModal] = useState(false);
-  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
-  const [showMobileMenu, setShowMobileMenu] = useState(false);
+
+  const [authMode, setAuthMode] =
+    useState<AuthMode>('login');
+
+  const [showMobileMenu, setShowMobileMenu] =
+    useState(false);
 
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
-  const [billingInterval, setBillingInterval] =
-    useState<Interval>('monthly');
-
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  const [verificationEmail, setVerificationEmail] =
+    useState('');
 
   const router = useRouter();
 
@@ -152,28 +65,53 @@ export default function Header() {
     setShowModal(false);
     setPassword('');
     setError('');
+    setAuthMode('login');
   }, [loading]);
 
-  // Open authentication modal from anywhere via window event.
+  /*
+   * Open authentication modal from anywhere via:
+   *
+   * window.dispatchEvent(
+   *   new CustomEvent('open-auth', {
+   *     detail: { mode: 'login' }
+   *   })
+   * )
+   *
+   * or:
+   *
+   * detail: { mode: 'register' }
+   */
   useEffect(() => {
     const handleOpenAuth = (e: Event) => {
       const detail = (e as CustomEvent).detail;
 
-      setAuthMode(
-        detail?.mode === 'register' ? 'register' : 'login'
-      );
+      const requestedMode =
+        detail?.mode === 'register'
+          ? 'register'
+          : 'login';
 
+      setAuthMode(requestedMode);
       setError('');
+      setPassword('');
       setShowModal(true);
     };
 
-    window.addEventListener('open-auth', handleOpenAuth);
+    window.addEventListener(
+      'open-auth',
+      handleOpenAuth
+    );
 
     return () =>
-      window.removeEventListener('open-auth', handleOpenAuth);
+      window.removeEventListener(
+        'open-auth',
+        handleOpenAuth
+      );
   }, []);
 
-  // Escape to close + lock background scroll while modal is open.
+  /*
+   * Escape to close + lock background scrolling
+   * while authentication modal is open.
+   */
   useEffect(() => {
     if (!showModal) return;
 
@@ -185,13 +123,19 @@ export default function Header() {
 
     document.addEventListener('keydown', onKey);
 
-    const previousOverflow = document.body.style.overflow;
+    const previousOverflow =
+      document.body.style.overflow;
 
     document.body.style.overflow = 'hidden';
 
     return () => {
-      document.removeEventListener('keydown', onKey);
-      document.body.style.overflow = previousOverflow;
+      document.removeEventListener(
+        'keydown',
+        onKey
+      );
+
+      document.body.style.overflow =
+        previousOverflow;
     };
   }, [showModal, closeModal]);
 
@@ -200,18 +144,24 @@ export default function Header() {
 
     document
       .getElementById(id)
-      ?.scrollIntoView({ behavior: 'smooth' });
+      ?.scrollIntoView({
+        behavior: 'smooth',
+      });
   };
 
-  const openAuth = (mode: 'login' | 'register') => {
+  const openAuth = (
+    mode: 'login' | 'register'
+  ) => {
     setShowMobileMenu(false);
     setAuthMode(mode);
     setError('');
+    setPassword('');
     setShowModal(true);
   };
 
-  /**
-   * Route every authenticated account to its actual dashboard.
+  /*
+   * Route authenticated accounts to their actual
+   * isolated dashboard.
    *
    * Learners:
    *   normal   -> /dashboard/general
@@ -225,15 +175,21 @@ export default function Header() {
   const routeByRole = (role: string) => {
     switch (role) {
       case 'super_admin':
-        router.replace('/dashboard/admin/super_admin');
+        router.replace(
+          '/dashboard/admin/super_admin'
+        );
         return;
 
       case 'staff_admin':
-        router.replace('/dashboard/admin/staff_admin');
+        router.replace(
+          '/dashboard/admin/staff_admin'
+        );
         return;
 
       case 'witstart_admin':
-        router.replace('/dashboard/admin/witstart_admin');
+        router.replace(
+          '/dashboard/admin/witstart_admin'
+        );
         return;
 
       case 'witstart':
@@ -241,37 +197,66 @@ export default function Header() {
         return;
 
       case 'normal':
+        /*
+         * Normal learners go DIRECTLY to the
+         * general dashboard.
+         *
+         * They are NOT sent to billing.
+         */
         router.replace('/dashboard/general');
         return;
 
       default:
         /*
-         * Do not send unknown roles into an admin area.
-         * The backend is the authority, so an unexpected role
-         * should fall back to the normal learner dashboard only
-         * if the account is not explicitly an admin.
+         * Never guess an administrative role.
+         * Unknown roles are sent to the public
+         * landing page rather than granting access.
          */
-        router.replace('/dashboard/general');
+        router.replace('/');
         return;
     }
   };
 
+  /*
+   * Save only the authenticated session returned
+   * by the backend.
+   *
+   * Registration does NOT call this function because
+   * a newly registered account must verify its email
+   * before becoming authenticated.
+   */
   const saveSession = (data: AuthResponse) => {
-    /*
-     * Backend currently returns `token`.
-     * `access_token` is retained as a compatibility fallback.
-     */
-    const token = data.token || data.access_token || '';
+    const token =
+      data.token ||
+      data.access_token ||
+      '';
 
-    localStorage.setItem('phx_token', token);
-    localStorage.setItem('phx_email', data.email);
-    localStorage.setItem('phx_role', data.role);
-    localStorage.setItem('phx_name', data.name || '');
+    if (!token || !data.email || !data.role) {
+      throw new Error(
+        'The server returned an incomplete authentication response.'
+      );
+    }
 
-    /*
-     * Keep the account type available to the frontend as well.
-     * Existing keys remain unchanged.
-     */
+    localStorage.setItem(
+      'phx_token',
+      token
+    );
+
+    localStorage.setItem(
+      'phx_email',
+      data.email
+    );
+
+    localStorage.setItem(
+      'phx_role',
+      data.role
+    );
+
+    localStorage.setItem(
+      'phx_name',
+      data.name || ''
+    );
+
     if (data.account_type) {
       localStorage.setItem(
         'phx_account_type',
@@ -280,247 +265,392 @@ export default function Header() {
     }
   };
 
-  const launchPaystackModal = async (
-    userEmail: string,
-    userName: string,
-    userPass: string
+  /*
+   * -----------------------------
+   * REGISTRATION
+   * -----------------------------
+   *
+   * Registration is now completely
+   * independent of billing.
+   *
+   * Backend:
+   * POST /api/auth/register
+   *
+   * Expected backend behaviour:
+   * - create the learner
+   * - hash the password
+   * - create an email verification token
+   * - send the verification email
+   * - DO NOT issue an authenticated session
+   */
+  const handleRegistration = async (
+    cleanEmail: string,
+    cleanName: string
   ) => {
-    if (!PAYSTACK_KEY) {
-      setError(
-        'Payments are temporarily unavailable. Please try again later.'
-      );
-
-      console.error(
-        'NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY is missing'
-      );
-
-      setLoading(false);
-      return;
-    }
-
-    const region = getRegion();
-
-    const { currency, amount, plan } =
-      PRICING[region][billingInterval];
-
-    if (!plan) {
-      setError(
-        'This plan is temporarily unavailable. Please try again later.'
-      );
-
-      console.error(
-        `Missing Paystack plan code for ${region}/${billingInterval}`
-      );
-
-      setLoading(false);
-      return;
-    }
-
     try {
-      const PaystackPop = await loadPaystackScript();
+      const res = await fetch(
+        `${API_URL}/api/auth/register`,
+        {
+          method: 'POST',
 
-      const paystack = new PaystackPop();
+          headers: {
+            'Content-Type': 'application/json',
+          },
 
-      paystack.newTransaction({
-        key: PAYSTACK_KEY,
-        email: userEmail,
-        amount,
-        currency,
-        plan,
+          body: JSON.stringify({
+            name: cleanName,
+            email: cleanEmail,
+            password,
+          }),
+        }
+      );
 
-        metadata: {
-          billing_interval: billingInterval,
-          region,
+      const data = await res
+        .json()
+        .catch(() => ({}));
 
-          custom_fields: [
-            {
-              display_name: 'Customer Name',
-              variable_name: 'customer_name',
-              value: userName,
-            },
-          ],
-        },
+      if (!res.ok) {
+        throw new Error(
+          data?.detail ||
+            data?.message ||
+            'Registration failed. Please try again.'
+        );
+      }
 
-        onSuccess: async (response: { reference: string }) => {
-          try {
-            /*
-             * Verify Paystack BEFORE registering the learner.
-             * The backend verifies the reference with Paystack's
-             * secret key.
-             */
-            const regRes = await fetch(
-              `${API_URL}/api/billing/verify-and-register`,
-              {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                },
+      /*
+       * IMPORTANT:
+       * Do NOT save a token here.
+       *
+       * The account must verify its email first.
+       */
+      setVerificationEmail(cleanEmail);
 
-                body: JSON.stringify({
-                  name: userName,
-                  email: userEmail,
-                  password: userPass,
-                  reference: response.reference,
-                  billing_interval: billingInterval,
-                  region,
-                  plan_code: plan,
-                }),
-              }
-            );
-
-            const regData = await regRes
-              .json()
-              .catch(() => ({}));
-
-            if (!regRes.ok) {
-              throw new Error(
-                (regData.detail ||
-                  'Registration failed') +
-                  `. Your payment reference is ${response.reference} - please contact support.`
-              );
-            }
-
-            saveSession(regData);
-
-            setShowModal(false);
-            setPassword('');
-            setLoading(false);
-
-            routeByRole(regData.role);
-          } catch (regErr: any) {
-            setError(
-              regErr.message ||
-                'Registration could not be completed.'
-            );
-
-            setLoading(false);
-          }
-        },
-
-        onCancel: () => {
-          setLoading(false);
-
-          setError(
-            'Card setup was cancelled. Account was not created.'
-          );
-        },
-
-        onError: (err: { message?: string }) => {
-          setLoading(false);
-
-          setError(
-            err?.message ||
-              'Payment failed. Please try again.'
-          );
-        },
-      });
-    } catch (err) {
-      console.error(err);
-
+      setPassword('');
+      setError('');
+      setAuthMode('verification');
+      setLoading(false);
+    } catch (err: any) {
       setError(
-        'Failed to load the payment window. Check your connection and try again.'
+        err?.message ||
+          'Could not create your account. Please try again.'
       );
 
       setLoading(false);
     }
   };
 
-  const handleAuth = async (e?: FormEvent) => {
+  /*
+   * -----------------------------
+   * FORGOT PASSWORD
+   * -----------------------------
+   *
+   * Backend:
+   * POST /api/auth/forgot-password
+   *
+   * The backend should always return a generic
+   * response so that an attacker cannot discover
+   * whether an email exists.
+   */
+  const handleForgotPassword = async (
+    cleanEmail: string
+  ) => {
+    try {
+      const res = await fetch(
+        `${API_URL}/api/auth/forgot-password`,
+        {
+          method: 'POST',
+
+          headers: {
+            'Content-Type': 'application/json',
+          },
+
+          body: JSON.stringify({
+            email: cleanEmail,
+          }),
+        }
+      );
+
+      const data = await res
+        .json()
+        .catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(
+          data?.detail ||
+            data?.message ||
+            'Unable to process the password reset request.'
+        );
+      }
+
+      /*
+       * The API should send the reset email.
+       *
+       * We do not expose whether the account
+       * exists.
+       */
+      setError('');
+      setVerificationEmail(cleanEmail);
+      setAuthMode('verification');
+      setLoading(false);
+    } catch (err: any) {
+      setError(
+        err?.message ||
+          'Could not send the password reset email. Please try again.'
+      );
+
+      setLoading(false);
+    }
+  };
+
+  /*
+   * -----------------------------
+   * LOGIN / REGISTER / FORGOT
+   * -----------------------------
+   */
+  const handleAuth = async (
+    e?: FormEvent
+  ) => {
     e?.preventDefault();
 
     if (loading) return;
 
-    const cleanEmail = email.trim().toLowerCase();
-    const cleanName = name.trim();
+    const cleanEmail =
+      email.trim().toLowerCase();
 
+    const cleanName =
+      name.trim();
+
+    /*
+     * FORGOT PASSWORD
+     */
+    if (authMode === 'forgot') {
+      if (!cleanEmail) {
+        setError(
+          'Please enter your email address.'
+        );
+        return;
+      }
+
+      if (!EMAIL_RE.test(cleanEmail)) {
+        setError(
+          'Please enter a valid email address.'
+        );
+        return;
+      }
+
+      setLoading(true);
+      setError('');
+
+      await handleForgotPassword(
+        cleanEmail
+      );
+
+      return;
+    }
+
+    /*
+     * REGISTER
+     */
+    if (authMode === 'register') {
+      if (
+        !cleanEmail ||
+        !cleanName ||
+        !password
+      ) {
+        setError(
+          'Please fill in all fields.'
+        );
+        return;
+      }
+
+      if (!EMAIL_RE.test(cleanEmail)) {
+        setError(
+          'Please enter a valid email address.'
+        );
+        return;
+      }
+
+      if (password.length < 8) {
+        setError(
+          'Password must be at least 8 characters.'
+        );
+        return;
+      }
+
+      setLoading(true);
+      setError('');
+
+      await handleRegistration(
+        cleanEmail,
+        cleanName
+      );
+
+      return;
+    }
+
+    /*
+     * LOGIN
+     */
     if (
       !cleanEmail ||
-      !password ||
-      (authMode === 'register' && !cleanName)
+      !password
     ) {
-      setError('Please fill in all fields.');
+      setError(
+        'Please enter your email and password.'
+      );
       return;
     }
 
     if (!EMAIL_RE.test(cleanEmail)) {
-      setError('Please enter a valid email address.');
-      return;
-    }
-
-    if (
-      authMode === 'register' &&
-      password.length < 8
-    ) {
-      setError('Password must be at least 8 characters.');
+      setError(
+        'Please enter a valid email address.'
+      );
       return;
     }
 
     setLoading(true);
     setError('');
 
-    if (authMode === 'login') {
-      try {
-        const res = await fetch(
-          `${API_URL}/api/auth/login`,
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
+    try {
+      const res = await fetch(
+        `${API_URL}/api/auth/login`,
+        {
+          method: 'POST',
 
-            body: JSON.stringify({
-              email: cleanEmail,
-              password,
-            }),
-          }
-        );
+          headers: {
+            'Content-Type': 'application/json',
+          },
 
-        const data: AuthResponse = await res
-          .json()
-          .catch(() => ({} as AuthResponse));
-
-        if (!res.ok) {
-          throw new Error(
-            (data as any).detail ||
-              'Authentication failed'
-          );
+          body: JSON.stringify({
+            email: cleanEmail,
+            password,
+          }),
         }
-
-        /*
-         * Save the exact role returned by the backend.
-         * This is important because the role now determines
-         * which isolated dashboard the user enters.
-         */
-        saveSession(data);
-
-        setShowModal(false);
-        setPassword('');
-        setLoading(false);
-
-        routeByRole(data.role);
-      } catch (err: any) {
-        setError(
-          err.message ||
-            'Could not reach the server. Please try again.'
-        );
-
-        setLoading(false);
-      }
-    } else {
-      await launchPaystackModal(
-        cleanEmail,
-        cleanName,
-        password
       );
+
+      const data: AuthResponse =
+        await res
+          .json()
+          .catch(
+            () =>
+              ({} as AuthResponse)
+          );
+
+      if (!res.ok) {
+        throw new Error(
+          (data as any)?.detail ||
+            (data as any)?.message ||
+            'Authentication failed.'
+        );
+      }
+
+      /*
+       * The backend must reject unverified
+       * accounts here.
+       *
+       * Only after successful login do we
+       * create the frontend session.
+       */
+      saveSession(data);
+
+      setShowModal(false);
+      setPassword('');
+      setError('');
+      setLoading(false);
+
+      routeByRole(
+        data.role || ''
+      );
+    } catch (err: any) {
+      setError(
+        err?.message ||
+          'Could not reach the server. Please try again.'
+      );
+
+      setLoading(false);
     }
   };
 
+  /*
+   * Switch between login and registration.
+   */
   const toggleAuthMode = () => {
     setAuthMode((prev) =>
-      prev === 'login' ? 'register' : 'login'
+      prev === 'login'
+        ? 'register'
+        : 'login'
     );
 
     setError('');
+    setPassword('');
+  };
+
+  /*
+   * Return from forgot password to login.
+   */
+  const backToLogin = () => {
+    if (loading) return;
+
+    setAuthMode('login');
+    setError('');
+    setPassword('');
+  };
+
+  /*
+   * Resend verification email.
+   *
+   * Backend:
+   * POST /api/auth/resend-verification
+   */
+  const resendVerification = async () => {
+    if (
+      loading ||
+      !verificationEmail
+    ) {
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+
+    try {
+      const res = await fetch(
+        `${API_URL}/api/auth/resend-verification`,
+        {
+          method: 'POST',
+
+          headers: {
+            'Content-Type': 'application/json',
+          },
+
+          body: JSON.stringify({
+            email: verificationEmail,
+          }),
+        }
+      );
+
+      const data = await res
+        .json()
+        .catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(
+          data?.detail ||
+            data?.message ||
+            'Unable to resend the verification email.'
+        );
+      }
+
+      setError('');
+      setLoading(false);
+    } catch (err: any) {
+      setError(
+        err?.message ||
+          'Unable to resend the verification email.'
+      );
+
+      setLoading(false);
+    }
   };
 
   return (
@@ -559,10 +689,16 @@ export default function Header() {
 
           {/* DESKTOP NAVIGATION */}
           <nav className="hidden md:flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-full p-1">
-            {['library', 'playground', 'pricing'].map((id) => (
+            {[
+              'library',
+              'playground',
+              'pricing',
+            ].map((id) => (
               <button
                 key={id}
-                onClick={() => scrollTo(id)}
+                onClick={() =>
+                  scrollTo(id)
+                }
                 className="px-5 py-2.5 rounded-full text-sm font-semibold text-slate-600 hover:text-[#111827] hover:bg-white transition-all capitalize"
               >
                 {id}
@@ -573,20 +709,27 @@ export default function Header() {
           {/* DESKTOP AUTH */}
           <div className="hidden md:flex items-center gap-3">
             <button
-              onClick={() => openAuth('login')}
+              onClick={() =>
+                openAuth('login')
+              }
               className="text-sm font-bold text-slate-700 px-4 py-2.5 rounded-xl hover:bg-slate-100 transition-colors"
             >
               Log in
             </button>
 
             <button
-              onClick={() => openAuth('register')}
+              onClick={() =>
+                openAuth('register')
+              }
               className="group relative overflow-hidden bg-[#111827] text-white text-sm font-bold px-5 py-3 rounded-xl shadow-lg shadow-slate-900/10 hover:-translate-y-0.5 transition-all"
             >
               <span className="absolute inset-0 bg-gradient-to-r from-[#D7AD35] to-[#F2D477] opacity-0 group-hover:opacity-100 transition-opacity" />
 
               <span className="relative group-hover:text-[#111827] transition-colors">
-                Start Free Trial <span className="ml-1">→</span>
+                Start Free Trial{' '}
+                <span className="ml-1">
+                  →
+                </span>
               </span>
             </button>
           </div>
@@ -594,14 +737,18 @@ export default function Header() {
           {/* MOBILE MENU BUTTON */}
           <button
             onClick={() =>
-              setShowMobileMenu(!showMobileMenu)
+              setShowMobileMenu(
+                !showMobileMenu
+              )
             }
             aria-label={
               showMobileMenu
                 ? 'Close menu'
                 : 'Open menu'
             }
-            aria-expanded={showMobileMenu}
+            aria-expanded={
+              showMobileMenu
+            }
             className="md:hidden w-11 h-11 rounded-xl border border-slate-200 bg-white flex items-center justify-center text-[#111827] hover:bg-slate-50 transition"
           >
             <span className="flex flex-col gap-1.5">
@@ -615,7 +762,9 @@ export default function Header() {
 
               <span
                 className={`block w-5 h-0.5 bg-current transition-opacity ${
-                  showMobileMenu ? 'opacity-0' : ''
+                  showMobileMenu
+                    ? 'opacity-0'
+                    : ''
                 }`}
               />
 
@@ -634,29 +783,37 @@ export default function Header() {
         {showMobileMenu && (
           <div className="md:hidden border-t border-slate-200 bg-white px-5 py-4 shadow-xl">
             <nav className="space-y-1">
-              {['library', 'playground', 'pricing'].map(
-                (id) => (
-                  <button
-                    key={id}
-                    onClick={() => scrollTo(id)}
-                    className="w-full text-left px-4 py-3 rounded-xl text-sm font-semibold text-slate-700 hover:bg-slate-50 capitalize"
-                  >
-                    {id}
-                  </button>
-                )
-              )}
+              {[
+                'library',
+                'playground',
+                'pricing',
+              ].map((id) => (
+                <button
+                  key={id}
+                  onClick={() =>
+                    scrollTo(id)
+                  }
+                  className="w-full text-left px-4 py-3 rounded-xl text-sm font-semibold text-slate-700 hover:bg-slate-50 capitalize"
+                >
+                  {id}
+                </button>
+              ))}
             </nav>
 
             <div className="mt-3 pt-3 border-t border-slate-100 grid grid-cols-2 gap-2">
               <button
-                onClick={() => openAuth('login')}
+                onClick={() =>
+                  openAuth('login')
+                }
                 className="py-3 rounded-xl text-sm font-bold text-slate-700 border border-slate-200"
               >
                 Log in
               </button>
 
               <button
-                onClick={() => openAuth('register')}
+                onClick={() =>
+                  openAuth('register')
+                }
                 className="py-3 rounded-xl text-sm font-bold bg-[#111827] text-white"
               >
                 Start Free Trial
@@ -671,7 +828,10 @@ export default function Header() {
         <div
           className="fixed inset-0 z-[100] bg-[#020617]/70 backdrop-blur-md flex items-center justify-center p-4 sm:p-6 overflow-y-auto"
           onMouseDown={(e) => {
-            if (e.target === e.currentTarget) {
+            if (
+              e.target ===
+              e.currentTarget
+            ) {
               closeModal();
             }
           }}
@@ -710,9 +870,16 @@ export default function Header() {
 
                 <div>
                   <p className="text-[10px] uppercase tracking-[0.2em] font-bold text-[#F2D477]">
-                    {authMode === 'login'
+                    {authMode ===
+                    'login'
                       ? 'Welcome back'
-                      : 'Start your journey'}
+                      : authMode ===
+                        'register'
+                      ? 'Start your journey'
+                      : authMode ===
+                        'forgot'
+                      ? 'Account recovery'
+                      : 'Almost there'}
                   </p>
 
                   <p className="text-sm font-bold text-white">
@@ -726,197 +893,387 @@ export default function Header() {
                   id="auth-title"
                   className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white"
                 >
-                  {authMode === 'login'
+                  {authMode ===
+                  'login'
                     ? 'Continue learning.'
-                    : 'Create Account.'}
+                    : authMode ===
+                      'register'
+                    ? 'Create Account.'
+                    : authMode ===
+                      'forgot'
+                    ? 'Reset your password.'
+                    : 'Check your email.'}
                 </h3>
 
                 <p className="mt-2 text-sm leading-6 text-slate-300">
-                  {authMode === 'login'
+                  {authMode ===
+                  'login'
                     ? 'Sign in to access your courses, projects and learning dashboard.'
-                    : '7 days free trial. Secure card setup via Paystack required.'}
+                    : authMode ===
+                      'register'
+                    ? 'Create your Learnora Me account and verify your email to continue.'
+                    : authMode ===
+                      'forgot'
+                    ? 'Enter your email and we will send you a secure password reset link.'
+                    : 'We have sent instructions to your email address.'}
                 </p>
               </div>
             </div>
 
-            {/* FORM */}
-            <form
-              className="p-7 sm:p-9"
-              onSubmit={handleAuth}
-              noValidate
-            >
-              <div className="space-y-4">
-                {authMode === 'register' && (
-                  <div className="mb-4">
-                    <span className={labelClass}>
-                      Billing Plan Interval
+            {/* VERIFICATION / EMAIL MESSAGE */}
+            {authMode ===
+              'verification' && (
+              <div className="p-7 sm:p-9">
+                <div className="w-16 h-16 mx-auto rounded-2xl bg-[#D7AD35]/10 border border-[#D7AD35]/20 flex items-center justify-center mb-5">
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    className="w-8 h-8 text-[#B08A1E]"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                  >
+                    <path
+                      d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v11a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 17.5v-11Z"
+                    />
+                    <path
+                      d="m5 6 7 6 7-6"
+                    />
+                  </svg>
+                </div>
+
+                <div className="text-center">
+                  <h4 className="text-lg font-extrabold text-[#111827]">
+                    {verificationEmail
+                      ? 'Check your inbox'
+                      : 'Email sent'}
+                  </h4>
+
+                  <p className="mt-2 text-sm leading-6 text-slate-500">
+                    {verificationEmail ? (
+                      <>
+                        We sent instructions to{' '}
+                        <span className="font-bold text-slate-700 break-all">
+                          {verificationEmail}
+                        </span>
+                        .
+                      </>
+                    ) : (
+                      'Please check your email for the next step.'
+                    )}
+                  </p>
+
+                  <p className="mt-3 text-xs leading-5 text-slate-400">
+                    For registration, you must verify
+                    your email before you can log in.
+                    After verification, return here
+                    and sign in.
+                  </p>
+                </div>
+
+                {error && (
+                  <div
+                    role="alert"
+                    className="mt-5 flex items-start gap-2.5 rounded-xl border border-red-100 bg-red-50 px-3.5 py-3 text-xs font-medium text-red-600"
+                  >
+                    <span className="mt-0.5">
+                      !
                     </span>
 
-                    <div className="grid grid-cols-2 gap-2 bg-slate-100 p-1 rounded-xl border border-slate-200">
-                      {(['monthly', 'yearly'] as Interval[]).map(
-                        (iv) => (
-                          <button
-                            key={iv}
-                            type="button"
-                            disabled={loading}
-                            aria-pressed={
-                              billingInterval === iv
-                            }
-                            onClick={() =>
-                              setBillingInterval(iv)
-                            }
-                            className={`py-2 text-xs font-bold rounded-lg transition-all ${
-                              billingInterval === iv
-                                ? 'bg-white text-[#111827] shadow-sm'
-                                : 'text-slate-500 hover:text-slate-900'
-                            }`}
-                          >
-                            {iv === 'monthly' ? (
-                              'Monthly Billing'
-                            ) : (
-                              <>
-                                Yearly{' '}
-                                <span className="text-[10px] text-[#B08A1E] font-extrabold">
-                                  (Save more)
-                                </span>
-                              </>
-                            )}
-                          </button>
-                        )
-                      )}
-                    </div>
+                    <span>
+                      {error}
+                    </span>
                   </div>
                 )}
 
-                {authMode === 'register' && (
+                <div className="mt-6 space-y-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAuthMode(
+                        'login'
+                      );
+                      setError('');
+                    }}
+                    className="w-full py-3.5 rounded-xl bg-[#111827] text-white font-bold text-sm shadow-lg shadow-slate-900/10 hover:bg-[#1f2937] hover:-translate-y-0.5 transition-all"
+                  >
+                    Back to Log in
+                  </button>
+
+                  {verificationEmail && (
+                    <button
+                      type="button"
+                      disabled={loading}
+                      onClick={
+                        resendVerification
+                      }
+                      className="w-full py-3.5 rounded-xl border border-slate-200 text-slate-700 font-bold text-sm hover:bg-slate-50 transition disabled:opacity-50"
+                    >
+                      {loading
+                        ? 'Sending...'
+                        : 'Resend verification email'}
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* FORM */}
+            {authMode !==
+              'verification' && (
+              <form
+                className="p-7 sm:p-9"
+                onSubmit={
+                  handleAuth
+                }
+                noValidate
+              >
+                <div className="space-y-4">
+
+                  {/* REGISTRATION NAME */}
+                  {authMode ===
+                    'register' && (
+                    <div>
+                      <label
+                        htmlFor="auth-name"
+                        className={
+                          labelClass
+                        }
+                      >
+                        Full Name
+                      </label>
+
+                      <input
+                        id="auth-name"
+                        value={name}
+                        onChange={(
+                          e
+                        ) => {
+                          setName(
+                            e.target
+                              .value
+                          );
+                          setError(
+                            ''
+                          );
+                        }}
+                        placeholder="Ade Doe"
+                        type="text"
+                        autoComplete="name"
+                        disabled={
+                          loading
+                        }
+                        className={
+                          inputClass
+                        }
+                      />
+                    </div>
+                  )}
+
+                  {/* EMAIL */}
                   <div>
                     <label
-                      htmlFor="auth-name"
-                      className={labelClass}
+                      htmlFor="auth-email"
+                      className={
+                        labelClass
+                      }
                     >
-                      Full Name
+                      Email address
                     </label>
 
                     <input
-                      id="auth-name"
-                      value={name}
-                      onChange={(e) => {
-                        setName(e.target.value);
-                        setError('');
+                      id="auth-email"
+                      value={email}
+                      onChange={(
+                        e
+                      ) => {
+                        setEmail(
+                          e.target
+                            .value
+                        );
+                        setError(
+                          ''
+                        );
                       }}
-                      placeholder="Ade Doe"
-                      type="text"
-                      autoComplete="name"
-                      disabled={loading}
-                      className={inputClass}
+                      placeholder="you@example.com"
+                      type="email"
+                      autoComplete="email"
+                      disabled={
+                        loading
+                      }
+                      className={
+                        inputClass
+                      }
                     />
+                  </div>
+
+                  {/* PASSWORD */}
+                  {(authMode ===
+                    'login' ||
+                    authMode ===
+                      'register') && (
+                    <div>
+                      <label
+                        htmlFor="auth-password"
+                        className={
+                          labelClass
+                        }
+                      >
+                        Password
+                      </label>
+
+                      <input
+                        id="auth-password"
+                        value={password}
+                        onChange={(
+                          e
+                        ) => {
+                          setPassword(
+                            e.target
+                              .value
+                          );
+                          setError(
+                            ''
+                          );
+                        }}
+                        type="password"
+                        autoComplete={
+                          authMode ===
+                          'register'
+                            ? 'new-password'
+                            : 'current-password'
+                        }
+                        disabled={
+                          loading
+                        }
+                        placeholder={
+                          authMode ===
+                          'register'
+                            ? 'At least 8 characters'
+                            : 'Enter your password'
+                        }
+                        className={
+                          inputClass
+                        }
+                      />
+                    </div>
+                  )}
+                </div>
+
+                {/* FORGOT PASSWORD */}
+                {authMode ===
+                  'login' && (
+                  <div className="mt-3 text-right">
+                    <button
+                      type="button"
+                      disabled={
+                        loading
+                      }
+                      onClick={() => {
+                        setAuthMode(
+                          'forgot'
+                        );
+                        setError(
+                          ''
+                        );
+                        setPassword(
+                          ''
+                        );
+                      }}
+                      className="text-xs font-bold text-slate-500 hover:text-[#B08A1E] transition disabled:opacity-50"
+                    >
+                      Forgot password?
+                    </button>
                   </div>
                 )}
 
-                <div>
-                  <label
-                    htmlFor="auth-email"
-                    className={labelClass}
+                {/* ERROR */}
+                {error && (
+                  <div
+                    role="alert"
+                    className="mt-4 flex items-start gap-2.5 rounded-xl border border-red-100 bg-red-50 px-3.5 py-3 text-xs font-medium text-red-600"
                   >
-                    Email address
-                  </label>
+                    <span className="mt-0.5">
+                      !
+                    </span>
 
-                  <input
-                    id="auth-email"
-                    value={email}
-                    onChange={(e) => {
-                      setEmail(e.target.value);
-                      setError('');
-                    }}
-                    placeholder="you@example.com"
-                    type="email"
-                    autoComplete="email"
-                    disabled={loading}
-                    className={inputClass}
-                  />
-                </div>
-
-                <div>
-                  <label
-                    htmlFor="auth-password"
-                    className={labelClass}
-                  >
-                    Password
-                  </label>
-
-                  <input
-                    id="auth-password"
-                    value={password}
-                    onChange={(e) => {
-                      setPassword(e.target.value);
-                      setError('');
-                    }}
-                    type="password"
-                    autoComplete={
-                      authMode === 'register'
-                        ? 'new-password'
-                        : 'current-password'
-                    }
-                    disabled={loading}
-                    placeholder={
-                      authMode === 'register'
-                        ? 'At least 8 characters'
-                        : 'Enter your password'
-                    }
-                    className={inputClass}
-                  />
-                </div>
-              </div>
-
-              {error && (
-                <div
-                  role="alert"
-                  className="mt-4 flex items-start gap-2.5 rounded-xl border border-red-100 bg-red-50 px-3.5 py-3 text-xs font-medium text-red-600"
-                >
-                  <span className="mt-0.5">!</span>
-                  <span>{error}</span>
-                </div>
-              )}
-
-              <button
-                type="submit"
-                disabled={loading}
-                className="mt-6 w-full py-3.5 rounded-xl bg-[#111827] text-white font-bold text-sm shadow-lg shadow-slate-900/10 hover:bg-[#1f2937] hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:hover:translate-y-0"
-              >
-                {loading ? (
-                  <span className="flex items-center justify-center gap-2">
-                    <span className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-
-                    {authMode === 'login'
-                      ? 'Signing in...'
-                      : 'Launching Paystack...'}
-                  </span>
-                ) : authMode === 'login' ? (
-                  'Continue'
-                ) : (
-                  `Start Free Trial (${billingInterval}) — Setup Card`
+                    <span>
+                      {error}
+                    </span>
+                  </div>
                 )}
-              </button>
 
-              <div className="mt-5 text-center">
-                <p className="text-xs text-slate-500">
-                  {authMode === 'login'
-                    ? "Don't have an account? "
-                    : 'Already have an account? '}
+                {/* SUBMIT */}
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="mt-6 w-full py-3.5 rounded-xl bg-[#111827] text-white font-bold text-sm shadow-lg shadow-slate-900/10 hover:bg-[#1f2937] hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:hover:translate-y-0"
+                >
+                  {loading ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <span className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
 
-                  <button
-                    type="button"
-                    onClick={toggleAuthMode}
-                    disabled={loading}
-                    className="font-bold text-[#111827] hover:text-[#D7AD35] transition disabled:opacity-50"
-                  >
-                    {authMode === 'login'
-                      ? 'Sign up free'
-                      : 'Log in instead'}
-                  </button>
-                </p>
-              </div>
-            </form>
+                      {authMode ===
+                      'login'
+                        ? 'Signing in...'
+                        : authMode ===
+                          'register'
+                        ? 'Creating account...'
+                        : 'Sending email...'}
+                    </span>
+                  ) : authMode ===
+                    'login' ? (
+                    'Continue'
+                  ) : authMode ===
+                    'register' ? (
+                    'Create Account'
+                  ) : (
+                    'Send Reset Link'
+                  )}
+                </button>
+
+                {/* BOTTOM NAVIGATION */}
+                <div className="mt-5 text-center">
+                  {authMode ===
+                    'forgot' ? (
+                    <button
+                      type="button"
+                      onClick={
+                        backToLogin
+                      }
+                      disabled={
+                        loading
+                      }
+                      className="text-xs font-bold text-[#111827] hover:text-[#D7AD35] transition disabled:opacity-50"
+                    >
+                      ← Back to Log in
+                    </button>
+                  ) : (
+                    <p className="text-xs text-slate-500">
+                      {authMode ===
+                      'login'
+                        ? "Don't have an account? "
+                        : 'Already have an account? '}
+
+                      <button
+                        type="button"
+                        onClick={
+                          toggleAuthMode
+                        }
+                        disabled={
+                          loading
+                        }
+                        className="font-bold text-[#111827] hover:text-[#D7AD35] transition disabled:opacity-50"
+                      >
+                        {authMode ===
+                        'login'
+                          ? 'Sign up free'
+                          : 'Log in instead'}
+                      </button>
+                    </p>
+                  )}
+                </div>
+              </form>
+            )}
           </div>
         </div>
       )}

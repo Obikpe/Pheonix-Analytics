@@ -14,12 +14,24 @@ import Playground from '@/components/Playground';
 import courses from '@/data/courses.json';
 import lessons_index from '@/data/lessons_index.json';
 
+const API_URL = 'https://learnora-backend.vercel.app';
+
 type Tab =
   | 'learning'
   | 'playground'
   | 'projects'
   | 'portfolio'
   | 'qa';
+
+interface AuthenticatedUser {
+  id?: string;
+  name?: string | null;
+  email: string;
+  role: string;
+  sub_status?: string;
+  account_type?: string;
+  is_paid?: boolean;
+}
 
 interface Question {
   id: string;
@@ -59,7 +71,16 @@ function WitStartDashboardContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
+  // ---------------------------------------------------------
+  // AUTHENTICATION STATE
+  // ---------------------------------------------------------
+
+  const [authLoading, setAuthLoading] = useState(true);
+  const [authenticatedUser, setAuthenticatedUser] =
+    useState<AuthenticatedUser | null>(null);
+
   const [name, setName] = useState('');
+
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [tab, setTab] = useState<Tab>('learning');
@@ -69,12 +90,283 @@ function WitStartDashboardContent() {
 
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // Prevent unused-variable issues if searchParams is retained
-  // for future dashboard query-state functionality.
   void searchParams;
 
   // ---------------------------------------------------------
-  // Community Q&A State
+  // AUTH SESSION HELPERS
+  // ---------------------------------------------------------
+
+  const clearAuthenticationSession = () => {
+    localStorage.removeItem('phx_token');
+    localStorage.removeItem('phx_email');
+    localStorage.removeItem('phx_role');
+    localStorage.removeItem('phx_plan');
+    localStorage.removeItem('phx_name');
+    localStorage.removeItem('phx_account_type');
+    localStorage.removeItem('phx_trial_started_at');
+  };
+
+  const redirectForRole = (role: string) => {
+    if (role === 'normal') {
+      router.replace('/dashboard/general');
+      return;
+    }
+
+    if (role === 'witstart') {
+      return;
+    }
+
+    if (role === 'super_admin') {
+      router.replace('/dashboard/admin/super_admin');
+      return;
+    }
+
+    if (role === 'staff_admin') {
+      router.replace('/dashboard/admin/staff_admin');
+      return;
+    }
+
+    if (role === 'witstart_admin') {
+      router.replace('/dashboard/admin/witstart_admin');
+      return;
+    }
+
+    clearAuthenticationSession();
+    router.replace('/');
+  };
+
+  // ---------------------------------------------------------
+  // AUTHENTICATE THE PAGE
+  //
+  // IMPORTANT:
+  // This is the actual protection against someone typing:
+  //
+  // /dashboard/witstart
+  //
+  // directly into the browser.
+  //
+  // localStorage is NOT treated as proof of authentication.
+  // The token is sent to the backend and /api/auth/me
+  // verifies it against the backend JWT.
+  // ---------------------------------------------------------
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const authenticateDashboard = async () => {
+      const token = localStorage.getItem('phx_token');
+
+      // No session at all.
+      if (!token) {
+        if (!cancelled) {
+          setAuthLoading(false);
+          clearAuthenticationSession();
+          router.replace('/');
+        }
+        return;
+      }
+
+      try {
+        const response = await fetch(
+          `${API_URL}/api/auth/me`,
+          {
+            method: 'GET',
+            headers: {
+              Authorization: `Bearer ${token}`,
+              Accept: 'application/json',
+            },
+            cache: 'no-store',
+          }
+        );
+
+        // Token is invalid, expired, revoked, or otherwise
+        // rejected by the backend.
+        if (!response.ok) {
+          if (!cancelled) {
+            clearAuthenticationSession();
+            setAuthenticatedUser(null);
+            setName('');
+            setAuthLoading(false);
+            router.replace('/');
+          }
+
+          return;
+        }
+
+        const responseData = await response.json();
+
+        // Support either:
+        //
+        // { ...user fields... }
+        //
+        // or:
+        //
+        // { user: { ...user fields... } }
+        //
+        const user: AuthenticatedUser =
+          responseData?.user &&
+          typeof responseData.user === 'object'
+            ? responseData.user
+            : responseData;
+
+        // A valid token alone is not enough.
+        //
+        // This page belongs specifically to WitStart learners.
+        if (!user || user.role !== 'witstart') {
+          if (!cancelled) {
+            setAuthLoading(false);
+          }
+
+          redirectForRole(user?.role || '');
+
+          return;
+        }
+
+        if (cancelled) {
+          return;
+        }
+
+        // The backend is authoritative for identity.
+        const serverName =
+          typeof user.name === 'string' &&
+          user.name.trim()
+            ? user.name.trim()
+            : '';
+
+        setAuthenticatedUser(user);
+        setName(serverName);
+
+        // These values are only synchronised for convenience.
+        // They are NEVER used to authenticate the page.
+        localStorage.setItem(
+          'phx_email',
+          user.email || ''
+        );
+
+        localStorage.setItem(
+          'phx_role',
+          user.role || ''
+        );
+
+        localStorage.setItem(
+          'phx_account_type',
+          user.account_type || 'learner'
+        );
+
+        localStorage.setItem(
+          'phx_name',
+          serverName
+        );
+
+        setAuthLoading(false);
+      } catch (error) {
+        console.error(
+          'Unable to authenticate WitStart dashboard:',
+          error
+        );
+
+        if (!cancelled) {
+          clearAuthenticationSession();
+          setAuthenticatedUser(null);
+          setName('');
+          setAuthLoading(false);
+          router.replace('/');
+        }
+      }
+    };
+
+    void authenticateDashboard();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [router]);
+
+  // ---------------------------------------------------------
+  // RE-CHECK SESSION PERIODICALLY
+  //
+  // This helps detect an expired/rejected JWT while the
+  // learner is already sitting on the dashboard.
+  // ---------------------------------------------------------
+
+  useEffect(() => {
+    if (authLoading || !authenticatedUser) {
+      return;
+    }
+
+    const interval = window.setInterval(async () => {
+      const token = localStorage.getItem('phx_token');
+
+      if (!token) {
+        clearAuthenticationSession();
+        router.replace('/');
+        return;
+      }
+
+      try {
+        const response = await fetch(
+          `${API_URL}/api/auth/me`,
+          {
+            method: 'GET',
+            headers: {
+              Authorization: `Bearer ${token}`,
+              Accept: 'application/json',
+            },
+            cache: 'no-store',
+          }
+        );
+
+        if (!response.ok) {
+          clearAuthenticationSession();
+          setAuthenticatedUser(null);
+          setName('');
+          router.replace('/');
+          return;
+        }
+
+        const responseData = await response.json();
+
+        const user: AuthenticatedUser =
+          responseData?.user &&
+          typeof responseData.user === 'object'
+            ? responseData.user
+            : responseData;
+
+        if (!user || user.role !== 'witstart') {
+          clearAuthenticationSession();
+          setAuthenticatedUser(null);
+          setName('');
+          redirectForRole(user?.role || '');
+          return;
+        }
+
+        const serverName =
+          typeof user.name === 'string' &&
+          user.name.trim()
+            ? user.name.trim()
+            : '';
+
+        setAuthenticatedUser(user);
+        setName(serverName);
+      } catch (error) {
+        console.error(
+          'WitStart session verification failed:',
+          error
+        );
+      }
+    }, 60_000);
+
+    return () => {
+      window.clearInterval(interval);
+    };
+  }, [
+    authLoading,
+    authenticatedUser,
+    router,
+  ]);
+
+  // ---------------------------------------------------------
+  // COMMUNITY Q&A STATE
   // ---------------------------------------------------------
 
   const [questions, setQuestions] = useState<Question[]>([
@@ -107,7 +399,7 @@ function WitStartDashboardContent() {
   }>({});
 
   // ---------------------------------------------------------
-  // Dynamic WitStart Courses
+  // DYNAMIC WITSTART COURSES
   // ---------------------------------------------------------
 
   const witstartCourses = useMemo(() => {
@@ -132,7 +424,7 @@ function WitStartDashboardContent() {
       : 0;
 
   // ---------------------------------------------------------
-  // WitStart Lessons
+  // WITSTART LESSONS
   // ---------------------------------------------------------
 
   const witstartLessons = useMemo(() => {
@@ -151,7 +443,7 @@ function WitStartDashboardContent() {
     witstartLessons.length;
 
   // ---------------------------------------------------------
-  // Projects List for WitStart
+  // PROJECTS LIST
   // ---------------------------------------------------------
 
   const allProjects: ProjectItem[] = [
@@ -326,7 +618,7 @@ function WitStartDashboardContent() {
   ];
 
   // ---------------------------------------------------------
-  // Portfolio State
+  // PORTFOLIO STATE
   // ---------------------------------------------------------
 
   const [portfolioItems, setPortfolioItems] =
@@ -345,7 +637,7 @@ function WitStartDashboardContent() {
     ]);
 
   // ---------------------------------------------------------
-  // Grader Modal State
+  // GRADER MODAL STATE
   // ---------------------------------------------------------
 
   const [
@@ -367,80 +659,61 @@ function WitStartDashboardContent() {
     } | null>(null);
 
   // ---------------------------------------------------------
-  // Load the authenticated user's profile and local progress
+  // LOAD USER-SPECIFIC LOCAL UI DATA
+  //
+  // These are learning UI preferences/progress only.
+  // They do NOT authenticate the user.
   // ---------------------------------------------------------
 
   useEffect(() => {
-    let cancelled = false;
+    const savedProgressRaw =
+      localStorage.getItem('phx_progress');
 
-    const loadCurrentUser = async () => {
-      const token = localStorage.getItem('phx_token');
+    try {
+      const savedProgress = JSON.parse(
+        savedProgressRaw || '[]'
+      );
 
-      if (!token) {
-        if (!cancelled) setName('');
-        return;
+      if (Array.isArray(savedProgress)) {
+        setCompletedIds(savedProgress);
       }
+    } catch {
+      setCompletedIds([]);
+    }
 
-      try {
-        const apiBaseUrl = (
-          'https://learnora-backend.vercel.app'
-        ).replace(/\/$/, '');
-
-        const response = await fetch(`${apiBaseUrl}/api/auth/me`, {
-          method: 'GET',
-          headers: {
-            Authorization: `Bearer ${token}`,
-            Accept: 'application/json',
-          },
-          cache: 'no-store',
-        });
-
-        if (!response.ok) {
-          if (!cancelled) setName('');
-          return;
-        }
-
-        const user = await response.json();
-
-        // Always use the name returned by the authenticated backend.
-        // The learner's name is never read from or written to localStorage.
-        if (!cancelled) {
-          setName(
-            typeof user.name === 'string' && user.name.trim()
-              ? user.name.trim()
-              : ''
-          );
-        }
-      } catch (error) {
-        console.error('Unable to load the current WitStart user:', error);
-        if (!cancelled) setName('');
-      }
-    };
-
-    void loadCurrentUser();
-
-    const savedProgress = JSON.parse(
-      localStorage.getItem('phx_progress') ||
-        '[]'
-    );
-
-    setCompletedIds(savedProgress);
-
-    const savedPassed = JSON.parse(
+    const savedPassedRaw =
       localStorage.getItem(
         'phx_passed_projects'
-      ) || '[]'
-    );
+      );
 
-    setPassedProjectIds(savedPassed);
+    try {
+      const savedPassed = JSON.parse(
+        savedPassedRaw || '[]'
+      );
 
-    const savedPortfolio = JSON.parse(
-      localStorage.getItem('phx_portfolio') ||
-        '[]'
-    );
+      if (Array.isArray(savedPassed)) {
+        setPassedProjectIds(savedPassed);
+      }
+    } catch {
+      setPassedProjectIds([]);
+    }
 
-    if (savedPortfolio.length > 0) {
-      setPortfolioItems(savedPortfolio);
+    const savedPortfolioRaw =
+      localStorage.getItem('phx_portfolio');
+
+    try {
+      const savedPortfolio = JSON.parse(
+        savedPortfolioRaw || '[]'
+      );
+
+      if (
+        Array.isArray(savedPortfolio) &&
+        savedPortfolio.length > 0
+      ) {
+        setPortfolioItems(savedPortfolio);
+      }
+    } catch {
+      // Ignore malformed local UI data.
     }
 
     const handleClickOutside = (
@@ -462,7 +735,6 @@ function WitStartDashboardContent() {
     );
 
     return () => {
-      cancelled = true;
       document.removeEventListener(
         'mousedown',
         handleClickOutside
@@ -471,7 +743,7 @@ function WitStartDashboardContent() {
   }, []);
 
   // ---------------------------------------------------------
-  // Course / Project Locking
+  // COURSE / PROJECT LOCKING
   // ---------------------------------------------------------
 
   const isCourseLocked = (
@@ -484,15 +756,6 @@ function WitStartDashboardContent() {
 
   // ---------------------------------------------------------
   // OPEN COURSE
-  //
-  // IMPORTANT:
-  // The course page is server-side and cannot read
-  // localStorage. Therefore the WitStart dashboard
-  // explicitly tells it where the learner came from.
-  //
-  // This is the critical routing correction:
-  //
-  // /dashboard/course/[courseId]?type=witstart
   // ---------------------------------------------------------
 
   const openCourse = (
@@ -503,13 +766,15 @@ function WitStartDashboardContent() {
       return;
     }
 
+    // We already authenticated the learner before this
+    // function can be reached.
     router.push(
       `/dashboard/course/${courseId}?type=witstart`
     );
   };
 
   // ---------------------------------------------------------
-  // File Upload
+  // FILE UPLOAD
   // ---------------------------------------------------------
 
   const handleFileUpload = (
@@ -531,16 +796,18 @@ function WitStartDashboardContent() {
   };
 
   // ---------------------------------------------------------
-  // Logout
+  // LOGOUT
   // ---------------------------------------------------------
 
   const handleLogout = () => {
-    localStorage.clear();
-    router.push('/');
+    clearAuthenticationSession();
+    setAuthenticatedUser(null);
+    setName('');
+    router.replace('/');
   };
 
   // ---------------------------------------------------------
-  // Community Questions
+  // COMMUNITY QUESTIONS
   // ---------------------------------------------------------
 
   const handlePostQuestion = (
@@ -610,7 +877,7 @@ function WitStartDashboardContent() {
   };
 
   // ---------------------------------------------------------
-  // Project Grader
+  // PROJECT GRADER
   // ---------------------------------------------------------
 
   const handleRunGrader = async () => {
@@ -773,6 +1040,59 @@ function WitStartDashboardContent() {
       );
     }
   };
+
+  // ---------------------------------------------------------
+  // AUTH LOADING SCREEN
+  //
+  // The protected dashboard is NOT rendered until the
+  // backend has confirmed the JWT.
+  // ---------------------------------------------------------
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-[#111827] flex items-center justify-center text-white">
+        <div className="text-center">
+          <div className="w-12 h-12 rounded-2xl bg-[#d7ad35] flex items-center justify-center text-[#111827] font-extrabold mx-auto shadow-lg shadow-[#d7ad35]/20">
+            W
+          </div>
+
+          <p className="mt-5 text-sm font-semibold">
+            Verifying your account...
+          </p>
+
+          <p className="mt-2 text-xs text-white/45">
+            Connecting securely to Learnora.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // ---------------------------------------------------------
+  // FAIL CLOSED
+  //
+  // If authentication failed but the redirect has not yet
+  // completed, do not render the protected dashboard.
+  // ---------------------------------------------------------
+
+  if (
+    !authenticatedUser ||
+    authenticatedUser.role !== 'witstart'
+  ) {
+    return (
+      <div className="min-h-screen bg-[#111827] flex items-center justify-center text-white">
+        <div className="text-center">
+          <div className="w-12 h-12 rounded-2xl bg-[#d7ad35] flex items-center justify-center text-[#111827] font-extrabold mx-auto">
+            W
+          </div>
+
+          <p className="mt-5 text-sm font-semibold">
+            Redirecting...
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   // ---------------------------------------------------------
   // UI
@@ -1039,64 +1359,72 @@ function WitStartDashboardContent() {
           </div>
 
           <div
-              className="relative"
-              ref={dropdownRef}
+            className="relative"
+            ref={dropdownRef}
+          >
+
+            <button
+              onClick={() =>
+                setDropdownOpen(
+                  !dropdownOpen
+                )
+              }
+              className="text-xs font-semibold text-[#596171] bg-white px-3 py-1.5 rounded-xl border border-[#e2e5eb] hover:border-[#d7ad35]/60 transition flex items-center gap-2 cursor-pointer"
             >
 
-              <button
-                onClick={() =>
-                  setDropdownOpen(
-                    !dropdownOpen
-                  )
-                }
-                className="text-xs font-semibold text-[#596171] bg-white px-3 py-1.5 rounded-xl border border-[#e2e5eb] hover:border-[#d7ad35]/60 transition flex items-center gap-2 cursor-pointer"
-              >
+              <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-sm shadow-emerald-500/40" />
 
-                <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-sm shadow-emerald-500/40" />
+              <span className="w-8 h-8 rounded-lg bg-[#111827] border border-[#111827] flex items-center justify-center text-xs font-bold text-[#d7ad35]">
+                {name
+                  ? name
+                      .charAt(0)
+                      .toUpperCase()
+                  : 'W'}
+              </span>
 
-                <span className="w-8 h-8 rounded-lg bg-[#111827] border border-[#111827] flex items-center justify-center text-xs font-bold text-[#d7ad35]">
-                  👤
-                </span>
+              <span className="max-w-[140px] truncate hidden sm:inline">
+                {name || 'Learner'}
+              </span>
 
-                <span className="max-w-[140px] truncate hidden sm:inline">
-                  {name || 'Learner'}
-                </span>
+              <span className="text-[10px] text-[#9299a7]">
+                ▼
+              </span>
 
-                <span className="text-[10px] text-[#9299a7]">
-                  ▼
-                </span>
+            </button>
 
-              </button>
+            {dropdownOpen && (
+              <div className="absolute right-0 mt-2 w-60 bg-white border border-[#e2e5eb] rounded-2xl shadow-2xl py-2 z-50 text-xs">
 
-              {dropdownOpen && (
-                <div className="absolute right-0 mt-2 w-60 bg-white border border-[#e2e5eb] rounded-2xl shadow-2xl py-2 z-50 text-xs">
+                <div className="px-4 py-3 border-b border-[#edf0f4] text-[#9299a7]">
 
-                  <div className="px-4 py-3 border-b border-[#edf0f4] text-[#9299a7]">
+                  <p className="text-[10px] uppercase font-bold tracking-widest text-stone-500">
+                    Account
+                  </p>
 
-                    <p className="text-[10px] uppercase font-bold tracking-widest text-stone-500">
-                      Account
-                    </p>
+                  <p className="text-[#252a35] font-semibold truncate mt-0.5">
+                    {name || 'Learner'}
+                  </p>
 
-                    <p className="text-[#252a35] font-semibold truncate mt-0.5">
-                      {name || 'Learner'}
-                    </p>
-
-                  </div>
-
-                  <button
-                    onClick={
-                      handleLogout
-                    }
-                    className="w-full text-left px-4 py-2.5 text-[#9a761c] hover:bg-[#fffaf0] hover:text-[#806010] transition flex items-center gap-2.5 font-bold mt-1 cursor-pointer"
-                  >
-                    <span>🚪</span>
-                    Logout
-                  </button>
+                  <p className="text-[10px] text-[#9299a7] truncate mt-1">
+                    {authenticatedUser.email}
+                  </p>
 
                 </div>
-              )}
 
-            </div>
+                <button
+                  onClick={
+                    handleLogout
+                  }
+                  className="w-full text-left px-4 py-2.5 text-[#9a761c] hover:bg-[#fffaf0] hover:text-[#806010] transition flex items-center gap-2.5 font-bold mt-1 cursor-pointer"
+                >
+                  <span>🚪</span>
+                  Logout
+                </button>
+
+              </div>
+            )}
+
+          </div>
 
         </div>
 
@@ -1315,7 +1643,6 @@ function WitStartDashboardContent() {
                               {c.duration ||
                                 '16 lessons'}
                             </span>
-
                           </div>
 
                         </div>
@@ -1757,7 +2084,7 @@ function WitStartDashboardContent() {
                 className="bg-white border border-[#e5e8ee] rounded-[24px] p-6 space-y-4 shadow-sm"
               >
 
-                <h3 className="text-sm font-extrabold text-white">
+                <h3 className="text-sm font-extrabold text-[#151821]">
                   Start a New Discussion
                 </h3>
 
@@ -1950,7 +2277,7 @@ export default function WitStartDashboard() {
       fallback={
         <div className="min-h-screen bg-[#111827] flex items-center justify-center text-white">
           <p>
-            Loading dashboard...
+            Verifying dashboard access...
           </p>
         </div>
       }
