@@ -1,8 +1,11 @@
 // Library.tsx
+
 'use client';
 
 import { useMemo } from 'react';
+
 import courses from '../data/courses.json';
+
 import {
   ArrowRight,
   BookOpen,
@@ -30,39 +33,45 @@ export default function Library({ role = 'normal' }: Props) {
   return (
     <section
       id="library"
-      className="relative overflow-hidden bg-[#f7f8fa] px-6 py-24 text-[#172033] sm:px-8 lg:px-12"
+      className="relative overflow-hidden bg-white px-6 py-24 text-[#172033] sm:px-8 lg:px-12"
     >
-      {/* Soft background decoration */}
-      <div className="pointer-events-none absolute -left-40 top-20 h-96 w-96 rounded-full bg-[#d7ad35]/10 blur-3xl" />
-      <div className="pointer-events-none absolute -right-40 bottom-0 h-[28rem] w-[28rem] rounded-full bg-[#e8edf5] blur-3xl" />
+      {/* Background decoration */}
+      <div className="pointer-events-none absolute left-[-180px] top-24 h-[420px] w-[420px] rounded-full bg-[#d7ad35]/[0.07] blur-3xl" />
+      <div className="pointer-events-none absolute right-[-180px] bottom-[-120px] h-[500px] w-[500px] rounded-full bg-[#eef1f5] blur-3xl" />
 
       <div className="relative z-10 mx-auto max-w-[1280px]">
-
         {/* Section heading */}
         <div className="mb-12 flex flex-col gap-8 lg:flex-row lg:items-end lg:justify-between">
-          <div className="max-w-2xl">
-            <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-[#d7ad35]/30 bg-white px-3.5 py-2 shadow-sm">
+          <div className="max-w-3xl">
+            <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-[#d7ad35]/30 bg-[#fffdf6] px-3.5 py-2 shadow-sm">
               <Sparkles className="h-3.5 w-3.5 text-[#b78d16]" />
+
               <span className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-[#8a6810]">
-                {isWitstart ? 'Data Science Learning Path' : 'Explore Learnora ME'}
+                {isWitstart
+                  ? 'Data Science Learning Path'
+                  : 'Explore Learnora ME'}
               </span>
             </div>
 
-            <h2 className="font-serif text-4xl font-bold leading-[1.08] tracking-[-0.035em] text-[#172033] sm:text-5xl">
+            <h2 className="font-serif text-4xl font-bold leading-[1.08] tracking-[-0.035em] text-[#172033] sm:text-5xl lg:text-[3.4rem]">
               {isWitstart ? (
                 <>
                   Build your skills with the{' '}
-                  <span className="text-[#b78d16]">Data Science Track.</span>
+                  <span className="text-[#b78d16]">
+                    Data Science Track.
+                  </span>
                 </>
               ) : (
                 <>
                   Learn something{' '}
-                  <span className="text-[#b78d16]">worth knowing.</span>
+                  <span className="text-[#b78d16]">
+                    worth knowing.
+                  </span>
                 </>
               )}
             </h2>
 
-            <p className="mt-5 max-w-xl text-[15px] leading-7 text-[#667085] sm:text-base">
+            <p className="mt-5 max-w-2xl text-[15px] leading-7 text-[#667085] sm:text-base">
               {isWitstart
                 ? 'Explore a preview of the structured learning path designed to take you from foundations to practical data science projects.'
                 : 'Explore practical courses designed to help you build real skills, complete projects, and move confidently from learning to doing.'}
@@ -70,7 +79,7 @@ export default function Library({ role = 'normal' }: Props) {
           </div>
 
           {/* Catalogue summary */}
-          <div className="flex shrink-0 items-center gap-5 rounded-2xl border border-[#e2e6ec] bg-white px-5 py-4 shadow-sm">
+          <div className="flex shrink-0 items-center gap-4 rounded-2xl border border-[#e2e6ec] bg-white px-5 py-4 shadow-[0_8px_25px_rgba(23,32,51,0.05)]">
             <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#172033] text-white">
               <BookOpen className="h-5 w-5" />
             </div>
@@ -79,6 +88,7 @@ export default function Library({ role = 'normal' }: Props) {
               <p className="text-sm font-bold text-[#172033]">
                 85+ courses available
               </p>
+
               <p className="mt-0.5 text-xs text-[#7b8494]">
                 Across multiple learning tracks
               </p>
@@ -87,7 +97,7 @@ export default function Library({ role = 'normal' }: Props) {
         </div>
 
         {/* Category strip */}
-        <div className="mb-8 flex gap-2 overflow-x-auto pb-2">
+        <div className="mb-9 flex gap-2 overflow-x-auto pb-2">
           {[
             'All Courses',
             'Data & Analytics',
@@ -100,7 +110,7 @@ export default function Library({ role = 'normal' }: Props) {
               type="button"
               className={`whitespace-nowrap rounded-full border px-4 py-2.5 text-xs font-bold transition ${
                 index === 0
-                  ? 'border-[#172033] bg-[#172033] text-white'
+                  ? 'border-[#172033] bg-[#172033] text-white shadow-sm'
                   : 'border-[#dfe3e9] bg-white text-[#667085] hover:border-[#b8bec8] hover:text-[#172033]'
               }`}
             >
@@ -114,14 +124,26 @@ export default function Library({ role = 'normal' }: Props) {
           {previewCourses.map((c: any, i: number) => (
             <article
               key={c.id || i}
-              className="group flex min-h-[410px] flex-col overflow-hidden rounded-2xl border border-[#e1e5eb] bg-white shadow-[0_8px_30px_rgba(23,32,51,0.04)] transition-all duration-300 hover:-translate-y-1 hover:border-[#d2b45b] hover:shadow-[0_18px_45px_rgba(23,32,51,0.10)]"
+              className="group flex min-h-[420px] flex-col overflow-hidden rounded-2xl border border-[#e1e5eb] bg-white shadow-[0_8px_30px_rgba(23,32,51,0.045)] transition-all duration-300 hover:-translate-y-1 hover:border-[#d2b45b] hover:shadow-[0_20px_50px_rgba(23,32,51,0.10)]"
             >
               {/* Course visual */}
-              <div className="relative h-40 overflow-hidden bg-[#172033]">
-                <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(215,173,53,0.35),transparent_38%),radial-gradient(circle_at_85%_85%,rgba(255,255,255,0.08),transparent_35%)]" />
+              <div className="relative h-44 overflow-hidden bg-[#172033]">
+                {/* Abstract visual */}
+                <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_20%,rgba(215,173,53,0.34),transparent_34%),radial-gradient(circle_at_85%_80%,rgba(255,255,255,0.10),transparent_36%)]" />
 
-                {/* Decorative learning visual */}
-                <div className="absolute right-6 top-6 h-24 w-24 rotate-6 rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur-sm" />
+                {/* Grid */}
+                <div
+                  className="absolute inset-0 opacity-[0.08]"
+                  style={{
+                    backgroundImage:
+                      'linear-gradient(rgba(255,255,255,0.5) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.5) 1px, transparent 1px)',
+                    backgroundSize: '28px 28px',
+                  }}
+                />
+
+                {/* Decorative panels */}
+                <div className="absolute right-7 top-6 h-24 w-24 rotate-6 rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur-sm" />
+
                 <div className="absolute right-12 top-10 h-24 w-24 -rotate-6 rounded-2xl border border-[#d7ad35]/30 bg-[#d7ad35]/10" />
 
                 <div className="absolute bottom-5 left-5">
@@ -137,6 +159,7 @@ export default function Library({ role = 'normal' }: Props) {
 
               {/* Course content */}
               <div className="flex flex-1 flex-col p-6">
+                {/* Metadata */}
                 <div className="mb-3 flex items-center gap-4 text-[11px] font-medium text-[#7b8494]">
                   {c.duration && (
                     <span className="flex items-center gap-1.5">
@@ -151,10 +174,12 @@ export default function Library({ role = 'normal' }: Props) {
                   </span>
                 </div>
 
+                {/* Title */}
                 <h3 className="text-[17px] font-extrabold leading-6 text-[#172033] transition-colors group-hover:text-[#8a6810]">
                   {c.title}
                 </h3>
 
+                {/* Description */}
                 <p className="mt-2.5 line-clamp-3 text-[13px] leading-6 text-[#667085]">
                   {c.desc}
                 </p>
@@ -162,14 +187,16 @@ export default function Library({ role = 'normal' }: Props) {
                 {/* Topics */}
                 {c.topics && c.topics.length > 0 && (
                   <div className="mt-5 flex flex-wrap gap-1.5">
-                    {c.topics.slice(0, 3).map((topic: string, idx: number) => (
-                      <span
-                        key={idx}
-                        className="rounded-md bg-[#f4f5f7] px-2.5 py-1.5 text-[10px] font-semibold text-[#667085]"
-                      >
-                        {topic}
-                      </span>
-                    ))}
+                    {c.topics
+                      .slice(0, 3)
+                      .map((topic: string, idx: number) => (
+                        <span
+                          key={idx}
+                          className="rounded-md bg-[#f4f5f7] px-2.5 py-1.5 text-[10px] font-semibold text-[#667085]"
+                        >
+                          {topic}
+                        </span>
+                      ))}
                   </div>
                 )}
 
@@ -197,8 +224,9 @@ export default function Library({ role = 'normal' }: Props) {
           ))}
 
           {/* Explore all card */}
-          <div className="relative flex min-h-[410px] flex-col justify-between overflow-hidden rounded-2xl bg-[#172033] p-7 text-white shadow-[0_15px_45px_rgba(23,32,51,0.15)]">
+          <div className="relative flex min-h-[420px] flex-col justify-between overflow-hidden rounded-2xl bg-[#172033] p-7 text-white shadow-[0_15px_45px_rgba(23,32,51,0.15)]">
             <div className="pointer-events-none absolute -right-20 -top-20 h-56 w-56 rounded-full bg-[#d7ad35]/20 blur-3xl" />
+
             <div className="pointer-events-none absolute -bottom-20 -left-20 h-56 w-56 rounded-full bg-white/5 blur-3xl" />
 
             <div className="relative z-10">
@@ -215,8 +243,9 @@ export default function Library({ role = 'normal' }: Props) {
               </h3>
 
               <p className="mt-4 max-w-xs text-sm leading-6 text-white/65">
-                Unlock the complete Learnora ME library with courses, projects,
-                practice environments and structured learning paths.
+                Unlock the complete Learnora ME library with courses,
+                projects, practice environments and structured learning
+                paths.
               </p>
             </div>
 
@@ -224,6 +253,7 @@ export default function Library({ role = 'normal' }: Props) {
               <div className="mb-5 grid grid-cols-3 gap-2">
                 <div className="rounded-xl border border-white/10 bg-white/5 p-3">
                   <p className="text-lg font-extrabold">85+</p>
+
                   <p className="mt-1 text-[9px] uppercase tracking-wider text-white/45">
                     Courses
                   </p>
@@ -231,6 +261,7 @@ export default function Library({ role = 'normal' }: Props) {
 
                 <div className="rounded-xl border border-white/10 bg-white/5 p-3">
                   <p className="text-lg font-extrabold">800+</p>
+
                   <p className="mt-1 text-[9px] uppercase tracking-wider text-white/45">
                     Lessons
                   </p>
@@ -238,6 +269,7 @@ export default function Library({ role = 'normal' }: Props) {
 
                 <div className="rounded-xl border border-white/10 bg-white/5 p-3">
                   <p className="text-lg font-extrabold">7</p>
+
                   <p className="mt-1 text-[9px] uppercase tracking-wider text-white/45">
                     Free Days
                   </p>
@@ -249,6 +281,7 @@ export default function Library({ role = 'normal' }: Props) {
                 className="group/cta flex w-full items-center justify-between rounded-xl bg-[#d7ad35] px-5 py-3.5 text-sm font-extrabold text-[#172033] transition hover:bg-[#e4c45d]"
               >
                 <span>Explore the full library</span>
+
                 <ArrowRight className="h-4 w-4 transition-transform group-hover/cta:translate-x-1" />
               </a>
             </div>
