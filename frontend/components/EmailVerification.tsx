@@ -1,3 +1,4 @@
+// EmailVerification.tsx
 'use client';
 
 import {
@@ -6,6 +7,19 @@ import {
   useState,
 } from 'react';
 import { useRouter } from 'next/navigation';
+import {
+  ArrowRight,
+  Check,
+  CheckCircle2,
+  Clock3,
+  Inbox,
+  LockKeyhole,
+  Mail,
+  RefreshCw,
+  ShieldCheck,
+  Sparkles,
+  XCircle,
+} from 'lucide-react';
 
 const API_URL =
   'https://learnora-backend.vercel.app';
@@ -106,14 +120,6 @@ export default function EmailVerification() {
         data.sub_status
       );
     }
-
-    /*
-     * A newly verified normal learner will
-     * enter the general dashboard.
-     *
-     * The backend remains authoritative for
-     * entitlement and account status.
-     */
   };
 
   /*
@@ -124,13 +130,6 @@ export default function EmailVerification() {
 
     const verifyEmail = async () => {
       try {
-        /*
-         * Read the token directly from the browser URL.
-         *
-         * Expected URL:
-         *
-         * /verify_email?token=...
-         */
         const params =
           new URLSearchParams(
             window.location.search
@@ -142,9 +141,11 @@ export default function EmailVerification() {
         if (!token) {
           if (!cancelled) {
             setState('missing');
+
             setMessage(
               'No verification token was found in this link.'
             );
+
             setLoading(false);
           }
 
@@ -190,9 +191,11 @@ export default function EmailVerification() {
           ) {
             if (!cancelled) {
               setState('expired');
+
               setMessage(
                 'This verification link has expired. Request a new verification email below.'
               );
+
               setLoading(false);
             }
 
@@ -211,9 +214,11 @@ export default function EmailVerification() {
               setState(
                 'already_verified'
               );
+
               setMessage(
                 'This email address has already been verified.'
               );
+
               setLoading(false);
             }
 
@@ -239,10 +244,6 @@ export default function EmailVerification() {
           setState('success');
           setLoading(false);
 
-          /*
-           * Give the success state a moment to
-           * render before routing.
-           */
           setTimeout(() => {
             router.replace(
               '/dashboard/general'
@@ -271,15 +272,7 @@ export default function EmailVerification() {
   }, [router]);
 
   /*
-   * Resend a verification email.
-   *
-   * The backend expects:
-   *
-   * POST /api/auth/resend-verification
-   *
-   * {
-   *   email: "..."
-   * }
+   * Resend verification email.
    */
   const resendVerification = async (
     e?: FormEvent
@@ -293,6 +286,7 @@ export default function EmailVerification() {
       setError(
         'Please enter the email address you used to create your account.'
       );
+
       return;
     }
 
@@ -348,20 +342,37 @@ export default function EmailVerification() {
   };
 
   /*
+   * Shared Learnora ME branding.
+   */
+  const Brand = () => (
+    <div className="flex items-center justify-center gap-1.5">
+      <span className="font-serif text-xl font-bold tracking-[-0.04em] text-[#172033]">
+        Learnora
+      </span>
+
+      <span className="font-serif text-xl font-bold tracking-[-0.04em] text-[#b78d16]">
+        ME
+      </span>
+    </div>
+  );
+
+  /*
    * Shared resend form.
    */
   const ResendForm = () => (
     <form
       onSubmit={resendVerification}
-      className="mt-7 space-y-4"
+      className="mt-8"
     >
-      <div>
-        <label
-          htmlFor="verification-email"
-          className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2"
-        >
-          Email address
-        </label>
+      <label
+        htmlFor="verification-email"
+        className="mb-2 block text-[10px] font-extrabold uppercase tracking-[0.16em] text-[#667085]"
+      >
+        Email address
+      </label>
+
+      <div className="relative">
+        <Mail className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#98a1b2]" />
 
         <input
           id="verification-email"
@@ -373,37 +384,58 @@ export default function EmailVerification() {
           }}
           placeholder="you@example.com"
           autoComplete="email"
-          className="w-full border border-slate-200 bg-slate-50 rounded-xl px-4 py-3.5 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:bg-white focus:border-[#D7AD35] focus:ring-4 focus:ring-[#D7AD35]/10 transition"
+          className="w-full rounded-xl border border-[#dfe3e9] bg-[#f8f9fa] py-3.5 pl-11 pr-4 text-sm text-[#172033] outline-none transition placeholder:text-[#a3aab7] focus:border-[#d7ad35] focus:bg-white focus:ring-4 focus:ring-[#d7ad35]/10"
         />
       </div>
 
       {error && (
         <div
           role="alert"
-          className="flex items-start gap-2.5 rounded-xl border border-red-100 bg-red-50 px-3.5 py-3 text-xs font-medium text-red-600"
+          className="mt-3 flex items-start gap-2.5 rounded-xl border border-red-100 bg-red-50 px-3.5 py-3 text-xs font-medium leading-5 text-red-600"
         >
-          <span className="mt-0.5">
-            !
-          </span>
-
-          <span>
-            {error}
-          </span>
+          <XCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <span>{error}</span>
         </div>
       )}
 
       <button
         type="submit"
-        disabled={
-          state === 'resending'
-        }
-        className="w-full py-3.5 rounded-xl bg-[#111827] text-white font-bold text-sm shadow-lg shadow-slate-900/10 hover:bg-[#1f2937] hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:hover:translate-y-0"
+        disabled={state === 'resending'}
+        className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-[#172033] px-5 py-3.5 text-sm font-bold text-white transition hover:bg-[#25324a] disabled:cursor-not-allowed disabled:opacity-50"
       >
-        {state === 'resending'
-          ? 'Sending...'
-          : 'Resend verification email'}
+        {state === 'resending' ? (
+          <>
+            <RefreshCw className="h-4 w-4 animate-spin" />
+            Sending...
+          </>
+        ) : (
+          <>
+            <RefreshCw className="h-4 w-4" />
+            Resend verification email
+          </>
+        )}
       </button>
     </form>
+  );
+
+  /*
+   * Shared page shell.
+   */
+  const PageShell = ({
+    children,
+  }: {
+    children: React.ReactNode;
+  }) => (
+    <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#f5f7fa] px-5 py-10 sm:px-8">
+      {/* Background */}
+      <div className="pointer-events-none absolute left-1/2 top-0 h-[30rem] w-[45rem] -translate-x-1/2 rounded-full bg-[#d7ad35]/[0.07] blur-3xl" />
+
+      <div className="pointer-events-none absolute -bottom-32 -left-32 h-80 w-80 rounded-full bg-[#e8edf5] blur-3xl" />
+
+      <div className="relative z-10 w-full max-w-[520px]">
+        {children}
+      </div>
+    </main>
   );
 
   /*
@@ -411,43 +443,40 @@ export default function EmailVerification() {
    */
   if (state === 'success') {
     return (
-      <main className="min-h-screen bg-[#f8fafc] flex items-center justify-center p-5">
-        <div className="w-full max-w-[500px] bg-white rounded-[28px] border border-slate-200 shadow-xl shadow-slate-900/5 p-8 sm:p-10 text-center">
-          <div className="w-16 h-16 mx-auto rounded-2xl bg-emerald-50 border border-emerald-100 flex items-center justify-center mb-6">
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              className="w-8 h-8 text-emerald-600"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <path
-                d="m5 12 4 4L19 6"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
+      <PageShell>
+        <div className="overflow-hidden rounded-[28px] border border-[#e1e5eb] bg-white shadow-[0_25px_70px_rgba(23,32,51,0.08)]">
+          <div className="h-1.5 bg-[#d7ad35]" />
+
+          <div className="p-8 text-center sm:p-10">
+            <Brand />
+
+            <div className="mx-auto mt-9 flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-50">
+              <CheckCircle2 className="h-8 w-8 text-emerald-600" />
+            </div>
+
+            <div className="mt-7">
+              <div className="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1.5 text-[9px] font-extrabold uppercase tracking-[0.16em] text-emerald-700">
+                <Check className="h-3 w-3" />
+                Verification complete
+              </div>
+
+              <h1 className="mt-4 font-serif text-3xl font-bold tracking-[-0.03em] text-[#172033] sm:text-4xl">
+                You're all set.
+              </h1>
+
+              <p className="mx-auto mt-3 max-w-sm text-sm leading-6 text-[#667085]">
+                Your email has been verified successfully.
+                Your Learnora ME account is now ready.
+              </p>
+            </div>
+
+            <div className="mt-7 flex items-center justify-center gap-2 text-xs text-[#98a1b2]">
+              <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+              Taking you to your dashboard...
+            </div>
           </div>
-
-          <p className="text-[10px] uppercase tracking-[0.2em] font-bold text-[#B08A1E]">
-            Learnora Me
-          </p>
-
-          <h1 className="mt-2 text-2xl sm:text-3xl font-extrabold tracking-tight text-[#111827]">
-            Email verified!
-          </h1>
-
-          <p className="mt-3 text-sm leading-6 text-slate-500">
-            Your email has been verified
-            successfully. Your Learnora Me
-            account is now active.
-          </p>
-
-          <p className="mt-5 text-xs text-slate-400">
-            Taking you to your dashboard...
-          </p>
         </div>
-      </main>
+      </PageShell>
     );
   }
 
@@ -459,26 +488,33 @@ export default function EmailVerification() {
     loading
   ) {
     return (
-      <main className="min-h-screen bg-[#f8fafc] flex items-center justify-center p-5">
-        <div className="w-full max-w-[500px] bg-white rounded-[28px] border border-slate-200 shadow-xl shadow-slate-900/5 p-8 sm:p-10 text-center">
-          <div className="w-16 h-16 mx-auto rounded-2xl bg-[#D7AD35]/10 border border-[#D7AD35]/20 flex items-center justify-center mb-6">
-            <span className="w-7 h-7 rounded-full border-[3px] border-[#D7AD35]/30 border-t-[#B08A1E] animate-spin" />
+      <PageShell>
+        <div className="overflow-hidden rounded-[28px] border border-[#e1e5eb] bg-white shadow-[0_25px_70px_rgba(23,32,51,0.08)]">
+          <div className="h-1.5 bg-[#d7ad35]" />
+
+          <div className="p-8 text-center sm:p-10">
+            <Brand />
+
+            <div className="mx-auto mt-10 flex h-16 w-16 items-center justify-center rounded-2xl bg-[#f7f1df]">
+              <span className="h-7 w-7 animate-spin rounded-full border-[3px] border-[#d7ad35]/25 border-t-[#b78d16]" />
+            </div>
+
+            <h1 className="mt-7 font-serif text-3xl font-bold tracking-[-0.03em] text-[#172033]">
+              Verifying your email
+            </h1>
+
+            <p className="mx-auto mt-3 max-w-sm text-sm leading-6 text-[#667085]">
+              We're securely confirming your email address.
+              This should only take a moment.
+            </p>
+
+            <div className="mt-8 flex items-center justify-center gap-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#98a1b2]">
+              <ShieldCheck className="h-3.5 w-3.5" />
+              Secure account verification
+            </div>
           </div>
-
-          <p className="text-[10px] uppercase tracking-[0.2em] font-bold text-[#B08A1E]">
-            Learnora Me
-          </p>
-
-          <h1 className="mt-2 text-2xl sm:text-3xl font-extrabold tracking-tight text-[#111827]">
-            Verifying your email
-          </h1>
-
-          <p className="mt-3 text-sm leading-6 text-slate-500">
-            Please wait while we verify
-            your email address.
-          </p>
         </div>
-      </main>
+      </PageShell>
     );
   }
 
@@ -487,46 +523,35 @@ export default function EmailVerification() {
    */
   if (state === 'expired') {
     return (
-      <main className="min-h-screen bg-[#f8fafc] flex items-center justify-center p-5">
-        <div className="w-full max-w-[500px] bg-white rounded-[28px] border border-slate-200 shadow-xl shadow-slate-900/5 p-8 sm:p-10">
-          <div className="text-center">
-            <div className="w-16 h-16 mx-auto rounded-2xl bg-amber-50 border border-amber-100 flex items-center justify-center mb-6">
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                className="w-8 h-8 text-amber-600"
-                stroke="currentColor"
-                strokeWidth="1.8"
-              >
-                <circle
-                  cx="12"
-                  cy="12"
-                  r="8.5"
-                />
-                <path
-                  d="M12 7v5l3 2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
+      <PageShell>
+        <div className="overflow-hidden rounded-[28px] border border-[#e1e5eb] bg-white shadow-[0_25px_70px_rgba(23,32,51,0.08)]">
+          <div className="h-1.5 bg-[#d7ad35]" />
+
+          <div className="p-8 sm:p-10">
+            <Brand />
+
+            <div className="mt-9 text-center">
+              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-50">
+                <Clock3 className="h-8 w-8 text-amber-600" />
+              </div>
+
+              <div className="mt-6 inline-flex items-center gap-2 rounded-full bg-amber-50 px-3 py-1.5 text-[9px] font-extrabold uppercase tracking-[0.16em] text-amber-700">
+                Verification expired
+              </div>
+
+              <h1 className="mt-4 font-serif text-3xl font-bold tracking-[-0.03em] text-[#172033]">
+                Let's send you a new link.
+              </h1>
+
+              <p className="mx-auto mt-3 max-w-sm text-sm leading-6 text-[#667085]">
+                {message}
+              </p>
             </div>
 
-            <p className="text-[10px] uppercase tracking-[0.2em] font-bold text-[#B08A1E]">
-              Learnora Me
-            </p>
-
-            <h1 className="mt-2 text-2xl sm:text-3xl font-extrabold tracking-tight text-[#111827]">
-              Verification link expired
-            </h1>
-
-            <p className="mt-3 text-sm leading-6 text-slate-500">
-              {message}
-            </p>
+            <ResendForm />
           </div>
-
-          <ResendForm />
         </div>
-      </main>
+      </PageShell>
     );
   }
 
@@ -535,51 +560,49 @@ export default function EmailVerification() {
    */
   if (state === 'resent') {
     return (
-      <main className="min-h-screen bg-[#f8fafc] flex items-center justify-center p-5">
-        <div className="w-full max-w-[500px] bg-white rounded-[28px] border border-slate-200 shadow-xl shadow-slate-900/5 p-8 sm:p-10 text-center">
-          <div className="w-16 h-16 mx-auto rounded-2xl bg-emerald-50 border border-emerald-100 flex items-center justify-center mb-6">
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              className="w-8 h-8 text-emerald-600"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <path
-                d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v11a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 17.5v-11Z"
-              />
+      <PageShell>
+        <div className="overflow-hidden rounded-[28px] border border-[#e1e5eb] bg-white shadow-[0_25px_70px_rgba(23,32,51,0.08)]">
+          <div className="h-1.5 bg-[#d7ad35]" />
 
-              <path
-                d="m5 6 7 6 7-6"
-              />
+          <div className="p-8 text-center sm:p-10">
+            <Brand />
 
-              <path
-                d="m9 15 2 2 4-4"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
+            <div className="mx-auto mt-9 flex h-16 w-16 items-center justify-center rounded-2xl bg-[#f7f1df]">
+              <Inbox className="h-8 w-8 text-[#b78d16]" />
+            </div>
+
+            <div className="mt-6 inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1.5 text-[9px] font-extrabold uppercase tracking-[0.16em] text-emerald-700">
+              <Check className="h-3 w-3" />
+              Email sent
+            </div>
+
+            <h1 className="mt-4 font-serif text-3xl font-bold tracking-[-0.03em] text-[#172033]">
+              Check your inbox.
+            </h1>
+
+            <p className="mx-auto mt-3 max-w-sm text-sm leading-6 text-[#667085]">
+              {message}
+            </p>
+
+            <div className="mt-6 rounded-2xl bg-[#f7f8fa] p-4 text-left">
+              <div className="flex gap-3">
+                <Mail className="mt-0.5 h-4 w-4 shrink-0 text-[#b78d16]" />
+
+                <div>
+                  <p className="text-xs font-bold text-[#344054]">
+                    What to do next
+                  </p>
+
+                  <p className="mt-1 text-[11px] leading-5 text-[#7b8494]">
+                    Open the newest email from Learnora ME
+                    and click the verification button.
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
-
-          <p className="text-[10px] uppercase tracking-[0.2em] font-bold text-[#B08A1E]">
-            Learnora Me
-          </p>
-
-          <h1 className="mt-2 text-2xl sm:text-3xl font-extrabold tracking-tight text-[#111827]">
-            Check your inbox
-          </h1>
-
-          <p className="mt-3 text-sm leading-6 text-slate-500">
-            {message}
-          </p>
-
-          <p className="mt-3 text-xs leading-5 text-slate-400">
-            Open the newest verification
-            email and click the verification
-            button.
-          </p>
         </div>
-      </main>
+      </PageShell>
     );
   }
 
@@ -590,52 +613,42 @@ export default function EmailVerification() {
     state === 'already_verified'
   ) {
     return (
-      <main className="min-h-screen bg-[#f8fafc] flex items-center justify-center p-5">
-        <div className="w-full max-w-[500px] bg-white rounded-[28px] border border-slate-200 shadow-xl shadow-slate-900/5 p-8 sm:p-10 text-center">
-          <div className="w-16 h-16 mx-auto rounded-2xl bg-blue-50 border border-blue-100 flex items-center justify-center mb-6">
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              className="w-8 h-8 text-blue-600"
-              stroke="currentColor"
-              strokeWidth="1.8"
+      <PageShell>
+        <div className="overflow-hidden rounded-[28px] border border-[#e1e5eb] bg-white shadow-[0_25px_70px_rgba(23,32,51,0.08)]">
+          <div className="h-1.5 bg-[#d7ad35]" />
+
+          <div className="p-8 text-center sm:p-10">
+            <Brand />
+
+            <div className="mx-auto mt-9 flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-50">
+              <ShieldCheck className="h-8 w-8 text-blue-600" />
+            </div>
+
+            <div className="mt-6 inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1.5 text-[9px] font-extrabold uppercase tracking-[0.16em] text-blue-700">
+              Already verified
+            </div>
+
+            <h1 className="mt-4 font-serif text-3xl font-bold tracking-[-0.03em] text-[#172033]">
+              Your email is already verified.
+            </h1>
+
+            <p className="mx-auto mt-3 max-w-sm text-sm leading-6 text-[#667085]">
+              {message}
+            </p>
+
+            <button
+              type="button"
+              onClick={() =>
+                router.push('/')
+              }
+              className="group mt-8 flex w-full items-center justify-center gap-2 rounded-xl bg-[#172033] px-5 py-3.5 text-sm font-bold text-white transition hover:bg-[#25324a]"
             >
-              <path
-                d="M5 12.5 9.5 17 19 7.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-
-              <path
-                d="M4 4h16v16H4z"
-                opacity="0"
-              />
-            </svg>
+              Return to Learnora ME
+              <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+            </button>
           </div>
-
-          <p className="text-[10px] uppercase tracking-[0.2em] font-bold text-[#B08A1E]">
-            Learnora Me
-          </p>
-
-          <h1 className="mt-2 text-2xl sm:text-3xl font-extrabold tracking-tight text-[#111827]">
-            Email already verified
-          </h1>
-
-          <p className="mt-3 text-sm leading-6 text-slate-500">
-            {message}
-          </p>
-
-          <button
-            type="button"
-            onClick={() =>
-              router.push('/')
-            }
-            className="mt-7 w-full py-3.5 rounded-xl bg-[#111827] text-white font-bold text-sm hover:bg-[#1f2937] transition"
-          >
-            Return to Learnora Me
-          </button>
         </div>
-      </main>
+      </PageShell>
     );
   }
 
@@ -643,56 +656,51 @@ export default function EmailVerification() {
    * MISSING / INVALID / RESEND ERROR
    */
   return (
-    <main className="min-h-screen bg-[#f8fafc] flex items-center justify-center p-5">
-      <div className="w-full max-w-[500px] bg-white rounded-[28px] border border-slate-200 shadow-xl shadow-slate-900/5 p-8 sm:p-10">
-        <div className="text-center">
-          <div className="w-16 h-16 mx-auto rounded-2xl bg-red-50 border border-red-100 flex items-center justify-center mb-6">
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              className="w-8 h-8 text-red-500"
-              stroke="currentColor"
-              strokeWidth="1.8"
-            >
-              <circle
-                cx="12"
-                cy="12"
-                r="8.5"
-              />
+    <PageShell>
+      <div className="overflow-hidden rounded-[28px] border border-[#e1e5eb] bg-white shadow-[0_25px_70px_rgba(23,32,51,0.08)]">
+        <div className="h-1.5 bg-[#d7ad35]" />
 
-              <path
-                d="M9 9l6 6M15 9l-6 6"
-                strokeLinecap="round"
-              />
-            </svg>
+        <div className="p-8 sm:p-10">
+          <Brand />
+
+          <div className="mt-9 text-center">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-red-50">
+              <XCircle className="h-8 w-8 text-red-500" />
+            </div>
+
+            <div className="mt-6 inline-flex items-center gap-2 rounded-full bg-red-50 px-3 py-1.5 text-[9px] font-extrabold uppercase tracking-[0.16em] text-red-600">
+              Verification unavailable
+            </div>
+
+            <h1 className="mt-4 font-serif text-3xl font-bold tracking-[-0.03em] text-[#172033]">
+              We couldn't verify this link.
+            </h1>
+
+            <p className="mx-auto mt-3 max-w-sm text-sm leading-6 text-[#667085]">
+              {message ||
+                'This verification link is invalid or can no longer be used.'}
+            </p>
           </div>
 
-          <p className="text-[10px] uppercase tracking-[0.2em] font-bold text-[#B08A1E]">
-            Learnora Me
-          </p>
+          <ResendForm />
 
-          <h1 className="mt-2 text-2xl sm:text-3xl font-extrabold tracking-tight text-[#111827]">
-            Verification link unavailable
-          </h1>
-
-          <p className="mt-3 text-sm leading-6 text-slate-500">
-            {message ||
-              'This verification link is invalid or can no longer be used.'}
-          </p>
+          <button
+            type="button"
+            onClick={() =>
+              router.push('/')
+            }
+            className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-[#dfe3e9] px-5 py-3.5 text-sm font-bold text-[#475467] transition hover:bg-[#f8f9fa]"
+          >
+            Return to Learnora ME
+          </button>
         </div>
-
-        <ResendForm />
-
-        <button
-          type="button"
-          onClick={() =>
-            router.push('/')
-          }
-          className="mt-3 w-full py-3.5 rounded-xl border border-slate-200 text-slate-700 font-bold text-sm hover:bg-slate-50 transition"
-        >
-          Return to Learnora Me
-        </button>
       </div>
-    </main>
+
+      {/* Security footer */}
+      <div className="mt-6 flex items-center justify-center gap-2 text-[9px] font-semibold uppercase tracking-[0.14em] text-[#98a1b2]">
+        <LockKeyhole className="h-3 w-3" />
+        Secure email verification
+      </div>
+    </PageShell>
   );
 }

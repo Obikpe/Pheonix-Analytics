@@ -1,7 +1,20 @@
+// Header.tsx
 'use client';
 
 import { useState, useEffect, useCallback, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
+import {
+  Search,
+  ChevronDown,
+  Menu,
+  X,
+  ArrowRight,
+  Check,
+  Mail,
+  ShieldCheck,
+  BookOpen,
+  Sparkles,
+} from 'lucide-react';
 
 const API_URL = 'https://learnora-backend.vercel.app';
 
@@ -31,10 +44,10 @@ type AuthMode =
   | 'emailSent';
 
 const inputClass =
-  'w-full border border-slate-200 bg-slate-50 rounded-xl px-4 py-3.5 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:bg-white focus:border-[#D7AD35] focus:ring-4 focus:ring-[#D7AD35]/10 transition disabled:opacity-50';
+  'w-full border border-slate-200 bg-white rounded-lg px-4 py-3.5 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-[#B8962E] focus:ring-4 focus:ring-[#B8962E]/10 transition disabled:opacity-50';
 
 const labelClass =
-  'block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2';
+  'block text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500 mb-2';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -47,9 +60,15 @@ export default function Header() {
   const [showMobileMenu, setShowMobileMenu] =
     useState(false);
 
+  const [showBrowse, setShowBrowse] =
+    useState(false);
+
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+
+  const [searchQuery, setSearchQuery] =
+    useState('');
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -82,10 +101,6 @@ export default function Header() {
    *     detail: { mode: 'login' }
    *   })
    * )
-   *
-   * or:
-   *
-   * detail: { mode: 'register' }
    */
   useEffect(() => {
     const handleOpenAuth = (e: Event) => {
@@ -116,8 +131,7 @@ export default function Header() {
   }, []);
 
   /*
-   * Escape to close + lock background scrolling
-   * while authentication modal is open.
+   * Escape to close + lock background scrolling.
    */
   useEffect(() => {
     if (!showModal) return;
@@ -128,7 +142,10 @@ export default function Header() {
       }
     };
 
-    document.addEventListener('keydown', onKey);
+    document.addEventListener(
+      'keydown',
+      onKey
+    );
 
     const previousOverflow =
       document.body.style.overflow;
@@ -146,8 +163,31 @@ export default function Header() {
     };
   }, [showModal, closeModal]);
 
+  /*
+   * Close Browse dropdown when clicking elsewhere.
+   */
+  useEffect(() => {
+    const handleClick = () => {
+      setShowBrowse(false);
+    };
+
+    if (!showBrowse) return;
+
+    document.addEventListener(
+      'click',
+      handleClick
+    );
+
+    return () =>
+      document.removeEventListener(
+        'click',
+        handleClick
+      );
+  }, [showBrowse]);
+
   const scrollTo = (id: string) => {
     setShowMobileMenu(false);
+    setShowBrowse(false);
 
     document
       .getElementById(id)
@@ -160,6 +200,7 @@ export default function Header() {
     mode: 'login' | 'register'
   ) => {
     setShowMobileMenu(false);
+    setShowBrowse(false);
     setAuthMode(mode);
     setError('');
     setPassword('');
@@ -168,17 +209,37 @@ export default function Header() {
   };
 
   /*
-   * Route authenticated accounts to their actual
+   * Search currently routes to the Library section.
+   * This keeps the header functional without assuming
+   * a future search backend/API.
+   */
+  const handleSearch = (
+    e?: FormEvent
+  ) => {
+    e?.preventDefault();
+
+    if (!searchQuery.trim()) {
+      scrollTo('library');
+      return;
+    }
+
+    scrollTo('library');
+
+    window.dispatchEvent(
+      new CustomEvent(
+        'learnora-search',
+        {
+          detail: {
+            query: searchQuery.trim(),
+          },
+        }
+      )
+    );
+  };
+
+  /*
+   * Route authenticated accounts to their
    * isolated dashboard.
-   *
-   * Learners:
-   *   normal   -> /dashboard/general
-   *   witstart -> /dashboard/witstart
-   *
-   * Administrators:
-   *   super_admin    -> /dashboard/admin/super_admin
-   *   staff_admin    -> /dashboard/admin/staff_admin
-   *   witstart_admin -> /dashboard/admin/witstart_admin
    */
   const routeByRole = (role: string) => {
     switch (role) {
@@ -215,22 +276,22 @@ export default function Header() {
   };
 
   /*
-   * Save only the authenticated session returned
+   * Save only authenticated sessions returned
    * by the backend.
-   *
-   * Registration does NOT call this function because
-   * registration does not authenticate the user.
-   *
-   * EmailVerification.tsx handles the session created
-   * after successful email verification.
    */
-  const saveSession = (data: AuthResponse) => {
+  const saveSession = (
+    data: AuthResponse
+  ) => {
     const token =
       data.token ||
       data.access_token ||
       '';
 
-    if (!token || !data.email || !data.role) {
+    if (
+      !token ||
+      !data.email ||
+      !data.role
+    ) {
       throw new Error(
         'The server returned an incomplete authentication response.'
       );
@@ -263,36 +324,18 @@ export default function Header() {
       );
     }
 
-    /*
-     * Keep plan information synchronized when
-     * the backend provides it.
-     */
     if (data.sub_status) {
       localStorage.setItem(
         'phx_plan',
         data.sub_status
       );
     }
-
-    /*
-     * A verified account should no longer carry
-     * an old trial timestamp from a previous session.
-     *
-     * The authoritative entitlement remains the backend.
-     */
   };
 
   /*
    * -----------------------------
    * REGISTRATION
    * -----------------------------
-   *
-   * Registration:
-   * - creates the learner
-   * - hashes the password
-   * - creates verification token
-   * - sends verification email
-   * - does NOT authenticate the user
    */
   const handleRegistration = async (
     cleanEmail: string,
@@ -305,7 +348,8 @@ export default function Header() {
           method: 'POST',
 
           headers: {
-            'Content-Type': 'application/json',
+            'Content-Type':
+              'application/json',
           },
 
           body: JSON.stringify({
@@ -328,14 +372,10 @@ export default function Header() {
         );
       }
 
-      /*
-       * Do NOT save a token.
-       *
-       * The user must click the verification
-       * link sent by email.
-       */
       setSentEmail(cleanEmail);
-      setEmailSentType('verification');
+      setEmailSentType(
+        'verification'
+      );
 
       setPassword('');
       setError('');
@@ -355,9 +395,6 @@ export default function Header() {
    * -----------------------------
    * FORGOT PASSWORD
    * -----------------------------
-   *
-   * Backend:
-   * POST /api/auth/forgot-password
    */
   const handleForgotPassword = async (
     cleanEmail: string
@@ -369,7 +406,8 @@ export default function Header() {
           method: 'POST',
 
           headers: {
-            'Content-Type': 'application/json',
+            'Content-Type':
+              'application/json',
           },
 
           body: JSON.stringify({
@@ -392,7 +430,9 @@ export default function Header() {
 
       setError('');
       setSentEmail(cleanEmail);
-      setEmailSentType('password_reset');
+      setEmailSentType(
+        'password_reset'
+      );
       setLoading(false);
       setAuthMode('emailSent');
     } catch (err: any) {
@@ -434,7 +474,11 @@ export default function Header() {
         return;
       }
 
-      if (!EMAIL_RE.test(cleanEmail)) {
+      if (
+        !EMAIL_RE.test(
+          cleanEmail
+        )
+      ) {
         setError(
           'Please enter a valid email address.'
         );
@@ -454,7 +498,9 @@ export default function Header() {
     /*
      * REGISTER
      */
-    if (authMode === 'register') {
+    if (
+      authMode === 'register'
+    ) {
       if (
         !cleanEmail ||
         !cleanName ||
@@ -466,7 +512,11 @@ export default function Header() {
         return;
       }
 
-      if (!EMAIL_RE.test(cleanEmail)) {
+      if (
+        !EMAIL_RE.test(
+          cleanEmail
+        )
+      ) {
         setError(
           'Please enter a valid email address.'
         );
@@ -504,7 +554,11 @@ export default function Header() {
       return;
     }
 
-    if (!EMAIL_RE.test(cleanEmail)) {
+    if (
+      !EMAIL_RE.test(
+        cleanEmail
+      )
+    ) {
       setError(
         'Please enter a valid email address.'
       );
@@ -521,7 +575,8 @@ export default function Header() {
           method: 'POST',
 
           headers: {
-            'Content-Type': 'application/json',
+            'Content-Type':
+              'application/json',
           },
 
           body: JSON.stringify({
@@ -584,7 +639,7 @@ export default function Header() {
   };
 
   /*
-   * Return from forgot password to login.
+   * Return from forgot password.
    */
   const backToLogin = () => {
     if (loading) return;
@@ -596,8 +651,7 @@ export default function Header() {
   };
 
   /*
-   * Return to login from the email-sent
-   * confirmation screen.
+   * Return to login from email confirmation.
    */
   const backToLoginFromEmail = () => {
     if (loading) return;
@@ -610,178 +664,342 @@ export default function Header() {
 
   return (
     <>
-      <header className="sticky top-0 z-50 border-b border-slate-200/80 bg-white/90 backdrop-blur-xl shadow-[0_1px_18px_rgba(15,23,42,0.05)]">
-        <div className="max-w-[1440px] mx-auto h-[76px] px-5 sm:px-7 lg:px-10 flex items-center justify-between gap-6">
+      {/* =========================================================
+          HEADER
+      ========================================================= */}
+      <header className="sticky top-0 z-50 bg-white border-b border-slate-200">
+        <div className="max-w-[1440px] mx-auto">
 
-          {/* BRAND */}
-          <button
-            type="button"
-            onClick={() =>
-              window.scrollTo({
-                top: 0,
-                behavior: 'smooth',
-              })
-            }
-            className="flex items-center gap-3 shrink-0 group"
-            aria-label="Learnora Me home"
-          >
-            <span className="relative w-10 h-10 rounded-xl bg-[#111827] flex items-center justify-center overflow-hidden shadow-lg shadow-slate-900/10">
-              <span className="absolute inset-0 bg-[radial-gradient(circle_at_70%_25%,rgba(242,212,119,0.45),transparent_42%)]" />
+          {/* MAIN HEADER ROW */}
+          <div className="h-[74px] px-5 sm:px-7 lg:px-10 flex items-center gap-5">
 
-              <img
-                src="/logo.png"
-                alt="Learnora Me"
-                className="relative w-8 h-8 object-contain"
-              />
-            </span>
+            {/* BRAND */}
+            <button
+              type="button"
+              onClick={() =>
+                window.scrollTo({
+                  top: 0,
+                  behavior: 'smooth',
+                })
+              }
+              className="flex items-center gap-2.5 shrink-0 group"
+              aria-label="Learnora ME home"
+            >
+              <span className="relative w-[38px] h-[38px] rounded-lg bg-[#111827] flex items-center justify-center overflow-hidden">
+                <span className="absolute inset-0 bg-[radial-gradient(circle_at_70%_25%,rgba(242,212,119,0.55),transparent_45%)]" />
 
-            <span className="text-left leading-none whitespace-nowrap">
-              <span className="block text-[13px] sm:text-[15px] font-extrabold tracking-[0.055em] text-[#111827]">
-                LEARNORA ME
+                <img
+                  src="/logo.png"
+                  alt=""
+                  className="relative w-[30px] h-[30px] object-contain"
+                />
               </span>
-            </span>
-          </button>
 
-          {/* DESKTOP NAVIGATION */}
-          <nav className="hidden md:flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-full p-1">
-            {[
-              'library',
-              'playground',
-              'pricing',
-            ].map((id) => (
-              <button
-                key={id}
-                onClick={() =>
-                  scrollTo(id)
-                }
-                className="px-5 py-2.5 rounded-full text-sm font-semibold text-slate-600 hover:text-[#111827] hover:bg-white transition-all capitalize"
-              >
-                {id}
-              </button>
-            ))}
-          </nav>
+              <span className="text-left leading-none">
+                <span
+                  className="block text-[17px] sm:text-[19px] font-black tracking-[-0.045em] text-[#111827]"
+                  style={{
+                    fontFamily:
+                      'Georgia, "Times New Roman", serif',
+                  }}
+                >
+                  Learnora
+                  <span className="text-[#B8962E]">
+                    {' '}ME
+                  </span>
+                </span>
 
-          {/* DESKTOP AUTH */}
-          <div className="hidden md:flex items-center gap-3">
-            <button
-              onClick={() =>
-                openAuth('login')
-              }
-              className="text-sm font-bold text-slate-700 px-4 py-2.5 rounded-xl hover:bg-slate-100 transition-colors"
-            >
-              Log in
-            </button>
-
-            <button
-              onClick={() =>
-                openAuth('register')
-              }
-              className="group relative overflow-hidden bg-[#111827] text-white text-sm font-bold px-5 py-3 rounded-xl shadow-lg shadow-slate-900/10 hover:-translate-y-0.5 transition-all"
-            >
-              <span className="absolute inset-0 bg-gradient-to-r from-[#D7AD35] to-[#F2D477] opacity-0 group-hover:opacity-100 transition-opacity" />
-
-              <span className="relative group-hover:text-[#111827] transition-colors">
-                Start Free Trial{' '}
-                <span className="ml-1">
-                  →
+                <span className="hidden sm:block mt-0.5 text-[8px] font-bold uppercase tracking-[0.19em] text-slate-400">
+                  Learn without limits
                 </span>
               </span>
             </button>
-          </div>
 
-          {/* MOBILE MENU BUTTON */}
-          <button
-            onClick={() =>
-              setShowMobileMenu(
-                !showMobileMenu
-              )
-            }
-            aria-label={
-              showMobileMenu
-                ? 'Close menu'
-                : 'Open menu'
-            }
-            aria-expanded={
-              showMobileMenu
-            }
-            className="md:hidden w-11 h-11 rounded-xl border border-slate-200 bg-white flex items-center justify-center text-[#111827] hover:bg-slate-50 transition"
-          >
-            <span className="flex flex-col gap-1.5">
-              <span
-                className={`block w-5 h-0.5 bg-current transition-transform ${
-                  showMobileMenu
-                    ? 'translate-y-2 rotate-45'
-                    : ''
-                }`}
-              />
+            {/* BROWSE */}
+            <div
+              className="hidden lg:block relative"
+              onClick={(e) =>
+                e.stopPropagation()
+              }
+            >
+              <button
+                type="button"
+                onClick={() =>
+                  setShowBrowse(
+                    (prev) => !prev
+                  )
+                }
+                className="flex items-center gap-1.5 px-3 py-2 text-sm font-semibold text-slate-700 hover:text-[#111827] transition"
+              >
+                Browse
+                <ChevronDown
+                  className={`w-4 h-4 transition-transform ${
+                    showBrowse
+                      ? 'rotate-180'
+                      : ''
+                  }`}
+                />
+              </button>
 
-              <span
-                className={`block w-5 h-0.5 bg-current transition-opacity ${
-                  showMobileMenu
-                    ? 'opacity-0'
-                    : ''
-                }`}
-              />
+              {showBrowse && (
+                <div className="absolute top-full left-0 mt-3 w-[280px] rounded-xl border border-slate-200 bg-white shadow-[0_20px_60px_rgba(15,23,42,0.14)] p-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      scrollTo(
+                        'library'
+                      )
+                    }
+                    className="w-full flex items-start gap-3 rounded-lg p-3 text-left hover:bg-slate-50 transition"
+                  >
+                    <span className="w-9 h-9 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
+                      <BookOpen className="w-4 h-4 text-slate-700" />
+                    </span>
 
-              <span
-                className={`block w-5 h-0.5 bg-current transition-transform ${
-                  showMobileMenu
-                    ? '-translate-y-2 -rotate-45'
-                    : ''
-                }`}
-              />
-            </span>
-          </button>
-        </div>
+                    <span>
+                      <span className="block text-sm font-bold text-slate-900">
+                        Explore courses
+                      </span>
 
-        {/* MOBILE MENU */}
-        {showMobileMenu && (
-          <div className="md:hidden border-t border-slate-200 bg-white px-5 py-4 shadow-xl">
-            <nav className="space-y-1">
-              {[
-                'library',
-                'playground',
-                'pricing',
-              ].map((id) => (
-                <button
-                  key={id}
-                  onClick={() =>
-                    scrollTo(id)
+                      <span className="block mt-0.5 text-xs text-slate-500">
+                        Discover skills and learning paths.
+                      </span>
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      scrollTo(
+                        'playground'
+                      )
+                    }
+                    className="w-full flex items-start gap-3 rounded-lg p-3 text-left hover:bg-slate-50 transition"
+                  >
+                    <span className="w-9 h-9 rounded-lg bg-[#B8962E]/10 flex items-center justify-center shrink-0">
+                      <Sparkles className="w-4 h-4 text-[#9A7920]" />
+                    </span>
+
+                    <span>
+                      <span className="block text-sm font-bold text-slate-900">
+                        Learning Playground
+                      </span>
+
+                      <span className="block mt-0.5 text-xs text-slate-500">
+                        Practice what you learn interactively.
+                      </span>
+                    </span>
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* SEARCH */}
+            <form
+              onSubmit={handleSearch}
+              className="hidden md:flex flex-1 max-w-[520px] mx-auto"
+            >
+              <div className="relative w-full">
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-[18px] h-[18px] text-slate-400 pointer-events-none" />
+
+                <input
+                  value={searchQuery}
+                  onChange={(e) =>
+                    setSearchQuery(
+                      e.target.value
+                    )
                   }
-                  className="w-full text-left px-4 py-3 rounded-xl text-sm font-semibold text-slate-700 hover:bg-slate-50 capitalize"
-                >
-                  {id}
-                </button>
-              ))}
+                  type="search"
+                  placeholder="What do you want to learn?"
+                  aria-label="Search courses"
+                  className="w-full h-11 pl-11 pr-4 rounded-full border border-slate-300 bg-slate-50 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:bg-white focus:border-slate-500 transition"
+                />
+              </div>
+            </form>
+
+            {/* DESKTOP NAV */}
+            <nav className="hidden xl:flex items-center gap-1 shrink-0">
+              <button
+                type="button"
+                onClick={() =>
+                  scrollTo(
+                    'playground'
+                  )
+                }
+                className="px-3 py-2 text-sm font-semibold text-slate-600 hover:text-[#111827] transition"
+              >
+                Playground
+              </button>
+
+              <button
+                type="button"
+                onClick={() =>
+                  scrollTo('pricing')
+                }
+                className="px-3 py-2 text-sm font-semibold text-slate-600 hover:text-[#111827] transition"
+              >
+                Pricing
+              </button>
             </nav>
 
-            <div className="mt-3 pt-3 border-t border-slate-100 grid grid-cols-2 gap-2">
+            {/* AUTH */}
+            <div className="hidden md:flex items-center gap-2 shrink-0">
               <button
+                type="button"
                 onClick={() =>
                   openAuth('login')
                 }
-                className="py-3 rounded-xl text-sm font-bold text-slate-700 border border-slate-200"
+                className="px-4 py-2.5 rounded-lg text-sm font-bold text-[#111827] border border-slate-300 hover:bg-slate-50 transition"
               >
                 Log in
               </button>
 
               <button
+                type="button"
                 onClick={() =>
                   openAuth('register')
                 }
-                className="py-3 rounded-xl text-sm font-bold bg-[#111827] text-white"
+                className="px-4 py-2.5 rounded-lg bg-[#111827] text-white text-sm font-bold hover:bg-[#263244] transition shadow-sm"
               >
-                Start Free Trial
+                Join for Free
+              </button>
+            </div>
+
+            {/* MOBILE ACTIONS */}
+            <div className="ml-auto flex md:hidden items-center gap-2">
+              <button
+                type="button"
+                onClick={() =>
+                  openAuth('login')
+                }
+                className="hidden sm:block px-3 py-2 text-sm font-bold text-[#111827]"
+              >
+                Log in
+              </button>
+
+              <button
+                type="button"
+                onClick={() =>
+                  setShowMobileMenu(
+                    (prev) => !prev
+                  )
+                }
+                aria-label={
+                  showMobileMenu
+                    ? 'Close menu'
+                    : 'Open menu'
+                }
+                aria-expanded={
+                  showMobileMenu
+                }
+                className="w-10 h-10 rounded-lg border border-slate-200 flex items-center justify-center text-[#111827] hover:bg-slate-50 transition"
+              >
+                {showMobileMenu ? (
+                  <X className="w-5 h-5" />
+                ) : (
+                  <Menu className="w-5 h-5" />
+                )}
               </button>
             </div>
           </div>
-        )}
+
+          {/* MOBILE SEARCH */}
+          <div className="md:hidden px-5 pb-3">
+            <form
+              onSubmit={handleSearch}
+            >
+              <div className="relative">
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-[17px] h-[17px] text-slate-400" />
+
+                <input
+                  value={searchQuery}
+                  onChange={(e) =>
+                    setSearchQuery(
+                      e.target.value
+                    )
+                  }
+                  type="search"
+                  placeholder="What do you want to learn?"
+                  className="w-full h-11 pl-10 pr-4 rounded-full border border-slate-300 bg-slate-50 text-sm outline-none focus:bg-white focus:border-slate-500 transition"
+                />
+              </div>
+            </form>
+          </div>
+
+          {/* MOBILE MENU */}
+          {showMobileMenu && (
+            <div className="md:hidden border-t border-slate-200 bg-white px-5 py-5">
+              <div className="space-y-1">
+                <button
+                  type="button"
+                  onClick={() =>
+                    scrollTo(
+                      'library'
+                    )
+                  }
+                  className="w-full flex items-center justify-between px-3 py-3 rounded-lg text-left text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  Explore courses
+                  <ArrowRight className="w-4 h-4 text-slate-400" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    scrollTo(
+                      'playground'
+                    )
+                  }
+                  className="w-full flex items-center justify-between px-3 py-3 rounded-lg text-left text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  Playground
+                  <ArrowRight className="w-4 h-4 text-slate-400" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    scrollTo('pricing')
+                  }
+                  className="w-full flex items-center justify-between px-3 py-3 rounded-lg text-left text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  Pricing
+                  <ArrowRight className="w-4 h-4 text-slate-400" />
+                </button>
+              </div>
+
+              <div className="mt-4 pt-4 border-t border-slate-100 grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() =>
+                    openAuth('login')
+                  }
+                  className="py-3 rounded-lg border border-slate-300 text-sm font-bold text-[#111827]"
+                >
+                  Log in
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    openAuth('register')
+                  }
+                  className="py-3 rounded-lg bg-[#111827] text-white text-sm font-bold"
+                >
+                  Join for Free
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       </header>
 
-      {/* AUTH MODAL */}
+      {/* =========================================================
+          AUTH MODAL
+      ========================================================= */}
       {showModal && (
         <div
-          className="fixed inset-0 z-[100] bg-[#020617]/70 backdrop-blur-md flex items-center justify-center p-4 sm:p-6 overflow-y-auto"
+          className="fixed inset-0 z-[100] bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto"
           onMouseDown={(e) => {
             if (
               e.target ===
@@ -795,440 +1013,526 @@ export default function Header() {
             role="dialog"
             aria-modal="true"
             aria-labelledby="auth-title"
-            className="relative bg-white w-full max-w-[430px] rounded-[28px] shadow-2xl shadow-black/30 overflow-hidden border border-white/20"
+            className="relative w-full max-w-[920px] bg-white rounded-2xl overflow-hidden shadow-[0_30px_100px_rgba(0,0,0,0.28)] border border-white"
           >
-            {/* MODAL HEADER */}
-            <div className="relative bg-[#111827] px-7 sm:px-9 pt-8 pb-9 overflow-hidden">
-              <div className="absolute -right-16 -top-20 w-48 h-48 rounded-full bg-[#D7AD35]/20 blur-2xl" />
+            {!loading && (
+              <button
+                type="button"
+                onClick={closeModal}
+                aria-label="Close"
+                className="absolute top-5 right-5 z-20 w-9 h-9 rounded-full bg-white/90 border border-slate-200 text-slate-600 hover:bg-white hover:text-slate-900 transition flex items-center justify-center"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
 
-              <div className="absolute -left-20 -bottom-28 w-56 h-56 rounded-full bg-[#D7AD35]/10 blur-3xl" />
+            <div className="grid lg:grid-cols-[0.92fr_1.08fr]">
 
-              {!loading && (
-                <button
-                  type="button"
-                  onClick={closeModal}
-                  aria-label="Close"
-                  className="absolute top-5 right-5 w-9 h-9 rounded-full bg-white/10 text-white/70 hover:bg-white/20 hover:text-white transition flex items-center justify-center text-lg"
-                >
-                  ×
-                </button>
-              )}
+              {/* LEFT BRAND PANEL */}
+              <div className="hidden lg:flex relative bg-[#111827] text-white p-10 flex-col justify-between overflow-hidden min-h-[600px]">
+                <div className="absolute -top-32 -right-32 w-80 h-80 rounded-full bg-[#B8962E]/20 blur-3xl" />
 
-              <div className="relative flex items-center gap-3 mb-7">
-                <div className="w-11 h-11 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center">
-                  <img
-                    src="/logo.png"
-                    alt=""
-                    className="w-8 h-8 object-contain"
-                  />
+                <div className="absolute -bottom-40 -left-40 w-96 h-96 rounded-full bg-[#B8962E]/10 blur-3xl" />
+
+                <div className="relative">
+                  <div className="flex items-center gap-3">
+                    <div className="w-11 h-11 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center">
+                      <img
+                        src="/logo.png"
+                        alt=""
+                        className="w-8 h-8 object-contain"
+                      />
+                    </div>
+
+                    <div>
+                      <div
+                        className="text-[19px] font-black tracking-[-0.04em]"
+                        style={{
+                          fontFamily:
+                            'Georgia, "Times New Roman", serif',
+                        }}
+                      >
+                        Learnora
+                        <span className="text-[#F2D477]">
+                          {' '}ME
+                        </span>
+                      </div>
+
+                      <div className="text-[8px] uppercase tracking-[0.2em] text-slate-400 font-bold">
+                        Learn without limits
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-16">
+                    <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-[10px] uppercase tracking-[0.15em] font-bold text-[#F2D477]">
+                      <Sparkles className="w-3.5 h-3.5" />
+                      Your learning journey
+                    </div>
+
+                    <h2 className="mt-5 text-[38px] leading-[1.08] font-extrabold tracking-[-0.04em]">
+                      Build skills
+                      <br />
+                      that move you
+                      <br />
+                      forward.
+                    </h2>
+
+                    <p className="mt-5 max-w-[340px] text-sm leading-6 text-slate-300">
+                      Learn practical skills,
+                      explore new fields,
+                      and build the confidence
+                      to take your next step.
+                    </p>
+                  </div>
                 </div>
 
-                <div>
-                  <p className="text-[10px] uppercase tracking-[0.2em] font-bold text-[#F2D477]">
+                <div className="relative space-y-3">
+                  {[
+                    'Learn at your own pace',
+                    'Practical, career-focused content',
+                    'Build skills through practice',
+                  ].map(
+                    (item) => (
+                      <div
+                        key={item}
+                        className="flex items-center gap-3 text-sm text-slate-200"
+                      >
+                        <span className="w-6 h-6 rounded-full bg-[#B8962E]/15 flex items-center justify-center shrink-0">
+                          <Check className="w-3.5 h-3.5 text-[#F2D477]" />
+                        </span>
+
+                        {item}
+                      </div>
+                    )
+                  )}
+                </div>
+              </div>
+
+              {/* RIGHT FORM PANEL */}
+              <div className="p-7 sm:p-10 lg:p-12">
+                {/* MOBILE BRAND */}
+                <div className="lg:hidden flex items-center gap-3 mb-8">
+                  <div className="w-10 h-10 rounded-lg bg-[#111827] flex items-center justify-center">
+                    <img
+                      src="/logo.png"
+                      alt=""
+                      className="w-7 h-7 object-contain"
+                    />
+                  </div>
+
+                  <div>
+                    <div
+                      className="text-[18px] font-black tracking-[-0.04em] text-[#111827]"
+                      style={{
+                        fontFamily:
+                          'Georgia, "Times New Roman", serif',
+                      }}
+                    >
+                      Learnora
+                      <span className="text-[#B8962E]">
+                        {' '}ME
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* FORM HEADING */}
+                <div className="mb-8">
+                  <div className="text-[10px] uppercase tracking-[0.16em] font-bold text-[#B8962E]">
                     {authMode ===
                     'login'
                       ? 'Welcome back'
                       : authMode ===
                         'register'
-                      ? 'Start your journey'
+                      ? 'Create your account'
                       : authMode ===
                         'forgot'
                       ? 'Account recovery'
-                      : 'Check your email'}
-                  </p>
+                      : 'Almost there'}
+                  </div>
 
-                  <p className="text-sm font-bold text-white">
-                    Learnora Me
-                  </p>
-                </div>
-              </div>
-
-              <div className="relative">
-                <h3
-                  id="auth-title"
-                  className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white"
-                >
-                  {authMode ===
-                  'login'
-                    ? 'Continue learning.'
-                    : authMode ===
-                      'register'
-                    ? 'Create Account.'
-                    : authMode ===
-                      'forgot'
-                    ? 'Reset your password.'
-                    : emailSentType ===
-                      'verification'
-                    ? 'Check your email.'
-                    : 'Check your inbox.'}
-                </h3>
-
-                <p className="mt-2 text-sm leading-6 text-slate-300">
-                  {authMode ===
-                  'login'
-                    ? 'Sign in to access your courses, projects and learning dashboard.'
-                    : authMode ===
-                      'register'
-                    ? 'Create your Learnora Me account and verify your email to continue.'
-                    : authMode ===
-                      'forgot'
-                    ? 'Enter your email and we will send you a secure password reset link.'
-                    : emailSentType ===
-                      'verification'
-                    ? 'Your account has been created. Verify your email to activate it.'
-                    : 'If the account exists, we have sent password reset instructions to your email.'}
-                </p>
-              </div>
-            </div>
-
-            {/* EMAIL SENT */}
-            {authMode ===
-              'emailSent' && (
-              <div className="p-7 sm:p-9">
-                <div className="w-16 h-16 mx-auto rounded-2xl bg-[#D7AD35]/10 border border-[#D7AD35]/20 flex items-center justify-center mb-5">
-                  <svg
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    className="w-8 h-8 text-[#B08A1E]"
-                    stroke="currentColor"
-                    strokeWidth="1.8"
+                  <h3
+                    id="auth-title"
+                    className="mt-2 text-[28px] sm:text-[32px] font-extrabold tracking-[-0.04em] text-[#111827]"
                   >
-                    <path
-                      d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v11a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 17.5v-11Z"
-                    />
-                    <path
-                      d="m5 6 7 6 7-6"
-                    />
-                  </svg>
+                    {authMode ===
+                    'login'
+                      ? 'Continue learning.'
+                      : authMode ===
+                        'register'
+                      ? 'Start learning today.'
+                      : authMode ===
+                        'forgot'
+                      ? 'Reset your password.'
+                      : emailSentType ===
+                        'verification'
+                      ? 'Check your email.'
+                      : 'Check your inbox.'}
+                  </h3>
+
+                  <p className="mt-2 text-sm leading-6 text-slate-500 max-w-[500px]">
+                    {authMode ===
+                    'login'
+                      ? 'Sign in to access your courses, projects and learning dashboard.'
+                      : authMode ===
+                        'register'
+                      ? 'Create your Learnora ME account and start exploring.'
+                      : authMode ===
+                        'forgot'
+                      ? 'Enter your email and we will send you a secure password reset link.'
+                      : emailSentType ===
+                        'verification'
+                      ? 'Your account has been created. Verify your email to activate it.'
+                      : 'If the account exists, we have sent password reset instructions to your email.'}
+                  </p>
                 </div>
 
-                <div className="text-center">
-                  <h4 className="text-lg font-extrabold text-[#111827]">
-                    {emailSentType ===
-                    'verification'
-                      ? 'Check your inbox'
-                      : 'Email sent'}
-                  </h4>
+                {/* EMAIL SENT */}
+                {authMode ===
+                  'emailSent' && (
+                  <div>
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-7 text-center">
+                      <div className="mx-auto w-14 h-14 rounded-xl bg-[#B8962E]/10 flex items-center justify-center">
+                        {emailSentType ===
+                        'verification' ? (
+                          <Mail className="w-7 h-7 text-[#9A7920]" />
+                        ) : (
+                          <ShieldCheck className="w-7 h-7 text-[#9A7920]" />
+                        )}
+                      </div>
 
-                  <p className="mt-2 text-sm leading-6 text-slate-500">
-                    {sentEmail ? (
-                      <>
+                      <h4 className="mt-5 text-lg font-extrabold text-[#111827]">
+                        {emailSentType ===
+                        'verification'
+                          ? 'Check your inbox'
+                          : 'Email sent'}
+                      </h4>
+
+                      <p className="mt-2 text-sm leading-6 text-slate-500">
                         We sent instructions to{' '}
                         <span className="font-bold text-slate-700 break-all">
                           {sentEmail}
                         </span>
                         .
-                      </>
-                    ) : (
-                      'Please check your email for the next step.'
+                      </p>
+
+                      {emailSentType ===
+                        'verification' && (
+                        <p className="mt-3 text-xs leading-5 text-slate-400">
+                          Click the verification
+                          button in the email
+                          to activate your
+                          Learnora ME account.
+                        </p>
+                      )}
+
+                      {emailSentType ===
+                        'password_reset' && (
+                        <p className="mt-3 text-xs leading-5 text-slate-400">
+                          Follow the secure
+                          link in the email
+                          to create a new
+                          password.
+                        </p>
+                      )}
+                    </div>
+
+                    {error && (
+                      <div
+                        role="alert"
+                        className="mt-4 rounded-lg border border-red-100 bg-red-50 px-4 py-3 text-xs font-medium text-red-600"
+                      >
+                        {error}
+                      </div>
                     )}
-                  </p>
 
-                  {emailSentType ===
-                    'verification' && (
-                    <p className="mt-3 text-xs leading-5 text-slate-400">
-                      Click the verification button
-                      in the email. The verification
-                      link will open Learnora Me and
-                      complete your account activation.
-                    </p>
-                  )}
-
-                  {emailSentType ===
-                    'password_reset' && (
-                    <p className="mt-3 text-xs leading-5 text-slate-400">
-                      Follow the secure link in the
-                      email to create a new password.
-                    </p>
-                  )}
-                </div>
-
-                {error && (
-                  <div
-                    role="alert"
-                    className="mt-5 flex items-start gap-2.5 rounded-xl border border-red-100 bg-red-50 px-3.5 py-3 text-xs font-medium text-red-600"
-                  >
-                    <span className="mt-0.5">
-                      !
-                    </span>
-
-                    <span>
-                      {error}
-                    </span>
-                  </div>
-                )}
-
-                <div className="mt-6">
-                  <button
-                    type="button"
-                    onClick={
-                      backToLoginFromEmail
-                    }
-                    className="w-full py-3.5 rounded-xl bg-[#111827] text-white font-bold text-sm shadow-lg shadow-slate-900/10 hover:bg-[#1f2937] hover:-translate-y-0.5 transition-all"
-                  >
-                    Back to Log in
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* FORM */}
-            {authMode !==
-              'emailSent' && (
-              <form
-                className="p-7 sm:p-9"
-                onSubmit={
-                  handleAuth
-                }
-                noValidate
-              >
-                <div className="space-y-4">
-
-                  {/* REGISTRATION NAME */}
-                  {authMode ===
-                    'register' && (
-                    <div>
-                      <label
-                        htmlFor="auth-name"
-                        className={
-                          labelClass
-                        }
-                      >
-                        Full Name
-                      </label>
-
-                      <input
-                        id="auth-name"
-                        value={name}
-                        onChange={(
-                          e
-                        ) => {
-                          setName(
-                            e.target
-                              .value
-                          );
-                          setError(
-                            ''
-                          );
-                        }}
-                        placeholder="Ade Doe"
-                        type="text"
-                        autoComplete="name"
-                        disabled={
-                          loading
-                        }
-                        className={
-                          inputClass
-                        }
-                      />
-                    </div>
-                  )}
-
-                  {/* EMAIL */}
-                  <div>
-                    <label
-                      htmlFor="auth-email"
-                      className={
-                        labelClass
-                      }
-                    >
-                      Email address
-                    </label>
-
-                    <input
-                      id="auth-email"
-                      value={email}
-                      onChange={(
-                        e
-                      ) => {
-                        setEmail(
-                          e.target
-                            .value
-                        );
-                        setError(
-                          ''
-                        );
-                      }}
-                      placeholder="you@example.com"
-                      type="email"
-                      autoComplete="email"
-                      disabled={
-                        loading
-                      }
-                      className={
-                        inputClass
-                      }
-                    />
-                  </div>
-
-                  {/* PASSWORD */}
-                  {(authMode ===
-                    'login' ||
-                    authMode ===
-                      'register') && (
-                    <div>
-                      <label
-                        htmlFor="auth-password"
-                        className={
-                          labelClass
-                        }
-                      >
-                        Password
-                      </label>
-
-                      <input
-                        id="auth-password"
-                        value={password}
-                        onChange={(
-                          e
-                        ) => {
-                          setPassword(
-                            e.target
-                              .value
-                          );
-                          setError(
-                            ''
-                          );
-                        }}
-                        type="password"
-                        autoComplete={
-                          authMode ===
-                          'register'
-                            ? 'new-password'
-                            : 'current-password'
-                        }
-                        disabled={
-                          loading
-                        }
-                        placeholder={
-                          authMode ===
-                          'register'
-                            ? 'At least 8 characters'
-                            : 'Enter your password'
-                        }
-                        className={
-                          inputClass
-                        }
-                      />
-                    </div>
-                  )}
-                </div>
-
-                {/* FORGOT PASSWORD */}
-                {authMode ===
-                  'login' && (
-                  <div className="mt-3 text-right">
-                    <button
-                      type="button"
-                      disabled={
-                        loading
-                      }
-                      onClick={() => {
-                        setAuthMode(
-                          'forgot'
-                        );
-                        setError(
-                          ''
-                        );
-                        setPassword(
-                          ''
-                        );
-                      }}
-                      className="text-xs font-bold text-slate-500 hover:text-[#B08A1E] transition disabled:opacity-50"
-                    >
-                      Forgot password?
-                    </button>
-                  </div>
-                )}
-
-                {/* ERROR */}
-                {error && (
-                  <div
-                    role="alert"
-                    className="mt-4 flex items-start gap-2.5 rounded-xl border border-red-100 bg-red-50 px-3.5 py-3 text-xs font-medium text-red-600"
-                  >
-                    <span className="mt-0.5">
-                      !
-                    </span>
-
-                    <span>
-                      {error}
-                    </span>
-                  </div>
-                )}
-
-                {/* SUBMIT */}
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="mt-6 w-full py-3.5 rounded-xl bg-[#111827] text-white font-bold text-sm shadow-lg shadow-slate-900/10 hover:bg-[#1f2937] hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:hover:translate-y-0"
-                >
-                  {loading ? (
-                    <span className="flex items-center justify-center gap-2">
-                      <span className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-
-                      {authMode ===
-                      'login'
-                        ? 'Signing in...'
-                        : authMode ===
-                          'register'
-                        ? 'Creating account...'
-                        : 'Sending email...'}
-                    </span>
-                  ) : authMode ===
-                    'login' ? (
-                    'Continue'
-                  ) : authMode ===
-                    'register' ? (
-                    'Create Account'
-                  ) : (
-                    'Send Reset Link'
-                  )}
-                </button>
-
-                {/* BOTTOM NAVIGATION */}
-                <div className="mt-5 text-center">
-                  {authMode ===
-                    'forgot' ? (
                     <button
                       type="button"
                       onClick={
-                        backToLogin
+                        backToLoginFromEmail
                       }
-                      disabled={
-                        loading
-                      }
-                      className="text-xs font-bold text-[#111827] hover:text-[#D7AD35] transition disabled:opacity-50"
+                      className="mt-5 w-full h-12 rounded-lg bg-[#111827] text-white font-bold text-sm hover:bg-[#263244] transition"
                     >
-                      ← Back to Log in
+                      Back to Log in
                     </button>
-                  ) : (
-                    <p className="text-xs text-slate-500">
-                      {authMode ===
-                      'login'
-                        ? "Don't have an account? "
-                        : 'Already have an account? '}
+                  </div>
+                )}
 
-                      <button
-                        type="button"
-                        onClick={
-                          toggleAuthMode
-                        }
-                        disabled={
-                          loading
-                        }
-                        className="font-bold text-[#111827] hover:text-[#D7AD35] transition disabled:opacity-50"
+                {/* FORM */}
+                {authMode !==
+                  'emailSent' && (
+                  <form
+                    onSubmit={
+                      handleAuth
+                    }
+                    noValidate
+                  >
+                    <div className="space-y-5">
+
+                      {/* NAME */}
+                      {authMode ===
+                        'register' && (
+                        <div>
+                          <label
+                            htmlFor="auth-name"
+                            className={
+                              labelClass
+                            }
+                          >
+                            Full name
+                          </label>
+
+                          <input
+                            id="auth-name"
+                            value={name}
+                            onChange={(
+                              e
+                            ) => {
+                              setName(
+                                e.target
+                                  .value
+                              );
+                              setError(
+                                ''
+                              );
+                            }}
+                            placeholder="Ade Doe"
+                            type="text"
+                            autoComplete="name"
+                            disabled={
+                              loading
+                            }
+                            className={
+                              inputClass
+                            }
+                          />
+                        </div>
+                      )}
+
+                      {/* EMAIL */}
+                      <div>
+                        <label
+                          htmlFor="auth-email"
+                          className={
+                            labelClass
+                          }
+                        >
+                          Email address
+                        </label>
+
+                        <input
+                          id="auth-email"
+                          value={email}
+                          onChange={(
+                            e
+                          ) => {
+                            setEmail(
+                              e.target
+                                .value
+                            );
+                            setError(
+                              ''
+                            );
+                          }}
+                          placeholder="you@example.com"
+                          type="email"
+                          autoComplete="email"
+                          disabled={
+                            loading
+                          }
+                          className={
+                            inputClass
+                          }
+                        />
+                      </div>
+
+                      {/* PASSWORD */}
+                      {(authMode ===
+                        'login' ||
+                        authMode ===
+                          'register') && (
+                        <div>
+                          <label
+                            htmlFor="auth-password"
+                            className={
+                              labelClass
+                            }
+                          >
+                            Password
+                          </label>
+
+                          <input
+                            id="auth-password"
+                            value={
+                              password
+                            }
+                            onChange={(
+                              e
+                            ) => {
+                              setPassword(
+                                e.target
+                                  .value
+                              );
+                              setError(
+                                ''
+                              );
+                            }}
+                            type="password"
+                            autoComplete={
+                              authMode ===
+                              'register'
+                                ? 'new-password'
+                                : 'current-password'
+                            }
+                            disabled={
+                              loading
+                            }
+                            placeholder={
+                              authMode ===
+                              'register'
+                                ? 'At least 8 characters'
+                                : 'Enter your password'
+                            }
+                            className={
+                              inputClass
+                            }
+                          />
+                        </div>
+                      )}
+                    </div>
+
+                    {/* FORGOT */}
+                    {authMode ===
+                      'login' && (
+                      <div className="mt-3 text-right">
+                        <button
+                          type="button"
+                          disabled={
+                            loading
+                          }
+                          onClick={() => {
+                            setAuthMode(
+                              'forgot'
+                            );
+                            setError(
+                              ''
+                            );
+                            setPassword(
+                              ''
+                            );
+                          }}
+                          className="text-xs font-bold text-slate-500 hover:text-[#9A7920] transition"
+                        >
+                          Forgot password?
+                        </button>
+                      </div>
+                    )}
+
+                    {/* ERROR */}
+                    {error && (
+                      <div
+                        role="alert"
+                        className="mt-5 flex items-start gap-2 rounded-lg border border-red-100 bg-red-50 px-4 py-3 text-xs font-medium text-red-600"
                       >
-                        {authMode ===
-                        'login'
-                          ? 'Sign up free'
-                          : 'Log in instead'}
-                      </button>
-                    </p>
-                  )}
-                </div>
-              </form>
-            )}
+                        <span className="font-bold">
+                          !
+                        </span>
+
+                        <span>
+                          {error}
+                        </span>
+                      </div>
+                    )}
+
+                    {/* SUBMIT */}
+                    <button
+                      type="submit"
+                      disabled={loading}
+                      className="mt-6 w-full h-12 rounded-lg bg-[#111827] text-white font-bold text-sm hover:bg-[#263244] transition disabled:opacity-50"
+                    >
+                      {loading ? (
+                        <span className="flex items-center justify-center gap-2">
+                          <span className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+
+                          {authMode ===
+                          'login'
+                            ? 'Signing in...'
+                            : authMode ===
+                              'register'
+                            ? 'Creating account...'
+                            : 'Sending email...'}
+                        </span>
+                      ) : authMode ===
+                        'login' ? (
+                        'Continue'
+                      ) : authMode ===
+                        'register' ? (
+                        'Create free account'
+                      ) : (
+                        'Send reset link'
+                      )}
+                    </button>
+
+                    {/* SECURITY NOTE */}
+                    {authMode ===
+                      'register' && (
+                      <div className="mt-4 flex items-start gap-2 text-[11px] leading-5 text-slate-400">
+                        <ShieldCheck className="w-4 h-4 shrink-0 mt-0.5" />
+
+                        <span>
+                          You'll need to verify
+                          your email before
+                          accessing your account.
+                        </span>
+                      </div>
+                    )}
+
+                    {/* BOTTOM NAV */}
+                    <div className="mt-7 pt-5 border-t border-slate-100 text-center">
+                      {authMode ===
+                      'forgot' ? (
+                        <button
+                          type="button"
+                          onClick={
+                            backToLogin
+                          }
+                          disabled={
+                            loading
+                          }
+                          className="text-sm font-bold text-[#111827] hover:text-[#9A7920] transition"
+                        >
+                          ← Back to Log in
+                        </button>
+                      ) : (
+                        <p className="text-sm text-slate-500">
+                          {authMode ===
+                          'login'
+                            ? "Don't have an account? "
+                            : 'Already have an account? '}
+
+                          <button
+                            type="button"
+                            onClick={
+                              toggleAuthMode
+                            }
+                            disabled={
+                              loading
+                            }
+                            className="font-bold text-[#111827] hover:text-[#9A7920] transition"
+                          >
+                            {authMode ===
+                            'login'
+                              ? 'Sign up free'
+                              : 'Log in instead'}
+                          </button>
+                        </p>
+                      )}
+                    </div>
+                  </form>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       )}
