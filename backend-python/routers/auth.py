@@ -1100,15 +1100,32 @@ def log_security_event(
     request: Optional[Request] = None,
     metadata: Optional[dict] = None,
 ):
+    """
+    Record a security event in public.security_logs.
+
+    The security_logs table contains:
+        id
+        event_type
+        ip_address
+        details
+        created_at
+        action
+        email
+        ip
+        metadata
+
+    Security logging must never interrupt the authentication flow.
+    """
 
     try:
+        client_ip = _get_client_ip(request)
 
         row = {
+            "event_type": action,
+            "ip_address": client_ip,
             "action": action,
             "email": email,
-            "ip": _get_client_ip(
-                request
-            ),
+            "ip": client_ip,
             "created_at": datetime.now(
                 timezone.utc
             ).isoformat(),
@@ -1122,11 +1139,9 @@ def log_security_event(
         ).insert(row).execute()
 
     except Exception as exc:
-
         print(
             f"Security logging failed: {exc}"
         )
-
 
 # ---------------------------------------------------------------------------
 # FIND ACCOUNT
