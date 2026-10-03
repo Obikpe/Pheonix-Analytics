@@ -214,7 +214,26 @@ export default function Library({ role = 'normal' }: Props) {
             </p>
           </div>
 
-          <div className="flex gap-2 overflow-x-auto pb-2">
+          {/* 
+            Mobile:
+            Horizontal scrolling remains available, but the scrollbar
+            is completely hidden.
+
+            Desktop:
+            Buttons wrap onto multiple lines so the section feels like
+            a proper course marketplace filter rather than a scrolling
+            strip.
+          */}
+          <div
+            className="
+              flex gap-2 overflow-x-auto pb-1
+              [scrollbar-width:none]
+              [&::-webkit-scrollbar]:hidden
+              lg:flex-wrap
+              lg:overflow-visible
+              lg:pb-0
+            "
+          >
 
             {/* ALL COURSES */}
 
@@ -270,11 +289,9 @@ export default function Library({ role = 'normal' }: Props) {
                 </button>
               );
             })}
-
           </div>
 
         </div>
-
         {/* ===================================================== */}
         {/* ACTIVE FILTER SUMMARY                                 */}
         {/* ===================================================== */}
