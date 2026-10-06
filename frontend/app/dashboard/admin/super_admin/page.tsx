@@ -485,6 +485,26 @@ function fmtBytes(value?: number | null) {
   )} ${units[i]}`;
 }
 
+function textOf(
+  value: unknown,
+  keys: string[],
+  fallback = ""
+): string {
+  if (!value || typeof value !== "object") return fallback;
+
+  const record = value as Record<string, unknown>;
+
+  for (const key of keys) {
+    const candidate = record[key];
+
+    if (typeof candidate === "string" && candidate.trim()) {
+      return candidate.trim();
+    }
+  }
+
+  return fallback;
+}
+
 function roleLabel(role?: string | null) {
   return (
     String(role || '')
