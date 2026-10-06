@@ -1,16 +1,11 @@
+
 "use client";
 
-import {
-  FormEvent,
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 const API_URL =
-  "https://learnora-backend.vercel.app";
+"https://learnora-backend.vercel.app";
 
 type Tab = "overview" | "learners" | "activity" | "billing";
 
@@ -63,18 +58,6 @@ type CurrentAdmin = {
   name?: string | null;
   role: string;
   account_type: string;
-};
-
-type CreateLearnerForm = {
-  name: string;
-  email: string;
-  password: string;
-};
-
-const EMPTY_CREATE_LEARNER_FORM: CreateLearnerForm = {
-  name: "",
-  email: "",
-  password: "",
 };
 
 const tabs: { id: Tab; label: string; icon: string }[] = [
@@ -257,9 +240,7 @@ function EmptyState({
         ◌
       </div>
 
-      <h3 className="mt-4 text-sm font-semibold text-white">
-        {title}
-      </h3>
+      <h3 className="mt-4 text-sm font-semibold text-white">{title}</h3>
 
       <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-zinc-500">
         {description}
@@ -297,14 +278,6 @@ export default function WitStartAdminPage() {
   const [deleting, setDeleting] = useState(false);
 
   const [mobileMenu, setMobileMenu] = useState(false);
-
-  /* CREATE LEARNER STATE */
-  const [showCreateLearner, setShowCreateLearner] = useState(false);
-
-  const [createLearnerForm, setCreateLearnerForm] =
-    useState<CreateLearnerForm>(EMPTY_CREATE_LEARNER_FORM);
-
-  const [creatingLearner, setCreatingLearner] = useState(false);
 
   const verifyAdmin = useCallback(async () => {
     try {
@@ -500,54 +473,6 @@ export default function WitStartAdminPage() {
     setEditStatus("active");
   };
 
-  /*
-   * CREATE WITSTART LEARNER
-   *
-   * This deliberately hard-codes role: "witstart".
-   * There is no role selector because a WitStart Admin must
-   * only be able to create WitStart learner accounts.
-   */
-  const createLearner = async (event: FormEvent) => {
-    event.preventDefault();
-
-    if (creatingLearner) return;
-
-    const name = createLearnerForm.name.trim();
-    const email = createLearnerForm.email.trim();
-    const password = createLearnerForm.password;
-
-    if (!name || !email || !password) {
-      setError("Please complete all learner account fields.");
-      return;
-    }
-
-    setCreatingLearner(true);
-    setError("");
-
-    try {
-      await apiFetch("/api/admin/users", {
-        method: "POST",
-        body: JSON.stringify({
-          name,
-          email,
-          password,
-          role: "witstart",
-        }),
-      });
-
-      setCreateLearnerForm(EMPTY_CREATE_LEARNER_FORM);
-      setShowCreateLearner(false);
-
-      await loadDashboard(true);
-    } catch (err: any) {
-      setError(
-        err?.message || "Unable to create WitStart learner."
-      );
-    } finally {
-      setCreatingLearner(false);
-    }
-  };
-
   const saveLearner = async () => {
     if (!selectedLearner?.email) return;
 
@@ -624,19 +549,6 @@ export default function WitStartAdminPage() {
     }
   };
 
-  const openCreateLearner = () => {
-    setError("");
-    setCreateLearnerForm(EMPTY_CREATE_LEARNER_FORM);
-    setShowCreateLearner(true);
-  };
-
-  const closeCreateLearner = () => {
-    if (creatingLearner) return;
-
-    setShowCreateLearner(false);
-    setCreateLearnerForm(EMPTY_CREATE_LEARNER_FORM);
-  };
-
   const goToTab = (tab: Tab) => {
     setActiveTab(tab);
     setMobileMenu(false);
@@ -648,7 +560,6 @@ export default function WitStartAdminPage() {
         <div className="flex min-h-screen items-center justify-center">
           <div className="text-center">
             <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-white/10 border-t-white" />
-
             <p className="mt-4 text-sm text-zinc-500">
               Verifying WitStart administrator access…
             </p>
@@ -661,7 +572,6 @@ export default function WitStartAdminPage() {
   return (
     <main className="min-h-screen bg-[#090a0c] text-white">
       <div className="flex min-h-screen">
-
         {/* SIDEBAR */}
         <aside className="hidden w-[250px] shrink-0 border-r border-white/[0.07] bg-[#0c0d0f] lg:flex lg:flex-col">
           <div className="border-b border-white/[0.07] px-6 py-5">
@@ -675,7 +585,6 @@ export default function WitStartAdminPage() {
 
               <div className="mt-1 flex items-center gap-2">
                 <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
-
                 <span className="text-[10px] font-medium uppercase tracking-[0.16em] text-zinc-500">
                   WitStart Admin
                 </span>
@@ -707,6 +616,39 @@ export default function WitStartAdminPage() {
                 </button>
               ))}
             </div>
+
+            <div className="mt-8 border-t border-white/[0.06] pt-6">
+              <p className="px-3 pb-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-600">
+                Scope
+              </p>
+
+              <div className="space-y-2 px-3 text-xs text-zinc-600">
+                <div className="flex items-center gap-2">
+                  <span className="text-emerald-400">✓</span>
+                  WitStart learners
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-emerald-400">✓</span>
+                  Learner activity
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-red-400">×</span>
+                  Learnora learners
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-red-400">×</span>
+                  Administrator accounts
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-red-400">×</span>
+                  Platform security
+                </div>
+              </div>
+            </div>
           </nav>
 
           <div className="border-t border-white/[0.07] p-4">
@@ -737,25 +679,8 @@ export default function WitStartAdminPage() {
         </aside>
 
         {/* MOBILE HEADER */}
-        <div className="fixed inset-x-0 top-0 z-40 flex h-16 items-center border-b border-white/[0.07] bg-[#0c0d0f]/95 px-4 backdrop-blur lg:hidden">
-
-          <button
-            onClick={() => setMobileMenu((value) => !value)}
-            aria-label={
-              mobileMenu
-                ? "Close dashboard navigation"
-                : "Open dashboard navigation"
-            }
-            aria-expanded={mobileMenu}
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.03] text-lg text-zinc-300 transition hover:bg-white/[0.07] hover:text-white"
-          >
-            {mobileMenu ? "×" : "☰"}
-          </button>
-
-          <button
-            onClick={() => router.push("/dashboard")}
-            className="ml-3 text-left"
-          >
+        <div className="fixed inset-x-0 top-0 z-40 flex h-16 items-center justify-between border-b border-white/[0.07] bg-[#0c0d0f]/95 px-4 backdrop-blur lg:hidden">
+          <button onClick={() => router.push("/dashboard")}>
             <div className="text-base font-semibold">
               Learnora<span className="text-zinc-500"> Me</span>
             </div>
@@ -764,62 +689,45 @@ export default function WitStartAdminPage() {
               WitStart Admin
             </div>
           </button>
+
+          <button
+            onClick={() => setMobileMenu((value) => !value)}
+            className="rounded-lg border border-white/[0.08] px-3 py-2 text-xs text-zinc-300"
+          >
+            Menu
+          </button>
         </div>
 
-        {/* MOBILE NAVIGATION */}
         {mobileMenu && (
-          <div className="fixed inset-x-0 top-16 z-30 border-b border-white/[0.07] bg-[#0c0d0f] p-4 shadow-2xl lg:hidden">
-            <div className="mb-3 px-1">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-600">
-                Dashboard
-              </p>
-            </div>
-
+          <div className="fixed inset-x-0 top-16 z-30 border-b border-white/[0.07] bg-[#0c0d0f] p-3 lg:hidden">
             <div className="grid grid-cols-2 gap-2">
               {tabs.map((tab) => (
                 <button
                   key={tab.id}
                   onClick={() => goToTab(tab.id)}
-                  className={`rounded-xl border px-3 py-3 text-left text-xs transition ${
+                  className={`rounded-xl px-3 py-3 text-left text-xs ${
                     activeTab === tab.id
-                      ? "border-white/[0.10] bg-white/[0.08] text-white"
-                      : "border-white/[0.05] bg-white/[0.03] text-zinc-500 hover:bg-white/[0.06] hover:text-zinc-200"
+                      ? "bg-white/[0.08] text-white"
+                      : "bg-white/[0.03] text-zinc-500"
                   }`}
                 >
-                  <span className="mr-2">
-                    {tab.icon}
-                  </span>
-
-                  {tab.label}
+                  {tab.icon}{" "}
+                  <span className="ml-2">{tab.label}</span>
                 </button>
               ))}
             </div>
-
-            <button
-              onClick={() => {
-                goToTab("learners");
-                setTimeout(() => {
-                  openCreateLearner();
-                }, 0);
-              }}
-              className="mt-3 flex w-full items-center justify-center rounded-xl border border-amber-400/20 bg-amber-400/[0.06] px-4 py-3 text-xs font-medium text-amber-300 transition hover:bg-amber-400/[0.10]"
-            >
-              + Create learner
-            </button>
           </div>
         )}
 
         {/* MAIN */}
         <section className="min-w-0 flex-1">
           <div className="mx-auto max-w-[1500px] px-4 pb-16 pt-24 sm:px-6 lg:px-10 lg:pt-10">
-
             {/* TOP BAR */}
             <div className="mb-8 flex flex-col gap-5 border-b border-white/[0.07] pb-7 sm:flex-row sm:items-end sm:justify-between">
               <div>
                 <div className="mb-2 flex items-center gap-2 text-xs text-zinc-600">
                   <span>Admin</span>
                   <span>/</span>
-
                   <span className="text-zinc-400">
                     WitStart
                   </span>
@@ -847,7 +755,6 @@ export default function WitStartAdminPage() {
                 >
                   ↻
                 </span>
-
                 {refreshing ? "Refreshing" : "Refresh"}
               </button>
             </div>
@@ -903,65 +810,109 @@ export default function WitStartAdminPage() {
                   />
                 </div>
 
-                <div className="rounded-2xl border border-white/[0.07] bg-[#101114] p-5">
-                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <h2 className="text-sm font-semibold text-white">
-                        Recent WitStart learners
-                      </h2>
+                <div className="grid gap-5 xl:grid-cols-[1.35fr_.65fr]">
+                  <div className="rounded-2xl border border-white/[0.07] bg-[#101114] p-5">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h2 className="text-sm font-semibold text-white">
+                          Recent WitStart learners
+                        </h2>
 
-                      <p className="mt-1 text-xs text-zinc-600">
-                        Latest accounts available in WitStart.
-                      </p>
+                        <p className="mt-1 text-xs text-zinc-600">
+                          Latest accounts available to this admin.
+                        </p>
+                      </div>
+
+                      <button
+                        onClick={() => setActiveTab("learners")}
+                        className="text-xs text-zinc-400 hover:text-white"
+                      >
+                        View all →
+                      </button>
                     </div>
 
-                    <button
-                      onClick={() => setActiveTab("learners")}
-                      className="text-left text-xs text-zinc-400 hover:text-white sm:text-right"
-                    >
-                      View all →
-                    </button>
+                    <div className="mt-5 divide-y divide-white/[0.05]">
+                      {learners.slice(0, 6).map((learner) => (
+                        <button
+                          key={String(
+                            learner.id || learner.email
+                          )}
+                          onClick={() => openLearner(learner)}
+                          className="flex w-full items-center justify-between gap-4 py-3 text-left transition hover:bg-white/[0.02]"
+                        >
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-medium text-zinc-200">
+                              {displayName(learner)}
+                            </p>
+
+                            <p className="mt-1 truncate text-xs text-zinc-600">
+                              {learner.email}
+                            </p>
+                          </div>
+
+                          <span
+                            className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] ${statusClass(
+                              learner
+                            )}`}
+                          >
+                            {statusLabel(learner)}
+                          </span>
+                        </button>
+                      ))}
+
+                      {!learners.length && (
+                        <div className="py-8 text-center text-xs text-zinc-600">
+                          No WitStart learners found.
+                        </div>
+                      )}
+                    </div>
                   </div>
 
-                  <div className="mt-5 divide-y divide-white/[0.05]">
-                    {learners.slice(0, 6).map((learner) => (
-                      <button
-                        key={String(
-                          learner.id || learner.email
-                        )}
-                        onClick={() => openLearner(learner)}
-                        className="flex w-full items-center justify-between gap-4 py-3 text-left transition hover:bg-white/[0.02]"
-                      >
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-medium text-zinc-200">
-                            {displayName(learner)}
-                          </p>
+                  <div className="rounded-2xl border border-white/[0.07] bg-[#101114] p-5">
+                    <h2 className="text-sm font-semibold text-white">
+                      WitStart scope
+                    </h2>
 
-                          <p className="mt-1 truncate text-xs text-zinc-600">
-                            {learner.email}
-                          </p>
-                        </div>
+                    <p className="mt-1 text-xs leading-5 text-zinc-600">
+                      This account is intentionally isolated from
+                      the wider Learnora administration system.
+                    </p>
 
-                        <span
-                          className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] ${statusClass(
-                            learner
-                          )}`}
+                    <div className="mt-6 space-y-3">
+                      {[
+                        ["WitStart learners", true],
+                        ["Learner records", true],
+                        ["Learner activity", true],
+                        ["Learnora learners", false],
+                        ["Staff administrators", false],
+                        ["Super administrators", false],
+                        ["Platform security", false],
+                      ].map(([label, allowed]) => (
+                        <div
+                          key={String(label)}
+                          className="flex items-center justify-between rounded-xl border border-white/[0.05] bg-white/[0.02] px-3 py-2.5"
                         >
-                          {statusLabel(learner)}
-                        </span>
-                      </button>
-                    ))}
+                          <span className="text-xs text-zinc-400">
+                            {label}
+                          </span>
 
-                    {!learners.length && (
-                      <div className="py-8 text-center text-xs text-zinc-600">
-                        No WitStart learners found.
-                      </div>
-                    )}
+                          <span
+                            className={
+                              allowed
+                                ? "text-xs text-emerald-400"
+                                : "text-xs text-zinc-700"
+                            }
+                          >
+                            {allowed ? "Allowed" : "Restricted"}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 </div>
 
                 <div className="rounded-2xl border border-white/[0.07] bg-[#101114] p-5">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-center justify-between">
                     <div>
                       <h2 className="text-sm font-semibold text-white">
                         Recent activity
@@ -975,7 +926,7 @@ export default function WitStartAdminPage() {
 
                     <button
                       onClick={() => setActiveTab("activity")}
-                      className="text-left text-xs text-zinc-400 hover:text-white sm:text-right"
+                      className="text-xs text-zinc-400 hover:text-white"
                     >
                       View activity →
                     </button>
@@ -1020,33 +971,6 @@ export default function WitStartAdminPage() {
             {/* LEARNERS */}
             {activeTab === "learners" && (
               <div className="space-y-5">
-
-                {/* CREATE LEARNER HEADER */}
-                <div className="rounded-2xl border border-white/[0.07] bg-[#101114] p-5">
-                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <h2 className="text-sm font-semibold text-white">
-                        WitStart learners
-                      </h2>
-
-                      <p className="mt-1 text-xs leading-5 text-zinc-600">
-                        Create and manage learner accounts for the
-                        WitStart academy.
-                      </p>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={openCreateLearner}
-                      className="flex w-full items-center justify-center gap-2 rounded-xl bg-white px-4 py-3 text-sm font-semibold text-black transition hover:bg-zinc-200 sm:w-auto"
-                    >
-                      <span className="text-base">+</span>
-                      Create learner
-                    </button>
-                  </div>
-                </div>
-
-                {/* LEARNER STATS */}
                 <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                   <StatCard
                     label="All"
@@ -1073,7 +997,6 @@ export default function WitStartAdminPage() {
                   />
                 </div>
 
-                {/* LEARNER TABLE */}
                 <div className="rounded-2xl border border-white/[0.07] bg-[#101114]">
                   <div className="flex flex-col gap-3 border-b border-white/[0.07] p-4 lg:flex-row lg:items-center lg:justify-between">
                     <div className="relative min-w-0 flex-1 lg:max-w-md">
@@ -1472,147 +1395,7 @@ export default function WitStartAdminPage() {
         </section>
       </div>
 
-      {/* CREATE LEARNER MODAL */}
-      {showCreateLearner && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
-          <form
-            onSubmit={createLearner}
-            className="w-full max-w-lg overflow-hidden rounded-2xl border border-white/[0.08] bg-[#111216] shadow-2xl"
-          >
-            <div className="flex items-start justify-between border-b border-white/[0.07] p-5">
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-amber-400">
-                  WitStart
-                </p>
-
-                <h2 className="mt-2 text-lg font-semibold text-white">
-                  Create learner
-                </h2>
-
-                <p className="mt-1 text-xs leading-5 text-zinc-600">
-                  Create a new learner account for the WitStart
-                  academy.
-                </p>
-              </div>
-
-              <button
-                type="button"
-                onClick={closeCreateLearner}
-                disabled={creatingLearner}
-                className="rounded-lg px-2 py-1 text-lg text-zinc-500 hover:bg-white/[0.05] hover:text-white disabled:opacity-50"
-              >
-                ×
-              </button>
-            </div>
-
-            <div className="space-y-5 p-5">
-              <div>
-                <label
-                  htmlFor="create-learner-name"
-                  className="mb-2 block text-xs font-medium text-zinc-400"
-                >
-                  Full name
-                </label>
-
-                <input
-                  id="create-learner-name"
-                  type="text"
-                  value={createLearnerForm.name}
-                  onChange={(event) =>
-                    setCreateLearnerForm((current) => ({
-                      ...current,
-                      name: event.target.value,
-                    }))
-                  }
-                  placeholder="Enter learner's full name"
-                  autoComplete="name"
-                  disabled={creatingLearner}
-                  className="w-full rounded-xl border border-white/[0.08] bg-white/[0.025] px-3 py-3 text-sm text-white outline-none placeholder:text-zinc-700 focus:border-white/[0.18] disabled:opacity-50"
-                />
-              </div>
-
-              <div>
-                <label
-                  htmlFor="create-learner-email"
-                  className="mb-2 block text-xs font-medium text-zinc-400"
-                >
-                  Email address
-                </label>
-
-                <input
-                  id="create-learner-email"
-                  type="email"
-                  value={createLearnerForm.email}
-                  onChange={(event) =>
-                    setCreateLearnerForm((current) => ({
-                      ...current,
-                      email: event.target.value,
-                    }))
-                  }
-                  placeholder="learner@example.com"
-                  autoComplete="email"
-                  disabled={creatingLearner}
-                  className="w-full rounded-xl border border-white/[0.08] bg-white/[0.025] px-3 py-3 text-sm text-white outline-none placeholder:text-zinc-700 focus:border-white/[0.18] disabled:opacity-50"
-                />
-              </div>
-
-              <div>
-                <label
-                  htmlFor="create-learner-password"
-                  className="mb-2 block text-xs font-medium text-zinc-400"
-                >
-                  Temporary password
-                </label>
-
-                <input
-                  id="create-learner-password"
-                  type="password"
-                  value={createLearnerForm.password}
-                  onChange={(event) =>
-                    setCreateLearnerForm((current) => ({
-                      ...current,
-                      password: event.target.value,
-                    }))
-                  }
-                  placeholder="Enter a temporary password"
-                  autoComplete="new-password"
-                  disabled={creatingLearner}
-                  className="w-full rounded-xl border border-white/[0.08] bg-white/[0.025] px-3 py-3 text-sm text-white outline-none placeholder:text-zinc-700 focus:border-white/[0.18] disabled:opacity-50"
-                />
-              </div>
-
-              <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-3">
-                <p className="text-xs leading-5 text-zinc-500">
-                  This account will be created as a WitStart learner.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex flex-col-reverse gap-2 border-t border-white/[0.07] p-5 sm:flex-row sm:items-center sm:justify-end">
-              <button
-                type="button"
-                onClick={closeCreateLearner}
-                disabled={creatingLearner}
-                className="w-full rounded-xl border border-white/[0.07] px-4 py-3 text-xs text-zinc-400 transition hover:bg-white/[0.04] hover:text-white disabled:opacity-50 sm:w-auto"
-              >
-                Cancel
-              </button>
-
-              <button
-                type="submit"
-                disabled={creatingLearner}
-                className="w-full rounded-xl bg-white px-4 py-3 text-xs font-semibold text-black transition hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
-              >
-                {creatingLearner
-                  ? "Creating learner…"
-                  : "Create learner"}
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
-
-      {/* LEARNER MANAGEMENT MODAL */}
+      {/* LEARNER MODAL */}
       {selectedLearner && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
           <div className="w-full max-w-lg rounded-2xl border border-white/[0.08] bg-[#111216] shadow-2xl">
@@ -1698,6 +1481,14 @@ export default function WitStartAdminPage() {
                     )}
                   </p>
                 </div>
+              </div>
+
+              <div className="rounded-xl border border-amber-400/10 bg-amber-400/[0.035] p-3">
+                <p className="text-xs leading-5 text-zinc-500">
+                  WitStart administrators can manage WitStart
+                  learner accounts only. Administrator accounts and
+                  Learnora-wide settings remain outside this area.
+                </p>
               </div>
             </div>
 
