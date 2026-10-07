@@ -25,16 +25,19 @@ async def ask(body:AskIn,user:CurrentUser=Depends(get_current_user),context:Perm
             raise HTTPException(403,"You are not authorised to use this AI feature.")
     elif context.organisation_id and not context.has_permission("ai.view") and context.organisation_role not in {"learner","instructor","admin","owner"}:
         raise HTTPException(403,"AI access is not available for this account.")
+    if body.organisation_id and not context.is_platform_admin and str(body.organisation_id)!=str(context.organisation_id):
+        raise HTTPException(403,"Organisation context does not match your membership.")
+    org_id=context.organisation_id or (body.organisation_id if context.is_platform_admin else None)
     conversation_id=body.conversation_id
     if conversation_id:
         c=supabase.table("learnora_ai_conversations").select("id,user_id").eq("id",conversation_id).limit(1).execute()
         if not c.data or str(c.data[0]["user_id"])!=str(user.id):raise HTTPException(403,"Conversation access denied.")
     else:
-        c=supabase.table("learnora_ai_conversations").insert({"user_id":user.id,"organisation_id":body.organisation_id,"feature":body.feature}).execute()
+        c=supabase.table("learnora_ai_conversations").insert({"user_id":user.id,"organisation_id":org_id,"feature":body.feature}).execute()
         conversation_id=c.data[0]["id"] if c.data else None
     if conversation_id:
         supabase.table("learnora_ai_messages").insert({"conversation_id":conversation_id,"role":"user","content":body.message}).execute()
-    result=await generate(user.id,body.feature,body.message,body.organisation_id,conversation_id,body.model)
+    result=await generate(user.id,body.feature,body.message,org_id,conversation_id,body.model)
     if conversation_id:
         supabase.table("learnora_ai_messages").insert({"conversation_id":conversation_id,"role":"assistant","content":result["content"],"provider":result.get("provider"),"model":result.get("model"),"latency_ms":result.get("latency_ms")}).execute()
     return {"success":True,"conversation_id":conversation_id,**result}
