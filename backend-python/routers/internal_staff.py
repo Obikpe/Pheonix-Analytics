@@ -54,12 +54,12 @@ def roles(staff:InternalStaffContext=Depends(get_current_staff),_:InternalStaffC
     return {"success":True,"roles":r.data or []}
 
 @router.get("/departments/catalog")
-def departments(staff:InternalStaffContext=Depends(get_current_staff),_:PermissionContext=Depends(require_permission("staff.departments"))):
+def departments(staff:InternalStaffContext=Depends(require_internal_permission("staff.departments"))):
     r=supabase.table("learnora_departments").select("id,name,slug,description,status").order("name").execute()
     return {"success":True,"departments":r.data or []}
 
 @router.get("/{staff_id}")
-def get_staff(staff_id:str,staff:InternalStaffContext=Depends(get_current_staff),_:PermissionContext=Depends(require_permission("staff.view"))):
+def get_staff(staff_id:str,staff:InternalStaffContext=Depends(get_current_staff),_:InternalStaffContext=Depends(require_internal_permission("staff.view"))):
     row=staff_row(staff_id)
     if not row:raise HTTPException(404,"Staff account not found")
     return {"success":True,**payload(row)}
@@ -82,7 +82,7 @@ def create_staff(body:CreateStaffRequest,request:Request,admin:PermissionContext
     return {"success":True,**payload(sr.data[0])}
 
 @router.patch("/{staff_id}")
-def update_staff(staff_id:str,body:UpdateStaffRequest,staff:InternalStaffContext=Depends(get_current_staff),_:PermissionContext=Depends(require_permission("staff.update"))):
+def update_staff(staff_id:str,body:UpdateStaffRequest,staff:InternalStaffContext=Depends(require_internal_permission("staff.update"))):
     row=staff_row(staff_id)
     if not row:raise HTTPException(404,"Staff account not found")
     if body.name is not None:supabase.table("users").update({"name":body.name.strip()}).eq("id",row["user_id"]).execute()
