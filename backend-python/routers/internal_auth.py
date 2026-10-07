@@ -63,6 +63,29 @@ def get_current_staff(creds:Optional[HTTPAuthorizationCredentials]=Depends(beare
     if not email:raise HTTPException(401,"Invalid internal token")
     return _load_staff_context(email)
 
+
+INTERNAL_ROLE_PERMISSIONS={
+ "super_admin":{"staff.view","staff.create","staff.update","staff.roles","staff.teams","staff.departments","system.audit"},
+ "executive":{"staff.view","staff.teams","staff.departments","system.audit"},
+ "operations":{"staff.view","staff.teams","staff.departments"},
+ "product":{"staff.view","staff.teams"},
+ "engineering":{"staff.view"},
+ "data_analytics":{"staff.view"},
+ "learning_curriculum":{"staff.view"},
+ "customer_success":{"staff.view"},
+ "sales_partnerships":{"staff.view"},
+ "finance":{"staff.view"},
+ "support":{"staff.view"},
+ "ai_research":{"staff.view"},
+}
+
+def require_internal_permission(permission):
+    def dependency(staff:InternalStaffContext=Depends(get_current_staff)):
+        if any(permission in INTERNAL_ROLE_PERMISSIONS.get(role,set()) for role in staff.roles):
+            return staff
+        raise HTTPException(status_code=403,detail=f"Permission required: {permission}")
+    return dependency
+
 @router.post("/login")
 def internal_login(payload:InternalLoginRequest,request:Request):
     email=norm_email(payload.email); found=_staff_by_email(email)
