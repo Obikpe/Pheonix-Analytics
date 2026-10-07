@@ -1,6 +1,6 @@
 """Backend-enforced organisation and cohort capacity checks."""
 from fastapi import HTTPException
-from ..routers.auth import supabase
+from routers.auth import supabase
 
 KEY_ROLES={"learners":"learner","instructors":"instructor"}
 
