@@ -42,7 +42,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from .auth import supabase
-from ..services.capacity import ensure_org_capacity
+from services.capacity import ensure_org_capacity
 
 from .permissions import (
     PermissionContext,
