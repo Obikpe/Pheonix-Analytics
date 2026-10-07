@@ -79,10 +79,10 @@ def add_member(organisation_id:UUID,payload:AddOrganisationMember,context:Permis
     if existing.data:
         m=existing.data[0]
         if m["status"]=="active":raise HTTPException(409,"User is already an active member.")
-        ensure_org_capacity(oid,"learners" if role=="learner" else "instructors" if role=="instructor" else "learners",1)
+        if role in {"learner","instructor"}:\n            ensure_org_capacity(oid,"learners" if role=="learner" else "instructors",1)
         r=supabase.table("organisation_members").update({"role":role,"status":"active"}).eq("id",m["id"]).execute()
     else:
-        ensure_org_capacity(oid,"learners" if role=="learner" else "instructors" if role=="instructor" else "learners",1)
+        if role in {"learner","instructor"}:\n            ensure_org_capacity(oid,"learners" if role=="learner" else "instructors",1)
         r=supabase.table("organisation_members").insert({"organisation_id":oid,"user_id":uid,"role":role,"status":"active"}).execute()
     if not r.data:raise HTTPException(500,"Failed to save organisation membership.")
     m=r.data[0]; audit(actor_user_id=context.user_id,action="organisation_member_added",resource_type="organisation_member",resource_id=m["id"],organisation_id=oid,metadata={"role":role})
