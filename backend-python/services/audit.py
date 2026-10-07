@@ -1,6 +1,6 @@
 """Central audit writer for sensitive Learnora operations."""
 from fastapi import Request
-from ..routers.auth import supabase
+from routers.auth import supabase
 
 def audit(actor_user_id=None, action="", resource_type=None, resource_id=None,
           organisation_id=None, success=True, request:Request=None, metadata=None, actor_staff_id=None):
