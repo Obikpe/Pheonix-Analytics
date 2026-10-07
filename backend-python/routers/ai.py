@@ -3,7 +3,7 @@ from fastapi import APIRouter,Depends,HTTPException
 from pydantic import BaseModel,Field
 from .auth import CurrentUser,get_current_user,supabase
 from .permissions import PermissionContext,require_permission,get_permission_context
-from ..services.ai import generate
+from services.ai import generate
 
 router=APIRouter(prefix="/api/ai",tags=["Learnora AI"])
 
