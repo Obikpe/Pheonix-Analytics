@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Header
 from pydantic import BaseModel, Field
 from .auth import CurrentUser, get_current_user, supabase
 from .permissions import PermissionContext, require_permission
+from ..services.capacity import count_org
 
 router=APIRouter(prefix="/api/commercial",tags=["Commercial"])
 
@@ -94,9 +95,6 @@ def capacity(organisation_id:str,_:PermissionContext=Depends(require_permission(
     usage=[]
     for e in r.data or []:
         key=e["entitlement_key"]; limit=e.get("limit_value")
-        count=0
-        if key=="learners": count=len(supabase.table("organisation_members").select("id",count="exact").eq("organisation_id",organisation_id).eq("role","learner").eq("status","active").execute().data or [])
-        elif key=="instructors": count=len(supabase.table("organisation_members").select("id",count="exact").eq("organisation_id",organisation_id).eq("role","instructor").eq("status","active").execute().data or [])
-        elif key=="teams": count=len(supabase.table("learnora_staff_teams").select("id").eq("id","00000000-0000-0000-0000-000000000000").execute().data or []) if False else 0
+        count=count_org(organisation_id,key)
         usage.append({"entitlement":e,"used":count,"remaining":None if limit is None else max(0,limit-count)})
     return {"success":True,"contract":contract,"capacity":usage}
