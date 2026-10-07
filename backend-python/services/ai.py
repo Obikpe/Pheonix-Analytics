@@ -41,9 +41,13 @@ async def generate(user_id,feature,message,organisation_id=None,conversation_id=
     if not _limit_ok(user_id,feature):
         return {"status":"rate_limited","content":_fallback(feature,message),"provider":"rules","model":None}
     started=time.perf_counter()
+    provider_row=supabase.table("learnora_ai_providers").select("provider_key,default_model,enabled").eq("provider_key","openrouter").limit(1).execute()
+    provider_enabled=provider_row.data[0].get("enabled",True) if provider_row.data else True
     key=os.getenv("OPENROUTER_API_KEY")
     provider="openrouter"
-    selected_model=model or DEFAULT_MODEL
+    selected_model=model or ((provider_row.data[0].get("default_model") if provider_row.data else None) or DEFAULT_MODEL)
+    if not provider_enabled:
+        key=None
     if not key:
         content=_fallback(feature,message)
         latency=int((time.perf_counter()-started)*1000)
