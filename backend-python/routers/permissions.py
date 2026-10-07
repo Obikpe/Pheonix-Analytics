@@ -678,8 +678,11 @@ def _get_organisation_permissions(
     """
     Resolve permissions assigned to an organisation role.
 
-    Table:
+    Mapping table:
         public.learnora_organisation_role_permissions
+
+    Permission catalogue:
+        public.learnora_permissions
     """
 
     if organisation_role not in ORGANISATION_ROLES:
@@ -692,7 +695,7 @@ def _get_organisation_permissions(
                 "learnora_organisation_role_permissions"
             )
             .select(
-                "permission_key,organisation_role"
+                "organisation_role, permission_id"
             )
             .eq(
                 "organisation_role",
@@ -700,24 +703,49 @@ def _get_organisation_permissions(
             )
             .execute()
         )
-    except Exception:
+    except Exception as exc:
+        print(
+            "Organisation permission mapping lookup failed:",
+            exc,
+        )
         return set()
 
-    permissions: set[str] = set()
+    permission_ids = {
+        str(row.get("permission_id"))
+        for row in _rows(response)
+        if row.get("permission_id") is not None
+    }
 
-    for row in _rows(response):
+    if not permission_ids:
+        return set()
 
-        permission = row.get(
-            "permission_key"
-        )
-
-        if permission:
-            permissions.add(
-                str(permission)
+    try:
+        response = (
+            supabase
+            .table(
+                "learnora_permissions"
             )
+            .select(
+                "id, permission_key"
+            )
+            .in_(
+                "id",
+                list(permission_ids),
+            )
+            .execute()
+        )
+    except Exception as exc:
+        print(
+            "Organisation permission catalogue lookup failed:",
+            exc,
+        )
+        return set()
 
-    return permissions
-
+    return {
+        str(row.get("permission_key"))
+        for row in _rows(response)
+        if row.get("permission_key")
+    }
 
 # ============================================================================
 # MAIN PERMISSION CONTEXT RESOLVER
