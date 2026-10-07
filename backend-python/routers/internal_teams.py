@@ -5,7 +5,6 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from .auth import log_audit_event, supabase
 from .internal_auth import InternalStaffContext, get_current_staff, require_internal_permission
-from .permissions import PermissionContext
 
 router=APIRouter(prefix="/api/internal",tags=["Internal Organisation"])
 
@@ -36,18 +35,18 @@ def create_department(body:DepartmentRequest,request:Request,staff:InternalStaff
     return {"success":True,"department":r.data[0]}
 
 @router.patch("/departments/{department_id}")
-def update_department(department_id:str,body:DepartmentRequest,staff:InternalStaffContext=Depends(get_current_staff),_:PermissionContext=Depends(require_permission("staff.departments"))):
+def update_department(department_id:str,body:DepartmentRequest,staff:InternalStaffContext=Depends(require_internal_permission("staff.departments"))):
     r=supabase.table("learnora_departments").update({"name":body.name.strip(),"slug":body.slug.strip().lower(),"description":body.description.strip() if body.description else None}).eq("id",department_id).execute()
     if not r.data:raise HTTPException(404,"Department not found")
     return {"success":True,"department":r.data[0]}
 
 @router.get("/teams")
-def teams(staff:InternalStaffContext=Depends(get_current_staff),_:PermissionContext=Depends(require_permission("staff.teams"))):
+def teams(staff:InternalStaffContext=Depends(get_current_staff),_:InternalStaffContext=Depends(require_internal_permission("staff.teams"))):
     r=supabase.table("learnora_staff_teams").select("*").order("name").execute()
     return {"success":True,"teams":r.data or []}
 
 @router.post("/teams",status_code=201)
-def create_team(body:TeamRequest,request:Request,staff:InternalStaffContext=Depends(get_current_staff),_:PermissionContext=Depends(require_permission("staff.teams"))):
+def create_team(body:TeamRequest,request:Request,staff:InternalStaffContext=Depends(require_internal_permission("staff.teams"))):
     r=supabase.table("learnora_staff_teams").insert({"name":body.name.strip(),"slug":body.slug.strip().lower(),"description":body.description.strip() if body.description else None,"department_id":body.department_id,"manager_staff_id":body.manager_staff_id}).execute()
     if not r.data:raise HTTPException(500,"Unable to create team")
     return {"success":True,"team":r.data[0]}
