@@ -54,11 +54,25 @@ def release_sale(sale_id:str,context:PermissionContext=Depends(require_permissio
 def request_payout(body:PayoutIn,user:CurrentUser=Depends(get_current_user)):
     if body.amount_minor<=0:raise HTTPException(400,"Payout amount must be positive.")
     creator=creator_for_user(user.id)
-    available=supabase.table("learnora_creator_sales").select("creator_earnings_minor").eq("creator_id",creator["id"]).eq("status","available").execute()
-    total=sum(int(x.get("creator_earnings_minor") or 0) for x in available.data or [])
+    ledger=supabase.table("learnora_creator_ledger").select("entry_type,amount_minor,available_at").eq("creator_id",creator["id"]).execute()
+    now=datetime.now(timezone.utc)
+    earned=0
+    paid_out=0
+    reserved=0
+    for entry in ledger.data or []:
+        amount=int(entry.get("amount_minor") or 0)
+        available_at=entry.get("available_at")
+        ready=not available_at
+        if available_at:
+            try: ready=datetime.fromisoformat(str(available_at).replace("Z","+00:00"))<=now
+            except ValueError: ready=False
+        if entry["entry_type"]=="sale" and ready: earned+=amount
+        elif entry["entry_type"]=="refund": earned-=amount
+        elif entry["entry_type"]=="payout": paid_out+=amount
     pending=supabase.table("learnora_creator_payouts").select("amount_minor").eq("creator_id",creator["id"]).in_("status",["requested","processing"]).execute()
     reserved=sum(int(x.get("amount_minor") or 0) for x in pending.data or [])
-    if body.amount_minor>total-reserved:raise HTTPException(409,"Requested payout exceeds available creator earnings.")
+    available_total=max(0,earned-paid_out-reserved)
+    if body.amount_minor>available_total:raise HTTPException(409,"Requested payout exceeds available creator earnings.")
     r=supabase.table("learnora_creator_payouts").insert({"creator_id":creator["id"],**body.model_dump(),"status":"requested"}).execute()
     if not r.data:raise HTTPException(500,"Unable to request payout.")
     return {"success":True,"payout":r.data[0]}
