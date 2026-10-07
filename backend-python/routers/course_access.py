@@ -356,9 +356,9 @@ def get_course_access(
 # ============================================================
 
 @router.post("")
+@router.post("")
 def assign_course(
     payload: CreateCourseAccess,
-
     context: PermissionContext = Depends(
         require_permission("courses.assign")
     ),
@@ -366,151 +366,196 @@ def assign_course(
     """
     Assign a course to an organisation.
 
-    This does NOT change course ownership.
-
-    Example:
-
-        Learnora-owned course
-                ↓
-        assigned to Witstart
-
-    The course remains owned by Learnora.
+    This does not change course ownership.
     """
 
-    course_id = str(
-        payload.course_id
-    )
+    try:
+        # --------------------------------------------------------
+        # Normalise input
+        # --------------------------------------------------------
+        course_id = str(payload.course_id)
+        organisation_id = str(payload.organisation_id)
 
-    organisation_id = str(
-        payload.organisation_id
-    )
-
-    access_type = _validate_access_type(
-        payload.access_type
-    )
-
-    # --------------------------------------------------------
-    # Verify course
-    # --------------------------------------------------------
-
-    course = _get_course(
-        course_id
-    )
-
-    if not course:
-        raise HTTPException(
-            status_code=404,
-            detail="Course not found.",
+        access_type = _validate_access_type(
+            payload.access_type
         )
 
-    # --------------------------------------------------------
-    # Verify organisation
-    # --------------------------------------------------------
+        # --------------------------------------------------------
+        # Verify course
+        # --------------------------------------------------------
+        course = _get_course(course_id)
 
-    organisation = _get_organisation(
-        organisation_id
-    )
+        if not course:
+            raise HTTPException(
+                status_code=404,
+                detail="Course not found.",
+            )
 
-    if not organisation:
-        raise HTTPException(
-            status_code=404,
-            detail="Organisation not found.",
+        # --------------------------------------------------------
+        # Verify organisation
+        # --------------------------------------------------------
+        organisation = _get_organisation(
+            organisation_id
         )
 
-    if not organisation.get("is_active"):
-        raise HTTPException(
-            status_code=400,
-            detail="Organisation is inactive.",
-        )
+        if not organisation:
+            raise HTTPException(
+                status_code=404,
+                detail="Organisation not found.",
+            )
 
-    _check_organisation_access(
-        context,
-        organisation_id,
-    )
+        if not organisation.get("is_active"):
+            raise HTTPException(
+                status_code=400,
+                detail="Organisation is inactive.",
+            )
 
-    # --------------------------------------------------------
-    # Ownership protection
-    # --------------------------------------------------------
-
-    if (
-        course.get("ownership") == "organisation"
-        and str(course.get("organisation_id"))
-        != organisation_id
-    ):
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                "An organisation-owned course cannot "
-                "be assigned to another organisation."
-            ),
-        )
-
-    # --------------------------------------------------------
-    # Prevent duplicate access
-    # --------------------------------------------------------
-
-    existing = (
-        supabase
-        .table("course_access")
-        .select(
-            "id,"
-            "course_id,"
-            "organisation_id,"
-            "access_type,"
-            "status,"
-            "assigned_by,"
-            "assigned_at"
-        )
-        .eq(
-            "course_id",
-            course_id,
-        )
-        .eq(
-            "organisation_id",
+        # --------------------------------------------------------
+        # Verify organisation access
+        # --------------------------------------------------------
+        _check_organisation_access(
+            context,
             organisation_id,
         )
-        .maybe_single()
-        .execute()
-    )
 
-    if existing.data:
-
-        if existing.data.get("status") == "active":
-
-            raise HTTPException(
-                status_code=409,
-                detail=(
-                    "This course is already assigned "
-                    "to this organisation."
-                ),
-            )
-
-        # Reactivate previously revoked access.
-        try:
-
-            result = (
-                supabase
-                .table("course_access")
-                .update(
-                    {
-                        "access_type": access_type,
-                        "status": "active",
-                        "assigned_by": None,
-                    }
-                )
-                .eq(
-                    "id",
-                    existing.data["id"],
-                )
-                .execute()
-            )
-
-        except Exception as exc:
-
+        # --------------------------------------------------------
+        # Ownership protection
+        # --------------------------------------------------------
+        if (
+            course.get("ownership") == "organisation"
+            and str(course.get("organisation_id"))
+            != organisation_id
+        ):
             raise HTTPException(
                 status_code=400,
                 detail=(
-                    f"Course access reactivation failed: "
+                    "An organisation-owned course cannot "
+                    "be assigned to another organisation."
+                ),
+            )
+
+        # --------------------------------------------------------
+        # Check existing access
+        # --------------------------------------------------------
+        try:
+            existing_result = (
+                supabase
+                .table("course_access")
+                .select(
+                    "id,"
+                    "course_id,"
+                    "organisation_id,"
+                    "access_type,"
+                    "status,"
+                    "assigned_by,"
+                    "assigned_at"
+                )
+                .eq("course_id", course_id)
+                .eq(
+                    "organisation_id",
+                    organisation_id,
+                )
+                .maybe_single()
+                .execute()
+            )
+        except Exception as exc:
+            raise HTTPException(
+                status_code=500,
+                detail=(
+                    "Failed while checking existing "
+                    f"course access: {str(exc)}"
+                ),
+            )
+
+        existing = existing_result.data
+
+        # --------------------------------------------------------
+        # Existing active access
+        # --------------------------------------------------------
+        if existing:
+            if existing.get("status") == "active":
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        "This course is already assigned "
+                        "to this organisation."
+                    ),
+                )
+
+            # ----------------------------------------------------
+            # Reactivate previously inactive access
+            # ----------------------------------------------------
+            try:
+                result = (
+                    supabase
+                    .table("course_access")
+                    .update(
+                        {
+                            "access_type": access_type,
+                            "status": "active",
+                            "assigned_by": None,
+                        }
+                    )
+                    .eq(
+                        "id",
+                        existing["id"],
+                    )
+                    .execute()
+                )
+            except Exception as exc:
+                raise HTTPException(
+                    status_code=500,
+                    detail=(
+                        "Course access reactivation failed: "
+                        f"{str(exc)}"
+                    ),
+                )
+
+            record = (
+                result.data[0]
+                if result.data
+                else None
+            )
+
+            if not record:
+                raise HTTPException(
+                    status_code=500,
+                    detail=(
+                        "Course access reactivation returned "
+                        "no record."
+                    ),
+                )
+
+            return {
+                "success": True,
+                "message": (
+                    "Course access reactivated successfully."
+                ),
+                "access": record,
+            }
+
+        # --------------------------------------------------------
+        # Create new access record
+        # --------------------------------------------------------
+        insert_data = {
+            "course_id": course_id,
+            "organisation_id": organisation_id,
+            "access_type": access_type,
+            "status": "active",
+        }
+
+        try:
+            result = (
+                supabase
+                .table("course_access")
+                .insert(insert_data)
+                .execute()
+            )
+        except Exception as exc:
+            raise HTTPException(
+                status_code=500,
+                detail=(
+                    "Course assignment insert failed: "
                     f"{str(exc)}"
                 ),
             )
@@ -525,64 +570,28 @@ def assign_course(
             raise HTTPException(
                 status_code=500,
                 detail=(
-                    "Failed to reactivate course access."
+                    "Course assignment insert succeeded "
+                    "but returned no record."
                 ),
             )
 
         return {
             "success": True,
-            "message": (
-                "Course access reactivated successfully."
-            ),
+            "message": "Course assigned successfully.",
             "access": record,
         }
 
-    # --------------------------------------------------------
-    # Create access record
-    # --------------------------------------------------------
-
-    insert_data = {
-        "course_id": course_id,
-        "organisation_id": organisation_id,
-        "access_type": access_type,
-        "status": "active",
-    }
-
-    try:
-
-        result = (
-            supabase
-            .table("course_access")
-            .insert(insert_data)
-            .execute()
-        )
+    except HTTPException:
+        raise
 
     except Exception as exc:
-
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                f"Course assignment failed: {str(exc)}"
-            ),
-        )
-
-    record = (
-        result.data[0]
-        if result.data
-        else None
-    )
-
-    if not record:
         raise HTTPException(
             status_code=500,
-            detail="Failed to assign course.",
+            detail=(
+                "Unexpected error while assigning course: "
+                f"{str(exc)}"
+            ),
         )
-
-    return {
-        "success": True,
-        "message": "Course assigned successfully.",
-        "access": record,
-    }
 
 
 # ============================================================
