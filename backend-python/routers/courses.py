@@ -4,7 +4,9 @@ Learnora ME — Course Management API
 Course architecture:
 
     Learnora Course
+
           │
+
           ├── ownership = learnora
           │       └── organisation_id = NULL
           │
@@ -12,6 +14,7 @@ Course architecture:
                   └── organisation_id = owning organisation
 
     Course access is handled separately through:
+
         course_access
 
 This means course ownership and course availability are
@@ -20,9 +23,13 @@ deliberately separate concepts.
 Examples:
 
     Learnora-owned course
+
         ↓
+
     assigned to Witstart Academy
+
         ↓
+
     assigned to another organisation later
 
 No course duplication is required.
@@ -86,13 +93,11 @@ class CreateCourse(BaseModel):
     )
 
     short_description: Optional[str] = None
-
     description: Optional[str] = None
 
     level: Optional[str] = None
 
     status: str = "draft"
-
     ownership: str = "learnora"
 
     organisation_id: Optional[UUID] = None
@@ -123,13 +128,9 @@ class UpdateCourse(BaseModel):
     )
 
     short_description: Optional[str] = None
-
     description: Optional[str] = None
-
     level: Optional[str] = None
-
     status: Optional[str] = None
-
     thumbnail_url: Optional[str] = None
 
     estimated_hours: Optional[float] = Field(
@@ -189,7 +190,10 @@ def _validate_ownership(ownership: str) -> str:
     return ownership
 
 
-def _validate_level(level: Optional[str]) -> Optional[str]:
+def _validate_level(
+    level: Optional[str],
+) -> Optional[str]:
+
     if level is None:
         return None
 
@@ -206,6 +210,48 @@ def _validate_level(level: Optional[str]) -> Optional[str]:
         )
 
     return level
+
+
+# ============================================================
+# CREATOR HELPERS
+# ============================================================
+
+def _get_creator_uuid(
+    context: PermissionContext,
+) -> Optional[str]:
+    """
+    Return the authenticated actor's UUID when available.
+
+    Learnora currently has two identity systems:
+
+    1. users
+       - UUID-based
+
+    2. admins
+       - legacy integer IDs
+
+    learnora_courses.created_by is UUID-based.
+
+    Therefore an admin account whose legacy ID is an integer
+    cannot safely be written into created_by.
+
+    Until the unified actor/audit model is introduced,
+    admin-created courses leave created_by as NULL.
+    """
+
+    user_id = getattr(
+        context.user,
+        "id",
+        None,
+    )
+
+    if user_id is None:
+        return None
+
+    try:
+        return str(UUID(str(user_id)))
+    except (ValueError, TypeError, AttributeError):
+        return None
 
 
 # ============================================================
@@ -235,7 +281,10 @@ def _get_course(
             "created_at,"
             "updated_at"
         )
-        .eq("id", course_id)
+        .eq(
+            "id",
+            course_id,
+        )
         .maybe_single()
         .execute()
     )
@@ -255,12 +304,29 @@ def _get_organisation(
             "slug,"
             "is_active"
         )
-        .eq("id", organisation_id)
+        .eq(
+            "id",
+            organisation_id,
+        )
         .maybe_single()
         .execute()
     )
 
-    return result.data
+    organisation = result.data
+
+    if not organisation:
+        raise HTTPException(
+            status_code=404,
+            detail="Organisation not found.",
+        )
+
+    if not organisation.get("is_active"):
+        raise HTTPException(
+            status_code=400,
+            detail="Organisation is inactive.",
+        )
+
+    return organisation
 
 
 def _check_course_slug_available(
@@ -278,7 +344,10 @@ def _check_course_slug_available(
         supabase
         .table("learnora_courses")
         .select("id")
-        .eq("slug", slug)
+        .eq(
+            "slug",
+            slug,
+        )
     )
 
     if organisation_id is None:
@@ -369,12 +438,15 @@ def list_courses(
             "Filter courses belonging to an organisation."
         ),
     ),
+
     status: Optional[str] = Query(
         default=None,
     ),
+
     ownership: Optional[str] = Query(
         default=None,
     ),
+
     context: PermissionContext = Depends(
         require_permission("courses.view")
     ),
@@ -456,6 +528,7 @@ def list_courses(
 
     if status is not None:
         status = _validate_status(status)
+
         query = query.eq(
             "status",
             status,
@@ -489,6 +562,7 @@ def list_courses(
 @router.get("/{course_id}")
 def get_course(
     course_id: UUID,
+
     context: PermissionContext = Depends(
         require_permission("courses.view")
     ),
@@ -525,6 +599,7 @@ def get_course(
 @router.post("")
 def create_course(
     payload: CreateCourse,
+
     context: PermissionContext = Depends(
         require_permission("courses.create")
     ),
@@ -613,6 +688,14 @@ def create_course(
     )
 
     # --------------------------------------------------------
+    # Creator
+    # --------------------------------------------------------
+
+    creator_uuid = _get_creator_uuid(
+        context
+    )
+
+    # --------------------------------------------------------
     # Create
     # --------------------------------------------------------
 
@@ -628,15 +711,27 @@ def create_course(
         "thumbnail_url": payload.thumbnail_url,
         "estimated_hours": payload.estimated_hours,
         "settings": payload.settings,
-        "created_by": str(context.user.id),
+        "created_by": creator_uuid,
     }
 
-    result = (
-        supabase
-        .table("learnora_courses")
-        .insert(insert_data)
-        .execute()
-    )
+    try:
+
+        result = (
+            supabase
+            .table("learnora_courses")
+            .insert(insert_data)
+            .execute()
+        )
+
+    except Exception as exc:
+
+        # Return the actual database failure instead of allowing
+        # it to surface as a misleading browser CORS error.
+
+        raise HTTPException(
+            status_code=400,
+            detail=f"Course creation failed: {str(exc)}",
+        )
 
     course = (
         result.data[0]
@@ -664,7 +759,9 @@ def create_course(
 @router.patch("/{course_id}")
 def update_course(
     course_id: UUID,
+
     payload: UpdateCourse,
+
     context: PermissionContext = Depends(
         require_permission("courses.update")
     ),
@@ -694,6 +791,7 @@ def update_course(
         updates["title"] = payload.title.strip()
 
     if payload.slug is not None:
+
         slug = _normalise_slug(
             payload.slug
         )
@@ -755,16 +853,25 @@ def update_course(
             detail="No course changes were supplied.",
         )
 
-    result = (
-        supabase
-        .table("learnora_courses")
-        .update(updates)
-        .eq(
-            "id",
-            str(course_id),
+    try:
+
+        result = (
+            supabase
+            .table("learnora_courses")
+            .update(updates)
+            .eq(
+                "id",
+                str(course_id),
+            )
+            .execute()
         )
-        .execute()
-    )
+
+    except Exception as exc:
+
+        raise HTTPException(
+            status_code=400,
+            detail=f"Course update failed: {str(exc)}",
+        )
 
     updated_course = (
         result.data[0]
@@ -792,6 +899,7 @@ def update_course(
 @router.post("/{course_id}/publish")
 def publish_course(
     course_id: UUID,
+
     context: PermissionContext = Depends(
         require_permission("courses.publish")
     ),
@@ -825,20 +933,29 @@ def publish_course(
             "course": course,
         }
 
-    result = (
-        supabase
-        .table("learnora_courses")
-        .update(
-            {
-                "status": "published",
-            }
+    try:
+
+        result = (
+            supabase
+            .table("learnora_courses")
+            .update(
+                {
+                    "status": "published",
+                }
+            )
+            .eq(
+                "id",
+                str(course_id),
+            )
+            .execute()
         )
-        .eq(
-            "id",
-            str(course_id),
+
+    except Exception as exc:
+
+        raise HTTPException(
+            status_code=400,
+            detail=f"Course publishing failed: {str(exc)}",
         )
-        .execute()
-    )
 
     updated_course = (
         result.data[0]
@@ -866,6 +983,7 @@ def publish_course(
 @router.post("/{course_id}/archive")
 def archive_course(
     course_id: UUID,
+
     context: PermissionContext = Depends(
         require_permission("courses.update")
     ),
@@ -889,20 +1007,29 @@ def archive_course(
         course.get("organisation_id"),
     )
 
-    result = (
-        supabase
-        .table("learnora_courses")
-        .update(
-            {
-                "status": "archived",
-            }
+    try:
+
+        result = (
+            supabase
+            .table("learnora_courses")
+            .update(
+                {
+                    "status": "archived",
+                }
+            )
+            .eq(
+                "id",
+                str(course_id),
+            )
+            .execute()
         )
-        .eq(
-            "id",
-            str(course_id),
+
+    except Exception as exc:
+
+        raise HTTPException(
+            status_code=400,
+            detail=f"Course archiving failed: {str(exc)}",
         )
-        .execute()
-    )
 
     updated_course = (
         result.data[0]
@@ -930,6 +1057,7 @@ def archive_course(
 @router.delete("/{course_id}")
 def delete_course(
     course_id: UUID,
+
     context: PermissionContext = Depends(
         require_permission("courses.delete")
     ),
@@ -959,16 +1087,25 @@ def delete_course(
         course.get("organisation_id"),
     )
 
-    result = (
-        supabase
-        .table("learnora_courses")
-        .delete()
-        .eq(
-            "id",
-            str(course_id),
+    try:
+
+        result = (
+            supabase
+            .table("learnora_courses")
+            .delete()
+            .eq(
+                "id",
+                str(course_id),
+            )
+            .execute()
         )
-        .execute()
-    )
+
+    except Exception as exc:
+
+        raise HTTPException(
+            status_code=400,
+            detail=f"Course deletion failed: {str(exc)}",
+        )
 
     deleted = result.data or []
 
