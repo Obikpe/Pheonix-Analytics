@@ -14,8 +14,11 @@ class EvidenceIn(BaseModel):
     notes:str|None=None
 
 class ProjectSubmissionIn(BaseModel):
-    submission_data:dict
-    evidence_notes:str|None=None
+    title:str|None=None
+    description:str|None=None
+    repository_url:str|None=None
+    live_url:str|None=None
+    submission_url:str|None=None
 
 @router.get("/me")
 def my_evidence(user:CurrentUser=Depends(get_current_user)):
@@ -35,6 +38,6 @@ def add_evidence(body:EvidenceIn,user:CurrentUser=Depends(get_current_user)):
 def submit_project(project_id:str,body:ProjectSubmissionIn,user:CurrentUser=Depends(get_current_user)):
     project=supabase.table("projects").select("id").eq("id",project_id).limit(1).execute()
     if not project.data:raise HTTPException(404,"Project not found.")
-    r=supabase.table("project_submissions").insert({"project_id":project_id,"user_id":user.id,"submission_data":body.submission_data}).execute()
+    r=supabase.table("project_submissions").insert({"project_id":project_id,"user_id":user.id,**body.model_dump(),"status":"submitted","submitted_at":"now()"}).execute()
     if not r.data:raise HTTPException(500,"Unable to save project submission.")
     return {"success":True,"submission":r.data[0]}
