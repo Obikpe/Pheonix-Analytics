@@ -3,8 +3,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from .auth import supabase
 from .permissions import PermissionContext, require_permission
-from ..services.capacity import ensure_cohort_capacity
-from ..services.audit import audit
+from services.capacity import ensure_cohort_capacity
+from services.audit import audit
 
 router=APIRouter(prefix="/api/learning",tags=["Learning Structure"])
 
