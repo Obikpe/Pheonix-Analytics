@@ -7,7 +7,7 @@ ENV_PATH = Path(__file__).parent / ".env"
 load_dotenv(dotenv_path=ENV_PATH, override=True)
 
 # 2. NOW import routers
-from routers import auth, grading, progress, billing, webhooks, community, grader, admin, organisations, organisation_members, courses, course_access, course_content, internal_auth, internal_staff, internal_teams, commercial, creator
+from routers import auth, grading, progress, billing, webhooks, community, grader, admin, organisations, organisation_members, courses, course_access, course_content, internal_auth, internal_staff, internal_teams, commercial, creator, lifecycle, learning_structure, media
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -16,7 +16,6 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from contextlib import asynccontextmanager
-from routers.permission_test import router as permission_test_router
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Supabase is managed externally via SQL, no local init_db needed
@@ -101,9 +100,9 @@ app.include_router(internal_staff.router)
 app.include_router(internal_teams.router)
 app.include_router(commercial.router)
 app.include_router(creator.router)
-
-# Temporary permission-system testing
-app.include_router(permission_test_router)
+app.include_router(lifecycle.router)
+app.include_router(learning_structure.router)
+app.include_router(media.router)
 @app.get("/")
 def health():
     return {"status": "ok", "service": "pheonix-python-secure", "routers": ["auth", "grading", "admin", "progress","grader", "billing", "webhooks"]}
