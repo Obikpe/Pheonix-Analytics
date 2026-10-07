@@ -328,7 +328,6 @@ def _get_admin_organisation_access(
 # ============================================================================
 # LEARNER ORGANISATION MEMBERSHIP
 # ============================================================================
-
 def _get_user_organisation_memberships(
     user_id: Any,
     organisation_id: Optional[str] = None,
@@ -343,11 +342,8 @@ def _get_user_organisation_memberships(
         organisation_id
         user_id
         role
-        is_active
-
-    NOTE:
-        The foundation migration uses is_active on organisation_members,
-        unlike the new admin access tables which use status.
+        status
+        joined_at
     """
 
     if user_id is None:
@@ -358,10 +354,10 @@ def _get_user_organisation_memberships(
             supabase
             .table("organisation_members")
             .select(
-                "organisation_id,user_id,role,is_active"
+                "organisation_id,user_id,role,status"
             )
             .eq("user_id", user_id)
-            .eq("is_active", True)
+            .eq("status", "active")
         )
 
         if organisation_id:
@@ -372,7 +368,11 @@ def _get_user_organisation_memberships(
 
         response = query.execute()
 
-    except Exception:
+    except Exception as exc:
+        print(
+            "Organisation membership lookup failed:",
+            exc,
+        )
         return []
 
     return _rows(response)
