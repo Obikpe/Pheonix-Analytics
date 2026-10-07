@@ -7,7 +7,7 @@ ENV_PATH = Path(__file__).parent / ".env"
 load_dotenv(dotenv_path=ENV_PATH, override=True)
 
 # 2. NOW import routers
-from routers import auth, grading, progress, billing, webhooks, community, grader, admin, organisations, organisation_members, courses, course_access, course_content, internal_auth, internal_staff, internal_teams, commercial, creator, lifecycle, learning_structure, media
+from routers import auth, grading, progress, billing, webhooks, community, grader, admin, organisations, organisation_members, courses, course_access, course_content, internal_auth, internal_staff, internal_teams, commercial, creator, lifecycle, learning_structure, media, access
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -103,6 +103,7 @@ app.include_router(creator.router)
 app.include_router(lifecycle.router)
 app.include_router(learning_structure.router)
 app.include_router(media.router)
+app.include_router(access.router)
 @app.get("/")
 def health():
     return {"status": "ok", "service": "pheonix-python-secure", "routers": ["auth", "grading", "admin", "progress","grader", "billing", "webhooks"]}
