@@ -4,8 +4,8 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from .auth import hash_password, log_audit_event, norm_email, supabase
-from .internal_auth import InternalStaffContext, get_current_staff
-from .permissions import PermissionContext, require_permission, require_platform_role
+from .internal_auth import InternalStaffContext, get_current_staff, require_internal_permission
+from .permissions import PermissionContext, require_platform_role
 
 router=APIRouter(prefix="/api/internal/staff",tags=["Internal Staff"])
 SAFE="id,user_id,employee_code,job_title,status,joined_at,left_at,created_by,created_at,updated_at"
@@ -44,12 +44,12 @@ def payload(row):
     return {"staff":row,"user":u.data[0] if u.data else {}, "roles":roles or [],"teams":m.data or []}
 
 @router.get("")
-def list_staff(staff:InternalStaffContext=Depends(get_current_staff),_:PermissionContext=Depends(require_permission("staff.view"))):
+def list_staff(staff:InternalStaffContext=Depends(require_internal_permission("staff.view"))):
     r=supabase.table("learnora_staff_accounts").select(SAFE).order("created_at",desc=True).execute()
     return {"success":True,"staff":[payload(x) for x in (r.data or [])]}
 
 @router.get("/roles/catalog")
-def roles(staff:InternalStaffContext=Depends(get_current_staff),_:PermissionContext=Depends(require_permission("staff.roles"))):
+def roles(staff:InternalStaffContext=Depends(get_current_staff),_:InternalStaffContext=Depends(require_permission("staff.roles"))):
     r=supabase.table("learnora_staff_roles").select("id,name,slug,description,is_system_role,status").order("name").execute()
     return {"success":True,"roles":r.data or []}
 
