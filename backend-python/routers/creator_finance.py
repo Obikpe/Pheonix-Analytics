@@ -50,6 +50,16 @@ def release_sale(sale_id:str,context:PermissionContext=Depends(require_permissio
     supabase.table("learnora_creator_ledger").update({"available_at":now}).eq("sale_id",sale_id).eq("entry_type","sale").execute()
     return {"success":True,"sale":r.data[0] if r.data else None}
 
+@router.post("/sales/{sale_id}/refund")
+def refund_sale(sale_id:str,context:PermissionContext=Depends(require_permission("courses.assign"))):
+    sale=supabase.table("learnora_creator_sales").select("*").eq("id",sale_id).limit(1).execute()
+    if not sale.data:raise HTTPException(404,"Sale not found.")
+    row=sale.data[0]
+    if row["status"]=="refunded":raise HTTPException(409,"Sale is already refunded.")
+    r=supabase.table("learnora_creator_sales").update({"status":"refunded"}).eq("id",sale_id).execute()
+    supabase.table("learnora_creator_ledger").insert({"creator_id":row["creator_id"],"sale_id":sale_id,"entry_type":"refund","amount_minor":row["creator_earnings_minor"],"currency":row["currency"]}).execute()
+    return {"success":True,"sale":r.data[0] if r.data else None}
+
 @router.post("/payouts",status_code=201)
 def request_payout(body:PayoutIn,user:CurrentUser=Depends(get_current_user)):
     if body.amount_minor<=0:raise HTTPException(400,"Payout amount must be positive.")
