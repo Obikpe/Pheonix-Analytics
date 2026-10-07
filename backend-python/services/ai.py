@@ -8,7 +8,7 @@ explanations and suggestions only.
 import os,time
 from datetime import datetime,timezone,timedelta
 import httpx
-from ..routers.auth import supabase
+from routers.auth import supabase
 
 DEFAULT_MODEL=os.getenv("OPENROUTER_MODEL","openrouter/auto")
 OPENROUTER_URL=os.getenv("OPENROUTER_BASE_URL","https://openrouter.ai/api/v1").rstrip("/")
