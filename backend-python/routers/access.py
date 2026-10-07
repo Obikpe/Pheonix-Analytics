@@ -1,7 +1,7 @@
 """Authoritative access endpoints used by future learner clients."""
 from fastapi import APIRouter,Depends
 from .auth import CurrentUser,get_current_user
-from ..services.access import resolve_course_access
+from services.access import resolve_course_access
 
 router=APIRouter(prefix="/api/access",tags=["Access"])
 
