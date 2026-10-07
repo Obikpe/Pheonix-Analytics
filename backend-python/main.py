@@ -7,7 +7,7 @@ ENV_PATH = Path(__file__).parent / ".env"
 load_dotenv(dotenv_path=ENV_PATH, override=True)
 
 # 2. NOW import routers
-from routers import auth, grading, progress, billing, webhooks, community, grader, admin, organisations
+from routers import auth, grading, progress, billing, webhooks, community, grader, admin, organisations, organisation_members
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -82,8 +82,14 @@ app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
 app.include_router(webhooks.router, prefix="/api/webhooks", tags=["webhooks"])
 app.include_router(community.router, prefix="/api/community", tags=["community"])
 app.include_router(grader.router, prefix="/api/grader", tags=["grader"])
-app.include_router(permission_test_router)
+
+
+# Learnora V1 organisation architecture
 app.include_router(organisations.router)
+app.include_router(organisation_members.router)
+
+# Temporary permission-system testing
+app.include_router(permission_test_router)
 @app.get("/")
 def health():
     return {"status": "ok", "service": "pheonix-python-secure", "routers": ["auth", "grading", "admin", "progress","grader", "billing", "webhooks"]}
