@@ -587,15 +587,17 @@ def _resolve_organisation(
 # ============================================================================
 # PLATFORM PERMISSIONS
 # ============================================================================
-
 def _get_platform_permissions(
     platform_roles: Sequence[str],
 ) -> set[str]:
     """
     Resolve permissions assigned to platform roles.
 
-    Table:
+    Mapping table:
         public.learnora_platform_role_permissions
+
+    Permission catalogue:
+        public.learnora_permissions
     """
 
     valid_roles = [
@@ -614,7 +616,7 @@ def _get_platform_permissions(
                 "learnora_platform_role_permissions"
             )
             .select(
-                "permission_key,platform_role"
+                "platform_role, permission_id"
             )
             .in_(
                 "platform_role",
@@ -622,24 +624,49 @@ def _get_platform_permissions(
             )
             .execute()
         )
-    except Exception:
+    except Exception as exc:
+        print(
+            "Platform permission mapping lookup failed:",
+            exc,
+        )
         return set()
 
-    permissions: set[str] = set()
+    permission_ids = {
+        str(row.get("permission_id"))
+        for row in _rows(response)
+        if row.get("permission_id") is not None
+    }
 
-    for row in _rows(response):
+    if not permission_ids:
+        return set()
 
-        permission = row.get(
-            "permission_key"
-        )
-
-        if permission:
-            permissions.add(
-                str(permission)
+    try:
+        response = (
+            supabase
+            .table(
+                "learnora_permissions"
             )
+            .select(
+                "id, permission_key"
+            )
+            .in_(
+                "id",
+                list(permission_ids),
+            )
+            .execute()
+        )
+    except Exception as exc:
+        print(
+            "Platform permission catalogue lookup failed:",
+            exc,
+        )
+        return set()
 
-    return permissions
-
+    return {
+        str(row.get("permission_key"))
+        for row in _rows(response)
+        if row.get("permission_key")
+    }
 
 # ============================================================================
 # ORGANISATION PERMISSIONS
