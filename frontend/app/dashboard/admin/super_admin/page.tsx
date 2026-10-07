@@ -727,7 +727,7 @@ export default function SuperAdminDashboard() {
       localStorage.removeItem('phx_admin_user');
     }
 
-    router.push('/login');
+    router.push('/');
   }, [router]);
 
   const loadCurrentAdmin = useCallback(async () => {
@@ -1692,7 +1692,7 @@ export default function SuperAdminDashboard() {
       'phx_admin_user',
     );
 
-    router.push('/login');
+    router.push('/');
   };
 
   const filteredUsers = useMemo(() => {
