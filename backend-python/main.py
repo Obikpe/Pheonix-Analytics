@@ -7,7 +7,7 @@ ENV_PATH = Path(__file__).parent / ".env"
 load_dotenv(dotenv_path=ENV_PATH, override=True)
 
 # 2. NOW import routers
-from routers import auth, grading, progress, billing, webhooks, community, grader, admin, organisations, organisation_members, courses, course_access, course_content
+from routers import auth, grading, progress, billing, webhooks, community, grader, admin, organisations, organisation_members, courses, course_access, course_content, internal_auth, internal_staff, internal_teams
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -47,6 +47,10 @@ origins = [
     "https://www.thepheonixanalytics.com",
     "https://learnora-me.vercel.app",
 ]
+
+internal_frontend = os.getenv("INTERNAL_FRONTEND_URL", "").rstrip("/")
+if internal_frontend and internal_frontend not in origins:
+    origins.append(internal_frontend)
 
 frontend = os.getenv("FRONTEND_URL", "").rstrip("/")
 if frontend and frontend not in origins:
@@ -90,6 +94,11 @@ app.include_router(organisation_members.router)
 app.include_router(courses.router)
 app.include_router(course_access.router)
 app.include_router(course_content.router)
+
+# Internal Learnora staff platform. Security is enforced by backend authentication + staff membership + granular permissions.
+app.include_router(internal_auth.router)
+app.include_router(internal_staff.router)
+app.include_router(internal_teams.router)
 
 # Temporary permission-system testing
 app.include_router(permission_test_router)
