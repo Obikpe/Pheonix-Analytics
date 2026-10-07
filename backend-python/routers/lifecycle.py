@@ -5,7 +5,7 @@ from fastapi import APIRouter,Depends,HTTPException
 from pydantic import BaseModel
 from .auth import supabase
 from .permissions import PermissionContext,require_permission
-from ..services.audit import audit
+from services.audit import audit
 
 router=APIRouter(prefix="/api/lifecycle",tags=["Lifecycle"])
 ORG_STATES={"requested","under_review","contract_pending","pending_activation","active","expiring","expired","inactive","suspended","archived"}
