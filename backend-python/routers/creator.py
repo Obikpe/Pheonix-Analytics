@@ -1,7 +1,7 @@
 """Learnora creator application, courses and earnings API."""
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException\nfrom datetime import datetime, timezone
 from pydantic import BaseModel
-from .auth import CurrentUser, get_current_user, supabase
+from .auth import CurrentUser, get_current_user, supabase\nfrom .permissions import PermissionContext, require_permission
 
 router=APIRouter(prefix="/api/creator",tags=["Creator"])
 
@@ -47,17 +47,17 @@ def earnings(user:CurrentUser=Depends(get_current_user)):
     return {"success":True,"ledger":r.data or []}
 
 @router.post("/admin/applications/{application_id}/review")
-def review_application(application_id:str, status:str, context=Depends(__import__("routers.permissions",fromlist=["require_permission"]).require_permission("users.update"))):
+def review_application(application_id:str, status:str, context:PermissionContext=Depends(require_permission("users.update"))):
     if status not in {"approved","declined"}: raise HTTPException(400,"Status must be approved or declined.")
     app=supabase.table("learnora_creator_applications").select("*").eq("id",application_id).limit(1).execute()
     if not app.data: raise HTTPException(404,"Creator application not found.")
     row=app.data[0]
-    supabase.table("learnora_creator_applications").update({"status":status,"reviewed_by":context.user_id,"reviewed_at":"now()"}).eq("id",application_id).execute()
+    supabase.table("learnora_creator_applications").update({"status":status,"reviewed_by":context.user_id,"reviewed_at":datetime.now(timezone.utc).isoformat()}).eq("id",application_id).execute()
     if status=="approved":
         existing=supabase.table("learnora_creator_accounts").select("id").eq("user_id",row["user_id"]).limit(1).execute()
         if existing.data:
             creator=existing.data[0]
-            supabase.table("learnora_creator_accounts").update({"status":"approved","approved_by":context.user_id,"approved_at":"now()","application_id":application_id}).eq("id",creator["id"]).execute()
+            supabase.table("learnora_creator_accounts").update({"status":"approved","approved_by":context.user_id,"approved_at":datetime.now(timezone.utc).isoformat(),"application_id":application_id}).eq("id",creator["id"]).execute()
         else:
             supabase.table("learnora_creator_accounts").insert({"user_id":row["user_id"],"status":"approved","approved_by":context.user_id,"approved_at":"now()","application_id":application_id}).execute()
     return {"success":True,"status":status}
