@@ -3,7 +3,7 @@ from fastapi import APIRouter,Depends,HTTPException
 from pydantic import BaseModel
 from .auth import supabase
 from .permissions import PermissionContext,require_permission
-from ..services.audit import audit
+from services.audit import audit
 
 router=APIRouter(prefix="/api/media",tags=["Learning Media"])
 class VideoIn(BaseModel):
