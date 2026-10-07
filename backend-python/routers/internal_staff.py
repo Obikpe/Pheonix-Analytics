@@ -49,7 +49,7 @@ def list_staff(staff:InternalStaffContext=Depends(require_internal_permission("s
     return {"success":True,"staff":[payload(x) for x in (r.data or [])]}
 
 @router.get("/roles/catalog")
-def roles(staff:InternalStaffContext=Depends(get_current_staff),_:InternalStaffContext=Depends(require_permission("staff.roles"))):
+def roles(staff:InternalStaffContext=Depends(require_internal_permission("staff.roles"))):
     r=supabase.table("learnora_staff_roles").select("id,name,slug,description,is_system_role,status").order("name").execute()
     return {"success":True,"roles":r.data or []}
 
@@ -92,7 +92,7 @@ def update_staff(staff_id:str,body:UpdateStaffRequest,staff:InternalStaffContext
     return {"success":True,**payload(staff_row(staff_id))}
 
 @router.post("/{staff_id}/roles")
-def assign_role(staff_id:str,body:AssignRoleRequest,staff:InternalStaffContext=Depends(get_current_staff),_:PermissionContext=Depends(require_permission("staff.roles"))):
+def assign_role(staff_id:str,body:AssignRoleRequest,staff:InternalStaffContext=Depends(require_internal_permission("staff.roles"))):
     row=staff_row(staff_id); role=role_row(body.role_slug)
     if not row or not role:raise HTTPException(404,"Staff account or role not found")
     r=supabase.table("learnora_staff_role_assignments").upsert({"staff_id":staff_id,"role_id":role["id"],"status":"active"},on_conflict="staff_id,role_id").execute()
