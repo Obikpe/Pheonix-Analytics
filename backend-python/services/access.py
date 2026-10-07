@@ -7,7 +7,7 @@ routers never invent their own access rules.
 from datetime import datetime, timezone
 from typing import Optional
 from fastapi import HTTPException
-from ..routers.auth import supabase
+from routers.auth import supabase
 
 def _now():
     return datetime.now(timezone.utc)
