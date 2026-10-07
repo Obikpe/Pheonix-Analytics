@@ -64,24 +64,14 @@ def get_current_staff(creds:Optional[HTTPAuthorizationCredentials]=Depends(beare
     return _load_staff_context(email)
 
 
-INTERNAL_ROLE_PERMISSIONS={
- "super_admin":{"staff.view","staff.create","staff.update","staff.roles","staff.teams","staff.departments","system.audit"},
- "executive":{"staff.view","staff.teams","staff.departments","system.audit"},
- "operations":{"staff.view","staff.teams","staff.departments"},
- "product":{"staff.view","staff.teams"},
- "engineering":{"staff.view"},
- "data_analytics":{"staff.view"},
- "learning_curriculum":{"staff.view"},
- "customer_success":{"staff.view"},
- "sales_partnerships":{"staff.view"},
- "finance":{"staff.view"},
- "support":{"staff.view"},
- "ai_research":{"staff.view"},
-}
-
 def require_internal_permission(permission):
     def dependency(staff:InternalStaffContext=Depends(get_current_staff)):
-        if any(permission in INTERNAL_ROLE_PERMISSIONS.get(role,set()) for role in staff.roles):
+        assignments=supabase.table("learnora_staff_role_assignments").select("role_id").eq("staff_id",staff.staff_id).eq("status","active").execute()
+        role_ids=[x["role_id"] for x in (assignments.data or [])]
+        if not role_ids:
+            raise HTTPException(status_code=403,detail=f"Permission required: {permission}")
+        matches=(supabase.table("learnora_staff_role_permissions").select("role_id,learnora_permissions!inner(permission_key)").in_("role_id",role_ids).eq("learnora_permissions.permission_key",permission).execute())
+        if matches.data:
             return staff
         raise HTTPException(status_code=403,detail=f"Permission required: {permission}")
     return dependency
