@@ -1,0 +1,35 @@
+name: Learnora Backend Verification
+
+on:
+  push:
+    paths:
+      - "backend-python/**"
+      - "supabase/migrations/**"
+      - ".github/workflows/learnora-backend.yml"
+  pull_request:
+    paths:
+      - "backend-python/**"
+      - "supabase/migrations/**"
+
+jobs:
+  python-compile:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend-python
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Compile Python modules
+        run: python -m compileall -q .
+      - name: Validate imports
+        run: |
+          python - <<'PY'
+          import ast
+          from pathlib import Path
+          for path in Path(".").rglob("*.py"):
+              ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+          print("Python AST validation passed")
+          PY
