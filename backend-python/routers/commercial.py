@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Header
 from pydantic import BaseModel, Field
 from .auth import CurrentUser, get_current_user, supabase
 from .permissions import PermissionContext, require_permission
-from ..services.capacity import count_org
+from services.capacity import count_org
 
 router=APIRouter(prefix="/api/commercial",tags=["Commercial"])
 
