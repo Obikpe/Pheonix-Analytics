@@ -58,7 +58,6 @@ ACCESS_STATUSES = {
 class CreateCourseAccess(BaseModel):
     course_id: UUID
     organisation_id: UUID
-
     access_type: str = Field(
         default="assigned"
     )
@@ -76,7 +75,6 @@ class UpdateCourseAccess(BaseModel):
 def _validate_access_type(
     access_type: str,
 ) -> str:
-
     access_type = access_type.strip().lower()
 
     if access_type not in ACCESS_TYPES:
@@ -94,7 +92,6 @@ def _validate_access_type(
 def _validate_status(
     status: str,
 ) -> str:
-
     status = status.strip().lower()
 
     if status not in ACCESS_STATUSES:
@@ -229,7 +226,6 @@ def list_course_access(
     course_id: Optional[UUID] = None,
     organisation_id: Optional[UUID] = None,
     status: Optional[str] = None,
-
     context: PermissionContext = Depends(
         require_permission("courses.view")
     ),
@@ -264,7 +260,6 @@ def list_course_access(
     )
 
     if context.is_platform_admin:
-
         if course_id is not None:
             query = query.eq(
                 "course_id",
@@ -278,7 +273,6 @@ def list_course_access(
             )
 
     else:
-
         if not context.organisation_id:
             raise HTTPException(
                 status_code=403,
@@ -308,7 +302,6 @@ def list_course_access(
         )
 
     result = query.execute()
-
     records = result.data or []
 
     return {
@@ -325,7 +318,6 @@ def list_course_access(
 @router.get("/{access_id}")
 def get_course_access(
     access_id: UUID,
-
     context: PermissionContext = Depends(
         require_permission("courses.view")
     ),
@@ -356,7 +348,6 @@ def get_course_access(
 # ============================================================
 
 @router.post("")
-@router.post("")
 def assign_course(
     payload: CreateCourseAccess,
     context: PermissionContext = Depends(
@@ -373,8 +364,12 @@ def assign_course(
         # --------------------------------------------------------
         # Normalise input
         # --------------------------------------------------------
+
         course_id = str(payload.course_id)
-        organisation_id = str(payload.organisation_id)
+
+        organisation_id = str(
+            payload.organisation_id
+        )
 
         access_type = _validate_access_type(
             payload.access_type
@@ -383,7 +378,10 @@ def assign_course(
         # --------------------------------------------------------
         # Verify course
         # --------------------------------------------------------
-        course = _get_course(course_id)
+
+        course = _get_course(
+            course_id
+        )
 
         if not course:
             raise HTTPException(
@@ -394,6 +392,7 @@ def assign_course(
         # --------------------------------------------------------
         # Verify organisation
         # --------------------------------------------------------
+
         organisation = _get_organisation(
             organisation_id
         )
@@ -413,6 +412,7 @@ def assign_course(
         # --------------------------------------------------------
         # Verify organisation access
         # --------------------------------------------------------
+
         _check_organisation_access(
             context,
             organisation_id,
@@ -421,6 +421,7 @@ def assign_course(
         # --------------------------------------------------------
         # Ownership protection
         # --------------------------------------------------------
+
         if (
             course.get("ownership") == "organisation"
             and str(course.get("organisation_id"))
@@ -436,7 +437,14 @@ def assign_course(
 
         # --------------------------------------------------------
         # Check existing access
+        #
+        # We intentionally use a normal list query rather
+        # than maybe_single().
+        #
+        # The database already has a unique constraint on:
+        # (course_id, organisation_id)
         # --------------------------------------------------------
+
         try:
             existing_result = (
                 supabase
@@ -450,29 +458,45 @@ def assign_course(
                     "assigned_by,"
                     "assigned_at"
                 )
-                .eq("course_id", course_id)
+                .eq(
+                    "course_id",
+                    course_id,
+                )
                 .eq(
                     "organisation_id",
                     organisation_id,
                 )
-                .maybe_single()
+                .limit(1)
                 .execute()
             )
+
+            existing_records = (
+                existing_result.data or []
+            )
+
+            existing = (
+                existing_records[0]
+                if existing_records
+                else None
+            )
+
         except Exception as exc:
             raise HTTPException(
                 status_code=500,
                 detail=(
                     "Failed while checking existing "
-                    f"course access: {str(exc)}"
+                    "course access: "
+                    f"{str(exc)}"
                 ),
             )
 
-        existing = existing_result.data
+        # --------------------------------------------------------
+        # Existing access
+        # --------------------------------------------------------
 
-        # --------------------------------------------------------
-        # Existing active access
-        # --------------------------------------------------------
         if existing:
+
+            # Already active
             if existing.get("status") == "active":
                 raise HTTPException(
                     status_code=409,
@@ -485,6 +509,7 @@ def assign_course(
             # ----------------------------------------------------
             # Reactivate previously inactive access
             # ----------------------------------------------------
+
             try:
                 result = (
                     supabase
@@ -502,6 +527,7 @@ def assign_course(
                     )
                     .execute()
                 )
+
             except Exception as exc:
                 raise HTTPException(
                     status_code=500,
@@ -521,8 +547,8 @@ def assign_course(
                 raise HTTPException(
                     status_code=500,
                     detail=(
-                        "Course access reactivation returned "
-                        "no record."
+                        "Course access reactivation "
+                        "returned no record."
                     ),
                 )
 
@@ -537,6 +563,7 @@ def assign_course(
         # --------------------------------------------------------
         # Create new access record
         # --------------------------------------------------------
+
         insert_data = {
             "course_id": course_id,
             "organisation_id": organisation_id,
@@ -551,6 +578,7 @@ def assign_course(
                 .insert(insert_data)
                 .execute()
             )
+
         except Exception as exc:
             raise HTTPException(
                 status_code=500,
@@ -602,7 +630,6 @@ def assign_course(
 def update_course_access(
     access_id: UUID,
     payload: UpdateCourseAccess,
-
     context: PermissionContext = Depends(
         require_permission("courses.assign")
     ),
@@ -632,13 +659,17 @@ def update_course_access(
     updates = {}
 
     if payload.access_type is not None:
-        updates["access_type"] = _validate_access_type(
-            payload.access_type
+        updates["access_type"] = (
+            _validate_access_type(
+                payload.access_type
+            )
         )
 
     if payload.status is not None:
-        updates["status"] = _validate_status(
-            payload.status
+        updates["status"] = (
+            _validate_status(
+                payload.status
+            )
         )
 
     if not updates:
@@ -648,7 +679,6 @@ def update_course_access(
         )
 
     try:
-
         result = (
             supabase
             .table("course_access")
@@ -661,7 +691,6 @@ def update_course_access(
         )
 
     except Exception as exc:
-
         raise HTTPException(
             status_code=400,
             detail=(
@@ -695,7 +724,6 @@ def update_course_access(
 @router.delete("/{access_id}")
 def revoke_course_access(
     access_id: UUID,
-
     context: PermissionContext = Depends(
         require_permission("courses.assign")
     ),
@@ -730,7 +758,6 @@ def revoke_course_access(
         }
 
     try:
-
         result = (
             supabase
             .table("course_access")
@@ -747,7 +774,6 @@ def revoke_course_access(
         )
 
     except Exception as exc:
-
         raise HTTPException(
             status_code=400,
             detail=(
