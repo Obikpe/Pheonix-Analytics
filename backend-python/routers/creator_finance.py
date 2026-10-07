@@ -72,6 +72,9 @@ def payouts(user:CurrentUser=Depends(get_current_user)):
 @router.post("/admin/payouts/{payout_id}/process")
 def process_payout(payout_id:str,status:str,context:PermissionContext=Depends(require_permission("users.update"))):
     if status not in {"processing","paid","failed","cancelled"}:raise HTTPException(400,"Invalid payout status.")
+    current=supabase.table("learnora_creator_payouts").select("*").eq("id",payout_id).limit(1).execute()
+    if not current.data:raise HTTPException(404,"Payout not found.")
+    if current.data[0]["status"]=="paid":raise HTTPException(409,"Payout is already paid.")
     r=supabase.table("learnora_creator_payouts").update({"status":status,"processed_at":datetime.now(timezone.utc).isoformat() if status in {"paid","failed","cancelled"} else None}).eq("id",payout_id).execute()
     if not r.data:raise HTTPException(404,"Payout not found.")
     if status=="paid":
