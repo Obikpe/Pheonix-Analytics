@@ -66,12 +66,20 @@ def list_requests(_:PermissionContext=Depends(require_permission("organisations.
 def update_request(request_id:str,body:RequestStatusIn,_:PermissionContext=Depends(require_permission("organisations.update"))):
     allowed={"submitted","under_review","discussion","contract_preparation","contract_sent","signed","pending_approval","active","declined","closed"}
     if body.status not in allowed:raise HTTPException(400,"Invalid request status")
+    req=supabase.table("learnora_organisation_requests").select("organisation_id").eq("id",request_id).limit(1).execute()
+    if not req.data:raise HTTPException(404,"Organisation request not found")
+    if body.status=="active":
+        oid=req.data[0].get("organisation_id")
+        if not oid:raise HTTPException(409,"An organisation must be linked before activation.")
+        if not _active_contract(oid):raise HTTPException(409,"An active or signed contract is required before activation.")
     r=supabase.table("learnora_organisation_requests").update({"status":body.status}).eq("id",request_id).execute()
     if not r.data:raise HTTPException(404,"Organisation request not found")
     return {"success":True,"request":r.data[0]}
 
 @router.post("/contracts",status_code=201)
 def create_contract(body:ContractIn,context:PermissionContext=Depends(require_permission("organisations.update"))):
+    org=supabase.table("organisations").select("id").eq("id",body.organisation_id).limit(1).execute()
+    if not org.data:raise HTTPException(404,"Organisation not found")
     r=supabase.table("learnora_contracts").insert(body.model_dump()).execute()
     if not r.data:raise HTTPException(500,"Unable to create contract")
     return {"success":True,"contract":r.data[0]}
