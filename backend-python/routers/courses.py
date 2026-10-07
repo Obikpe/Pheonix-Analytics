@@ -932,6 +932,9 @@ def publish_course(
         course.get("organisation_id"),
     )
 
+    modules=supabase.table("course_modules").select("id").eq("course_id",str(course_id)).neq("status","archived").execute()
+    if not modules.data:
+        raise HTTPException(status_code=409,detail="A course must contain at least one active module before publishing.")
     if course.get("status") == "published":
         return {
             "success": True,
