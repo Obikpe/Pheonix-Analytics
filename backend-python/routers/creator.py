@@ -59,5 +59,5 @@ def review_application(application_id:str, status:str, context:PermissionContext
             creator=existing.data[0]
             supabase.table("learnora_creator_accounts").update({"status":"approved","approved_by":context.user_id,"approved_at":datetime.now(timezone.utc).isoformat(),"application_id":application_id}).eq("id",creator["id"]).execute()
         else:
-            supabase.table("learnora_creator_accounts").insert({"user_id":row["user_id"],"status":"approved","approved_by":context.user_id,"approved_at":"now()","application_id":application_id}).execute()
+            supabase.table("learnora_creator_accounts").insert({"user_id":row["user_id"],"status":"approved","approved_by":context.user_id,"approved_at":datetime.now(timezone.utc).isoformat(),"application_id":application_id}).execute()
     return {"success":True,"status":status}
