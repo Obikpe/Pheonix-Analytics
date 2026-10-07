@@ -89,6 +89,21 @@ def require_internal_permission(permission):
 @router.post("/login")
 def internal_login(payload:InternalLoginRequest,request:Request):
     email=norm_email(payload.email); found=_staff_by_email(email)
+    if not found:
+        legacy=supabase.table("admins").select("id,email,name,password_hash,role,is_active").eq("email",email).limit(1).execute()
+        if legacy.data and legacy.data[0].get("role")=="super_admin" and legacy.data[0].get("is_active"):
+            a=legacy.data[0]
+            valid,_=verify_password(payload.password,a.get("password_hash",""))
+            if not valid:raise HTTPException(401,"Invalid email or password")
+            existing=supabase.table("users").select("id").eq("email",email).limit(1).execute()
+            if existing.data:raise HTTPException(409,"This email already belongs to a learner identity; internal identity migration requires manual reconciliation")
+            ur=supabase.table("users").insert({"email":email,"name":a.get("name"),"password_hash":a.get("password_hash"),"role":"staff","is_paid":False,"sub_status":"active","email_verified":True}).execute()
+            if not ur.data:raise HTTPException(500,"Unable to create internal staff identity")
+            sr=supabase.table("learnora_staff_accounts").insert({"user_id":ur.data[0]["id"],"status":"active","joined_at":datetime.now(timezone.utc).isoformat()}).execute()
+            if not sr.data:raise HTTPException(500,"Unable to create internal staff account")
+            rr=supabase.table("learnora_staff_roles").select("id").eq("slug","super_admin").limit(1).execute()
+            if rr.data:supabase.table("learnora_staff_role_assignments").insert({"staff_id":sr.data[0]["id"],"role_id":rr.data[0]["id"]}).execute()
+            found=_staff_by_email(email)
     if not found:raise HTTPException(401,"Invalid email or password")
     u,s=found["user"],found["staff"]
     if s["status"] not in {"active","pending_activation"}:raise HTTPException(403,"This staff account is not available for login")
