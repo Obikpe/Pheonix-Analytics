@@ -42,6 +42,12 @@ def resolve_course_access(user_id:str, course_id:str, organisation_id:Optional[s
     purchase=supabase.table("learnora_course_purchases").select("*").eq("user_id",user_id).eq("course_id",course_id).eq("status","paid").limit(1).execute()
     if purchase.data: return {"allowed":True,"source":"purchase","purchase":purchase.data[0]}
 
+    if not organisation_id:
+        memberships=supabase.table("organisation_members").select("organisation_id").eq("user_id",user_id).eq("status","active").limit(10).execute()
+        for m in memberships.data or []:
+            check=resolve_course_access(user_id,course_id,m.get("organisation_id")) if m.get("organisation_id") else None
+            if check:return check
+
     if organisation_id:
         membership=supabase.table("organisation_members").select("id,status,role").eq("organisation_id",organisation_id).eq("user_id",user_id).eq("status","active").limit(1).execute()
         if membership.data:
