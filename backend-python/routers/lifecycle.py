@@ -1,5 +1,6 @@
 """Organisation and cohort lifecycle/renewal API."""
 from datetime import date
+from datetime import datetime, timezone
 from fastapi import APIRouter,Depends,HTTPException
 from pydantic import BaseModel
 from .auth import supabase
@@ -45,7 +46,7 @@ def activate_contract(contract_id:str,context:PermissionContext=Depends(require_
     if not r.data:raise HTTPException(404,"Contract not found.")
     c=r.data[0]
     if c["status"] not in {"signed","sent","draft"}:raise HTTPException(409,"Contract cannot be activated from its current state.")
-    upd=supabase.table("learnora_contracts").update({"status":"active","approved_at":"now()"}).eq("id",contract_id).execute()
+    upd=supabase.table("learnora_contracts").update({"status":"active","approved_at":datetime.now(timezone.utc).isoformat()}).eq("id",contract_id).execute()
     supabase.table("learnora_organisation_lifecycle").upsert({"organisation_id":c["organisation_id"],"status":"active","changed_by":context.user_id}).execute()
     audit(actor_user_id=context.user_id,action="contract_activated",resource_type="contract",resource_id=contract_id,organisation_id=c["organisation_id"])
     return {"success":True,"contract":upd.data[0] if upd.data else None}
