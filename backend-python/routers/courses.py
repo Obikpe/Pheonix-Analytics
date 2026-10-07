@@ -43,6 +43,7 @@ from pydantic import BaseModel, Field
 
 from .auth import supabase
 from services.capacity import ensure_org_capacity
+from services.audit import audit
 
 from .permissions import (
     PermissionContext,
@@ -1093,15 +1094,11 @@ def delete_course(
     )
 
     try:
-
         result = (
             supabase
             .table("learnora_courses")
-            .delete()
-            .eq(
-                "id",
-                str(course_id),
-            )
+            .update({"status":"archived"})
+            .eq("id",str(course_id))
             .execute()
         )
 
@@ -1122,6 +1119,6 @@ def delete_course(
 
     return {
         "success": True,
-        "message": "Course deleted successfully.",
+        "message": "Course archived successfully.",
         "course_id": str(course_id),
     }
