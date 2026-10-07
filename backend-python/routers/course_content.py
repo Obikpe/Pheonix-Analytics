@@ -945,3 +945,145 @@ def reorder_lessons(
             status_code=500,
             detail=f"Lesson reorder failed: {str(exc)}",
         )
+
+@router.get("/courses/{course_id}/structure")
+def get_course_structure(
+    course_id: str,
+    context: PermissionContext = Depends(
+        require_permission("courses.view")
+    ),
+):
+    """
+    Return a complete course structure in one request.
+
+    Course
+      -> Modules
+         -> Lessons
+
+    This endpoint is intended for course-management interfaces
+    and learner course navigation.
+    """
+
+    course = _get_course(course_id)
+
+    if not course:
+        raise HTTPException(
+            status_code=404,
+            detail="Course not found.",
+        )
+
+    try:
+        # --------------------------------------------------------
+        # Load modules
+        # --------------------------------------------------------
+
+        modules_result = (
+            supabase
+            .table("course_modules")
+            .select(
+                "id,"
+                "course_id,"
+                "title,"
+                "description,"
+                "order_index,"
+                "status,"
+                "created_at,"
+                "updated_at"
+            )
+            .eq("course_id", course_id)
+            .order("order_index")
+            .execute()
+        )
+
+        modules = modules_result.data or []
+
+        # --------------------------------------------------------
+        # Load all lessons for the course's modules
+        # --------------------------------------------------------
+
+        module_ids = [
+            str(module["id"])
+            for module in modules
+        ]
+
+        lessons_by_module = {
+            module_id: []
+            for module_id in module_ids
+        }
+
+        if module_ids:
+            lessons_result = (
+                supabase
+                .table("learnora_lessons")
+                .select(
+                    "id,"
+                    "module_id,"
+                    "title,"
+                    "slug,"
+                    "description,"
+                    "order_index,"
+                    "lesson_type,"
+                    "duration_minutes,"
+                    "is_preview,"
+                    "status,"
+                    "created_at,"
+                    "updated_at"
+                )
+                .in_("module_id", module_ids)
+                .order("order_index")
+                .execute()
+            )
+
+            lessons = lessons_result.data or []
+
+            for lesson in lessons:
+                module_id = str(lesson["module_id"])
+
+                if module_id in lessons_by_module:
+                    lessons_by_module[module_id].append(
+                        lesson
+                    )
+
+        # --------------------------------------------------------
+        # Build nested structure
+        # --------------------------------------------------------
+
+        structured_modules = []
+
+        for module in modules:
+            module_id = str(module["id"])
+
+            structured_modules.append({
+                **module,
+                "lessons": lessons_by_module.get(
+                    module_id,
+                    []
+                ),
+            })
+
+        # --------------------------------------------------------
+        # Return complete structure
+        # --------------------------------------------------------
+
+        return {
+            "success": True,
+            "course": course,
+            "modules": structured_modules,
+            "module_count": len(structured_modules),
+            "lesson_count": sum(
+                len(module["lessons"])
+                for module in structured_modules
+            ),
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Failed to load course structure: "
+                f"{str(exc)}"
+            ),
+        )
