@@ -4,8 +4,8 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from .auth import log_audit_event, supabase
-from .internal_auth import InternalStaffContext, get_current_staff
-from .permissions import PermissionContext, require_permission
+from .internal_auth import InternalStaffContext, get_current_staff, require_internal_permission
+from .permissions import PermissionContext
 
 router=APIRouter(prefix="/api/internal",tags=["Internal Organisation"])
 
@@ -24,12 +24,12 @@ class TeamMemberRequest(BaseModel):
     team_role:str="member"
 
 @router.get("/departments")
-def departments(staff:InternalStaffContext=Depends(get_current_staff),_:PermissionContext=Depends(require_permission("staff.departments"))):
+def departments(staff:InternalStaffContext=Depends(require_internal_permission("staff.departments"))):
     r=supabase.table("learnora_departments").select("*").order("name").execute()
     return {"success":True,"departments":r.data or []}
 
 @router.post("/departments",status_code=201)
-def create_department(body:DepartmentRequest,request:Request,staff:InternalStaffContext=Depends(get_current_staff),_:PermissionContext=Depends(require_permission("staff.departments"))):
+def create_department(body:DepartmentRequest,request:Request,staff:InternalStaffContext=Depends(get_current_staff),_:InternalStaffContext=Depends(require_permission("staff.departments"))):
     r=supabase.table("learnora_departments").insert({"name":body.name.strip(),"slug":body.slug.strip().lower(),"description":body.description.strip() if body.description else None}).execute()
     if not r.data:raise HTTPException(500,"Unable to create department")
     log_audit_event(action="internal_department_created",email=staff.email,account_type="staff",role="staff",request=request,metadata={"department_id":r.data[0]["id"]})
