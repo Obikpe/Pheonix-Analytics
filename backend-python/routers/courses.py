@@ -42,6 +42,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from .auth import supabase
+from ..services.capacity import ensure_org_capacity
+
 from .permissions import (
     PermissionContext,
     require_permission,
@@ -67,6 +69,7 @@ COURSE_STATUSES = {
 COURSE_OWNERSHIPS = {
     "learnora",
     "organisation",
+    "creator",
 }
 
 COURSE_LEVELS = {
@@ -672,6 +675,8 @@ def create_course(
         _get_organisation(
             organisation_id
         )
+
+        ensure_org_capacity(organisation_id,"courses",1)
 
         _check_course_organisation_access(
             context,
