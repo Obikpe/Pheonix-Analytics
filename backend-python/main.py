@@ -16,7 +16,7 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from contextlib import asynccontextmanager
-
+from routers.permission_test import router as permission_test_router
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Supabase is managed externally via SQL, no local init_db needed
@@ -77,6 +77,7 @@ app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
 app.include_router(webhooks.router, prefix="/api/webhooks", tags=["webhooks"])
 app.include_router(community.router, prefix="/api/community", tags=["community"])
 app.include_router(grader.router, prefix="/api/grader", tags=["grader"])
+app.include_router(permission_test_router)
 @app.get("/")
 def health():
     return {"status": "ok", "service": "pheonix-python-secure", "routers": ["auth", "grading", "admin", "progress","grader", "billing", "webhooks"]}
