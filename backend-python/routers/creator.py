@@ -35,7 +35,7 @@ def me(user:CurrentUser=Depends(get_current_user)):
 def create_course(body:CreatorCourseIn,user:CurrentUser=Depends(get_current_user)):
     a=supabase.table("learnora_creator_accounts").select("id,status").eq("user_id",user.id).limit(1).execute()
     if not a.data or a.data[0]["status"]!="approved":raise HTTPException(403,"Approved creator account required")
-    r=supabase.table("learnora_courses").insert({"title":body.title,"slug":body.slug,"description":body.description,"short_description":body.short_description,"level":body.level,"ownership":"learnora","creator_id":a.data[0]["id"],"created_by":user.id}).execute()
+    r=supabase.table("learnora_courses").insert({"title":body.title,"slug":body.slug,"description":body.description,"short_description":body.short_description,"level":body.level,"ownership":"creator","creator_id":a.data[0]["id"],"created_by":user.id}).execute()
     if not r.data:raise HTTPException(500,"Unable to create creator course")
     return {"success":True,"course":r.data[0]}
 
@@ -45,3 +45,19 @@ def earnings(user:CurrentUser=Depends(get_current_user)):
     if not a.data:raise HTTPException(404,"Creator account not found")
     r=supabase.table("learnora_creator_ledger").select("*").eq("creator_id",a.data[0]["id"]).order("created_at",desc=True).execute()
     return {"success":True,"ledger":r.data or []}
+
+@router.post("/admin/applications/{application_id}/review")
+def review_application(application_id:str, status:str, context=Depends(__import__("routers.permissions",fromlist=["require_permission"]).require_permission("users.update"))):
+    if status not in {"approved","declined"}: raise HTTPException(400,"Status must be approved or declined.")
+    app=supabase.table("learnora_creator_applications").select("*").eq("id",application_id).limit(1).execute()
+    if not app.data: raise HTTPException(404,"Creator application not found.")
+    row=app.data[0]
+    supabase.table("learnora_creator_applications").update({"status":status,"reviewed_by":context.user_id,"reviewed_at":"now()"}).eq("id",application_id).execute()
+    if status=="approved":
+        existing=supabase.table("learnora_creator_accounts").select("id").eq("user_id",row["user_id"]).limit(1).execute()
+        if existing.data:
+            creator=existing.data[0]
+            supabase.table("learnora_creator_accounts").update({"status":"approved","approved_by":context.user_id,"approved_at":"now()","application_id":application_id}).eq("id",creator["id"]).execute()
+        else:
+            supabase.table("learnora_creator_accounts").insert({"user_id":row["user_id"],"status":"approved","approved_by":context.user_id,"approved_at":"now()","application_id":application_id}).execute()
+    return {"success":True,"status":status}
