@@ -3,8 +3,8 @@ from fastapi import APIRouter,Depends,HTTPException
 from pydantic import BaseModel
 from .auth import supabase
 from .permissions import PermissionContext,require_permission
-from ..services.capacity import ensure_org_capacity
-from ..services.audit import audit
+from services.capacity import ensure_org_capacity
+from services.audit import audit
 
 router=APIRouter(prefix="/api/organisation-teams",tags=["Organisation Teams"])
 class TeamIn(BaseModel):
