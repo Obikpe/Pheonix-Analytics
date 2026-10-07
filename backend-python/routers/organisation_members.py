@@ -5,8 +5,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from .auth import supabase
 from .permissions import PermissionContext, require_permission
-from ..services.capacity import ensure_org_capacity
-from ..services.audit import audit
+from services.capacity import ensure_org_capacity
+from services.audit import audit
 
 router=APIRouter(prefix="/api/organisations",tags=["Organisation Members"])
 ALLOWED_ROLES={"owner","admin","instructor","learner"}
