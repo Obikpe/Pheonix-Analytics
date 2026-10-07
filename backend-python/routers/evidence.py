@@ -1,4 +1,5 @@
 """Learning evidence, skills and credentials API."""
+from datetime import datetime,timezone
 from fastapi import APIRouter,Depends,HTTPException
 from pydantic import BaseModel
 from .auth import CurrentUser,get_current_user,supabase
@@ -38,6 +39,6 @@ def add_evidence(body:EvidenceIn,user:CurrentUser=Depends(get_current_user)):
 def submit_project(project_id:str,body:ProjectSubmissionIn,user:CurrentUser=Depends(get_current_user)):
     project=supabase.table("projects").select("id").eq("id",project_id).limit(1).execute()
     if not project.data:raise HTTPException(404,"Project not found.")
-    r=supabase.table("project_submissions").insert({"project_id":project_id,"user_id":user.id,**body.model_dump(),"status":"submitted","submitted_at":"now()"}).execute()
+    r=supabase.table("project_submissions").insert({"project_id":project_id,"user_id":user.id,**body.model_dump(),"status":"submitted","submitted_at":datetime.now(timezone.utc).isoformat()}).execute()
     if not r.data:raise HTTPException(500,"Unable to save project submission.")
     return {"success":True,"submission":r.data[0]}
