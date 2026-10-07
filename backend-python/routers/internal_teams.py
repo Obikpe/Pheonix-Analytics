@@ -28,7 +28,7 @@ def departments(staff:InternalStaffContext=Depends(require_internal_permission("
     return {"success":True,"departments":r.data or []}
 
 @router.post("/departments",status_code=201)
-def create_department(body:DepartmentRequest,request:Request,staff:InternalStaffContext=Depends(get_current_staff),_:InternalStaffContext=Depends(require_permission("staff.departments"))):
+def create_department(body:DepartmentRequest,request:Request,staff:InternalStaffContext=Depends(require_internal_permission("staff.departments"))):
     r=supabase.table("learnora_departments").insert({"name":body.name.strip(),"slug":body.slug.strip().lower(),"description":body.description.strip() if body.description else None}).execute()
     if not r.data:raise HTTPException(500,"Unable to create department")
     log_audit_event(action="internal_department_created",email=staff.email,account_type="staff",role="staff",request=request,metadata={"department_id":r.data[0]["id"]})
@@ -52,7 +52,7 @@ def create_team(body:TeamRequest,request:Request,staff:InternalStaffContext=Depe
     return {"success":True,"team":r.data[0]}
 
 @router.patch("/teams/{team_id}")
-def update_team(team_id:str,body:TeamRequest,staff:InternalStaffContext=Depends(get_current_staff),_:PermissionContext=Depends(require_permission("staff.teams"))):
+def update_team(team_id:str,body:TeamRequest,staff:InternalStaffContext=Depends(require_internal_permission("staff.teams"))):
     r=supabase.table("learnora_staff_teams").update({"name":body.name.strip(),"slug":body.slug.strip().lower(),"description":body.description.strip() if body.description else None,"department_id":body.department_id,"manager_staff_id":body.manager_staff_id}).eq("id",team_id).execute()
     if not r.data:raise HTTPException(404,"Team not found")
     return {"success":True,"team":r.data[0]}
