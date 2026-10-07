@@ -2,7 +2,7 @@
 from fastapi import APIRouter,Depends,HTTPException
 from pydantic import BaseModel,Field
 from .auth import CurrentUser,get_current_user,supabase
-from .permissions import PermissionContext,require_permission
+from .permissions import PermissionContext,require_permission,get_permission_context
 from ..services.ai import generate
 
 router=APIRouter(prefix="/api/ai",tags=["Learnora AI"])
@@ -17,12 +17,14 @@ class AskIn(BaseModel):
 ALLOWED={"tutor","coach","practice","project","instructor","organisation"}
 
 @router.post("/ask")
-async def ask(body:AskIn,user:CurrentUser=Depends(get_current_user)):
+async def ask(body:AskIn,user:CurrentUser=Depends(get_current_user),context:PermissionContext=Depends(get_permission_context)):
     if body.feature not in ALLOWED:raise HTTPException(400,"Unsupported AI feature.")
     if body.feature in {"instructor","organisation"}:
-        # Authorisation for privileged features is checked through the existing
-        # permission resolver when an organisation context is supplied.
-        pass
+        required="analytics.organisation" if body.feature=="organisation" else "ai.view"
+        if not context.has_permission(required):
+            raise HTTPException(403,"You are not authorised to use this AI feature.")
+    elif context.organisation_id and not context.has_permission("ai.view") and context.organisation_role not in {"learner","instructor","admin","owner"}:
+        raise HTTPException(403,"AI access is not available for this account.")
     conversation_id=body.conversation_id
     if conversation_id:
         c=supabase.table("learnora_ai_conversations").select("id,user_id").eq("id",conversation_id).limit(1).execute()
