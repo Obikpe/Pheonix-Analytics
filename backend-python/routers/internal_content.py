@@ -1,4 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
+import re
+import secrets
 from .auth import supabase
 from .internal_auth import InternalStaffContext, require_internal_permission
 from pydantic import BaseModel, Field
@@ -101,6 +103,12 @@ class LessonWrite(BaseModel):
 class ReorderItem(BaseModel):
     id: str
     order_index: int = Field(..., ge=0)
+
+class VideoUploadRequest(BaseModel):
+    filename: str = Field(..., min_length=1, max_length=255)
+    content_type: Literal["video/mp4", "video/webm", "video/quicktime", "video/mpeg", "video/x-msvideo"]
+    file_size_bytes: int = Field(..., gt=0, le=2147483648)
+    title: Optional[str] = Field(None, max_length=200)
 
 class VideoWrite(BaseModel):
     provider: Literal["supabase", "cloudflare", "mux", "bunny", "vimeo", "youtube", "external", "other"] = "supabase"
@@ -212,6 +220,52 @@ def reorder_lessons(module_id: str, items: list[ReorderItem], staff: InternalSta
     for item in items:
         supabase.table("learnora_lessons").update({"order_index": item.order_index}).eq("id", item.id).eq("module_id", module_id).execute()
     return {"success": True}
+
+@router.post("/lessons/{lesson_id}/video-upload")
+def create_video_upload(
+    lesson_id: str,
+    payload: VideoUploadRequest,
+    staff: InternalStaffContext = Depends(require_internal_permission("content.video")),
+):
+    lesson = supabase.table("learnora_lessons").select("id,module_id").eq("id", lesson_id).limit(1).execute()
+    if not lesson.data:
+        raise HTTPException(status_code=404, detail="Lesson not found.")
+    module = supabase.table("course_modules").select("id,course_id").eq("id", lesson.data[0]["module_id"]).limit(1).execute()
+    if not module.data:
+        raise HTTPException(status_code=404, detail="Parent module not found.")
+    course_id = str(module.data[0]["course_id"])
+    safe_name = re.sub(r"[^A-Za-z0-9._-]+", "-", payload.filename.strip()).strip(".-") or "video"
+    path = f"courses/{course_id}/lessons/{lesson_id}/{secrets.token_hex(12)}-{safe_name}"
+    try:
+        response = supabase.storage.from_("learnora-course-media").create_signed_upload_url(
+            path,
+            options={"upsert": "false"},
+        )
+        data = getattr(response, "data", None) or response
+        if isinstance(data, dict):
+            token = data.get("token")
+            signed_url = data.get("signedUrl") or data.get("signed_url")
+            response_path = data.get("path") or path
+        else:
+            token = getattr(data, "token", None)
+            signed_url = getattr(data, "signed_url", None) or getattr(data, "signedUrl", None)
+            response_path = getattr(data, "path", None) or path
+        if not token:
+            raise RuntimeError("Supabase did not return an upload token.")
+        return {
+            "success": True,
+            "bucket": "learnora-course-media",
+            "path": response_path,
+            "token": token,
+            "signed_url": signed_url,
+            "title": payload.title or payload.filename,
+            "content_type": payload.content_type,
+            "file_size_bytes": payload.file_size_bytes,
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Unable to create video upload URL: {str(exc)}")
 
 @router.post("/lessons/{lesson_id}/videos")
 def create_video(lesson_id: str, payload: VideoWrite, staff: InternalStaffContext = Depends(require_internal_permission("content.video"))):
