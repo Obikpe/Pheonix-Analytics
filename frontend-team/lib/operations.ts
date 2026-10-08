@@ -10,3 +10,5 @@ export const creatorApplications = () => request<any>("/operations/creators/appl
 export const creatorPayouts = () => request<any>("/operations/creators/payouts");
 export const aiProviders = () => request<any>("/operations/ai/providers");
 export const aiLimits = () => request<any>("/operations/ai/limits");
+export const createOrganisation=(payload:any)=>request<any>("/operations/organisations",{method:"POST",body:JSON.stringify(payload)});
+export const updateOrganisation=(id:string,payload:any)=>request<any>("/operations/organisations/"+encodeURIComponent(id),{method:"PATCH",body:JSON.stringify(payload)});
