@@ -8,7 +8,7 @@ import { useRouter } from 'next/navigation';
 import courses from '@/data/courses.json';
 import myImage from '@/public/logo.png';
 
-const API_URL = 'https://learnora-backend.vercel.app';
+const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
 interface CourseRecord {
   id?: string;
