@@ -86,7 +86,7 @@ def _course_summary(user_id: str, course_id: str):
             .table("learnora_lessons")
             .select(
                 "id,module_id,title,order_index,lesson_type,"
-                "duration_minutes,status"
+                "content,duration_minutes,status"
             )
             .in_("module_id", module_ids)
             .neq("status", "archived")
