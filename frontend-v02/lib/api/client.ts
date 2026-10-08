@@ -1,4 +1,4 @@
-const BASE=(process.env.NEXT_PUBLIC_API_URL||"https://learnora-backend-v02.vercel.app").replace(/\/$/,"");
+const BASE=(process.env.NEXT_PUBLIC_API_URL||"https://learnora-backend.vercel.app").replace(/\/$/,"");
 export const token=()=>typeof window==="undefined"?"":localStorage.getItem("phx_token")||"";
 export const setToken=(v:string)=>localStorage.setItem("phx_token",v);
 export const clearToken=()=>localStorage.removeItem("phx_token");
