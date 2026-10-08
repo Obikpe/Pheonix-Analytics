@@ -4,7 +4,7 @@ import {useEffect,useState} from "react";
 import Shell from "../../components/Shell";
 import {aiHealth,aiProfiles,teamMe,updateAiProfile,testAiProfile} from "../../lib/api";
 
-type TestState={status:string;latency_ms?:number;provider?:string;model?:string;fallback_used?:boolean;error?:string;errors?:string[]};
+type TestState={status:string;success?:boolean;latency_ms?:number;provider?:string;model?:string;fallback_used?:boolean;fallback_reason?:string;error?:string;errors?:string[]};
 
 export default function AIOperations(){
   const [user,setUser]=useState<any>(null);
