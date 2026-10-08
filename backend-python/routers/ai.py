@@ -28,7 +28,6 @@ class AskIn(BaseModel):
     message: str = Field(..., min_length=1, max_length=12000)
     conversation_id: str | None = None
     organisation_id: str | None = None
-    model: str | None = Field(default=None, max_length=150)
 
 
 class ProviderUpdateIn(BaseModel):
@@ -122,13 +121,6 @@ async def ask(
         or (body.organisation_id if context.is_platform_admin else None)
     )
 
-    # Only an AI administrator can choose an arbitrary provider model.
-    selected_model = (
-        body.model
-        if context.has_permission("ai.manage")
-        else None
-    )
-
     conversation_id = body.conversation_id
 
     if conversation_id:
@@ -201,7 +193,6 @@ async def ask(
         body.message,
         org_id,
         conversation_id,
-        selected_model,
     )
 
     if result["status"] == "rate_limited":
