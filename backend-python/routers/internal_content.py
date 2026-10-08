@@ -95,6 +95,44 @@ def archive_course(course_id: str, staff: InternalStaffContext = Depends(require
         raise HTTPException(status_code=404, detail="Course not found.")
     return {"success": True, "course": row.data[0]}
 
+@router.get("/courses/{course_id}/structure")
+def course_structure(course_id: str, staff: InternalStaffContext = Depends(require_internal_permission("courses.view"))):
+    course = supabase.table("learnora_courses").select("*").eq("id", course_id).limit(1).execute()
+    if not course.data:
+        raise HTTPException(status_code=404, detail="Course not found.")
+
+    modules = (
+        supabase.table("course_modules")
+        .select("*")
+        .eq("course_id", course_id)
+        .order("order_index")
+        .execute()
+    ).data or []
+
+    module_ids = [str(m["id"]) for m in modules]
+    lessons = []
+    if module_ids:
+        lessons = (
+            supabase.table("learnora_lessons")
+            .select("*")
+            .in_("module_id", module_ids)
+            .order("order_index")
+            .execute()
+        ).data or []
+
+    by_module = {str(m["id"]): [] for m in modules}
+    for lesson in lessons:
+        by_module.setdefault(str(lesson["module_id"]), []).append(lesson)
+
+    structured = [{**module, "lessons": by_module.get(str(module["id"]), [])} for module in modules]
+    return {
+        "success": True,
+        "course": course.data[0],
+        "modules": structured,
+        "module_count": len(structured),
+        "lesson_count": sum(len(module["lessons"]) for module in structured),
+    }
+
 @router.get("/courses/{course_id}/modules")
 def modules(course_id: str, staff: InternalStaffContext = Depends(require_internal_permission("courses.view"))):
     rows = supabase.table("course_modules").select("*").eq("course_id", course_id).order("order_index").execute()
