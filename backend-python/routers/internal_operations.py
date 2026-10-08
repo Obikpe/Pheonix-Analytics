@@ -4,7 +4,8 @@ These endpoints are intentionally separate from learner/admin public APIs so
 the internal frontend can authenticate with the internal staff token only.
 """
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field, HTTPException
+from pydantic import BaseModel, Field
+from typing import Optional
 from .internal_auth import InternalStaffContext, require_internal_permission
 from .auth import supabase
 
@@ -25,7 +26,9 @@ def organisation(organisation_id: str, staff: InternalStaffContext = _staff("org
     result = supabase.table("organisations").select("*").eq("id", organisation_id).limit(1).execute()
     if not result.data:
         raise HTTPException(404, "Organisation not found.")
-    returclass OrganisationCreate(BaseModel):
+    return {"success": True, "organisation": result.data[0]}
+
+class OrganisationCreate(BaseModel):
     name: str = Field(..., min_length=2, max_length=150)
     slug: str = Field(..., min_length=2, max_length=100)
     organisation_type: str = Field("academy", min_length=2, max_length=50)
@@ -71,7 +74,6 @@ def update_organisation(organisation_id: str, payload: OrganisationUpdate, staff
     row = supabase.table("organisations").update(data).eq("id", organisation_id).execute()
     if not row.data: raise HTTPException(status_code=500, detail="Organisation update failed.")
     return {"success": True, "organisation": row.data[0]}
-n {"success": True, "organisation": result.data[0]}
 
 @router.get("/organisations/{organisation_id}/members")
 def organisation_members(organisation_id: str, staff: InternalStaffContext = _staff("organisations.members")):
