@@ -1,0 +1,1 @@
+import"./globals.css";export const metadata={title:"Learnora ME",description:"Learn. Practise. Build. Prove."};export default function Layout({children}:{children:React.ReactNode}){return <html lang="en"><body>{children}</body></html>}
