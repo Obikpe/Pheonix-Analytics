@@ -1,0 +1,16 @@
+import { request } from "./client";
+export const adminCourses=(params="")=>request<any>("/courses"+(params?"?"+params:""));
+export const createCourse=(body:any)=>request<any>("/courses",{method:"POST",body:JSON.stringify(body)});
+export const updateCourse=(id:string,body:any)=>request<any>("/courses/"+encodeURIComponent(id),{method:"PATCH",body:JSON.stringify(body)});
+export const publishCourse=(id:string)=>request<any>("/courses/"+encodeURIComponent(id)+"/publish",{method:"POST"});
+export const courseStructure=(id:string)=>request<any>("/course-content/courses/"+encodeURIComponent(id)+"/structure");
+export const modules=(courseId:string)=>request<any>("/learning/courses/"+encodeURIComponent(courseId)+"/modules");
+export const lessons=(moduleId:string)=>request<any>("/learning/modules/"+encodeURIComponent(moduleId)+"/lessons");
+export const lessonMedia=(lessonId:string)=>request<any>("/media/lessons/"+encodeURIComponent(lessonId));
+export const organisations=()=>request<any>("/organisations");
+export const organisation=(id:string)=>request<any>("/organisations/"+encodeURIComponent(id));
+export const organisationRequests=()=>request<any>("/commercial/organisation-requests");
+export const capacity=(id:string)=>request<any>("/commercial/organisations/"+encodeURIComponent(id)+"/capacity");
+export const creatorApplications=()=>request<any>("/creator/admin/applications");
+export const aiProviders=()=>request<any>("/ai/admin/providers");
+export const aiLimits=()=>request<any>("/ai/admin/limits");
