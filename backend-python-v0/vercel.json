@@ -10,5 +10,8 @@
       "source": "/(.*)",
       "destination": "/main.py"
     }
-  ]
+  ],
+  "git": {
+    "deploymentEnabled": false
+  }
 }
