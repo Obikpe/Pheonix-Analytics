@@ -13,6 +13,18 @@ def courses(staff: InternalStaffContext = Depends(require_internal_permission("c
     rows = supabase.table("learnora_courses").select("id,title,slug,organisation_id,ownership,status,created_at,updated_at").order("created_at", desc=True).execute()
     return {"success": True, "courses": rows.data or []}
 
+class CourseCreate(BaseModel):
+    title: str = Field(..., min_length=1, max_length=200)
+    slug: str = Field(..., min_length=1, max_length=200)
+    short_description: Optional[str] = Field(None, max_length=1000)
+    description: Optional[str] = Field(None, max_length=10000)
+    level: Optional[str] = Field(None, max_length=40)
+    status: Literal["draft", "published", "archived"] = "draft"
+    ownership: str = Field("learnora", min_length=1, max_length=40)
+    organisation_id: Optional[str] = None
+    thumbnail_url: Optional[str] = Field(None, max_length=2000)
+    estimated_hours: Optional[float] = Field(None, ge=0)
+
 class CourseWrite(BaseModel):
     title: Optional[str] = Field(None, min_length=1, max_length=200)
     slug: Optional[str] = Field(None, min_length=1, max_length=200)
@@ -23,6 +35,31 @@ class CourseWrite(BaseModel):
     ownership: Optional[str] = Field(None, max_length=40)
     thumbnail_url: Optional[str] = Field(None, max_length=2000)
     estimated_hours: Optional[float] = Field(None, ge=0)
+
+@router.post("/courses")
+def create_course(payload: CourseCreate, staff: InternalStaffContext = Depends(require_internal_permission("content.manage"))):
+    slug = payload.slug.strip().lower().replace(" ", "-")
+    if supabase.table("learnora_courses").select("id").eq("slug", slug).limit(1).execute().data:
+        raise HTTPException(status_code=400, detail="A course with this slug already exists.")
+    if payload.ownership.strip().lower() == "organisation" and not payload.organisation_id:
+        raise HTTPException(status_code=400, detail="Organisation-owned courses require an organisation.")
+    row = supabase.table("learnora_courses").insert({
+        "title": payload.title.strip(),
+        "slug": slug,
+        "short_description": payload.short_description.strip() if payload.short_description else None,
+        "description": payload.description.strip() if payload.description else None,
+        "level": payload.level.strip().lower() if payload.level else None,
+        "status": payload.status,
+        "ownership": payload.ownership.strip().lower(),
+        "organisation_id": payload.organisation_id,
+        "thumbnail_url": payload.thumbnail_url.strip() if payload.thumbnail_url else None,
+        "estimated_hours": payload.estimated_hours,
+        "settings": {},
+        "created_by": staff.user_id,
+    }).execute()
+    if not row.data:
+        raise HTTPException(status_code=500, detail="Course creation failed.")
+    return {"success": True, "course": row.data[0]}
 
 @router.get("/courses/{course_id}")
 def get_course(course_id: str, staff: InternalStaffContext = Depends(require_internal_permission("courses.view"))):
