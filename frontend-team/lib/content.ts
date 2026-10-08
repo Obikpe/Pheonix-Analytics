@@ -5,6 +5,7 @@ export const contentModules = (courseId:string) => request<any>("/content/course
 export const contentLessons = (moduleId:string) => request<any>("/content/modules/"+encodeURIComponent(moduleId)+"/lessons");
 export const contentLesson = (lessonId:string) => request<any>("/content/lessons/"+encodeURIComponent(lessonId));
 export const contentLessonMedia = (lessonId:string) => request<any>("/content/lessons/"+encodeURIComponent(lessonId)+"/media");
+export const courseStructure = (courseId:string) => request<any>("/content/courses/"+encodeURIComponent(courseId)+"/structure");
 export const createModule=(courseId:string,payload:any)=>request<any>("/content/courses/"+encodeURIComponent(courseId)+"/modules",{method:"POST",body:JSON.stringify(payload)});
 export const updateModule=(id:string,payload:any)=>request<any>("/content/modules/"+encodeURIComponent(id),{method:"PATCH",body:JSON.stringify(payload)});
 export const createLesson=(moduleId:string,payload:any)=>request<any>("/content/modules/"+encodeURIComponent(moduleId)+"/lessons",{method:"POST",body:JSON.stringify(payload)});
