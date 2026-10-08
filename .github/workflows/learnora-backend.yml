@@ -35,6 +35,10 @@ jobs:
           PY
       - name: Install backend dependencies
         run: python -m pip install -r requirements.txt
+      - name: Static undefined-name and syntax checks
+        run: |
+          python -m pip install ruff
+          ruff check . --select E9,F821,F811
       - name: Import application
         env:
           APP_ENV: development
