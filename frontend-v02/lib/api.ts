@@ -1,0 +1,13 @@
+export const API_URL=(process.env.NEXT_PUBLIC_API_URL||"https://learnora-backend-v02.vercel.app").replace(/\/$/,"");
+export function token(){if(typeof window==="undefined")return "";return localStorage.getItem("phx_token")||""}
+export function saveToken(v:string){localStorage.setItem("phx_token",v)}
+export function logout(){localStorage.removeItem("phx_token")}
+export async function api<T=any>(path:string,init:RequestInit={}):Promise<T>{const h=new Headers(init.headers);h.set("Content-Type","application/json");const t=token();if(t)h.set("Authorization","Bearer "+t);const r=await fetch(API_URL+(path[0]==="/"?"":"/")+path,{...init,headers:h,cache:"no-store"});const b=await r.json().catch(()=>({}));if(!r.ok)throw new Error(typeof b.detail==="string"?b.detail:typeof b.error==="string"?b.error:"The request could not be completed.");return b}
+export const login=(email:string,password:string)=>api("/api/auth/login",{method:"POST",body:JSON.stringify({email,password})});
+export const register=(name:string,email:string,password:string)=>api("/api/auth/register",{method:"POST",body:JSON.stringify({name,email,password})});
+export const me=()=>api("/api/auth/me");export const forgot=(email:string)=>api("/api/auth/forgot-password",{method:"POST",body:JSON.stringify({email})});
+export const reset=(token:string,new_password:string,confirm_password:string)=>api("/api/auth/reset-password",{method:"POST",body:JSON.stringify({token,new_password,confirm_password})});
+export const verify=(token:string)=>api("/api/auth/verify-email",{method:"POST",body:JSON.stringify({token})});
+export const getCourses=()=>api("/api/courses?status=published");export const getCourse=(id:string)=>api("/api/courses/"+encodeURIComponent(id));export const getStructure=(id:string)=>api("/api/course-content/courses/"+encodeURIComponent(id)+"/structure");
+export const getProgress=()=>api("/api/progress/me");export const getEvidence=()=>api("/api/evidence/me");export const askAI=(message:string)=>api("/api/ai/ask",{method:"POST",body:JSON.stringify({feature:"tutor",message})});
+export const getAIUsage=()=>api("/api/ai/usage");export const adminStats=()=>api("/api/admin/stats");export const adminUsers=()=>api("/api/admin/users");export const adminAdmins=()=>api("/api/admin/admins");export const adminActivity=()=>api("/api/admin/activity");export const adminSecurity=()=>api("/api/admin/security-summary");export const getOrgs=()=>api("/api/organisations");export const creatorMe=()=>api("/api/creator/me");export const creatorEarnings=()=>api("/api/creator/earnings");export const creatorPayouts=()=>api("/api/creator-finance/payouts");
