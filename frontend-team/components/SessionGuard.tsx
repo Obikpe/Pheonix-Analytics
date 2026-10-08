@@ -47,7 +47,8 @@ export default function SessionGuard() {
       }
     };
 
-    markActivity();
+    checkIdle();
+    if (token()) markActivity();
     const timer = window.setInterval(checkIdle, 15000);
     const events = ["pointerdown", "keydown", "mousemove", "touchstart", "scroll"];
     events.forEach((event) => window.addEventListener(event, markActivity, { passive: true }));
