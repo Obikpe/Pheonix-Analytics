@@ -9,6 +9,7 @@ def _staff(permission: str):
     return Depends(require_internal_permission(permission))
 
 class ProfileUpdateIn(BaseModel):
+    provider_key: str | None = Field(default=None, min_length=1, max_length=100)
     model: str | None = Field(default=None, min_length=1, max_length=200)
     fallback_provider_key: str | None = Field(default=None, max_length=100)
     fallback_model: str | None = Field(default=None, max_length=200)
