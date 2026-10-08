@@ -1,6 +1,7 @@
 import {request} from "./api";
 
 export const contentCourses = () => request<any>("/content/courses");
+export const createCourse=(payload:any)=>request<any>("/content/courses",{method:"POST",body:JSON.stringify(payload)});
 export const contentCourse=(courseId:string)=>request<any>("/content/courses/"+encodeURIComponent(courseId));
 export const updateCourse=(id:string,payload:any)=>request<any>("/content/courses/"+encodeURIComponent(id),{method:"PATCH",body:JSON.stringify(payload)});
 export const archiveCourse=(id:string)=>request<any>("/content/courses/"+encodeURIComponent(id)+"/archive",{method:"POST"});
