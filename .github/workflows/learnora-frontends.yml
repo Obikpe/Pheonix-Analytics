@@ -17,7 +17,7 @@ jobs:
         app: [frontend-v02, frontend-team]
     defaults:
       run:
-        working-directory: \${{ matrix.app }}
+        working-directory: ${{ matrix.app }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
