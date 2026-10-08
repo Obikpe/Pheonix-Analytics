@@ -11,6 +11,7 @@ export const departments=()=>request<any>("/departments");
 export const teams=()=>request<any>("/teams");
 export const teamMembers=(id:string)=>request<any>("/teams/"+encodeURIComponent(id)+"/members");
 
+export const aiHealth=()=>request<any>("/ai/health");
 export const aiProfiles=()=>request<any>("/ai/profiles");
 export const updateAiProfile=(key:string,payload:any)=>request<any>("/ai/profiles/"+encodeURIComponent(key),{method:"PATCH",body:JSON.stringify(payload)});
 export const testAiProfile=(key:string)=>request<any>("/ai/profiles/"+encodeURIComponent(key)+"/test",{method:"POST"});
