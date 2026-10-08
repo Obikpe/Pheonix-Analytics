@@ -10,7 +10,7 @@ import {
 import { useRouter } from "next/navigation";
 
 const API_URL =
-  "https://learnora-backend.vercel.app";
+  process.env.NEXT_PUBLIC_API_URL;
 
 type Tab = "overview" | "learners" | "activity" | "billing";
 
