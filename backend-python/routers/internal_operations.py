@@ -193,6 +193,24 @@ class ContractPreparationIn(BaseModel):
     custom_requirements: list[str] = Field(default_factory=list)
     notes: Optional[str] = Field(None, max_length=4000)
 
+@router.post("/organisations/{organisation_id}/contract-preparation")
+def save_contract_preparation(organisation_id: str, payload: ContractPreparationIn, staff: InternalStaffContext = _staff("organisations.update")):
+    organisation = supabase.table("organisations").select("id,is_active").eq("id", organisation_id).limit(1).execute()
+    if not organisation.data: raise HTTPException(404, "Organisation not found.")
+    if not organisation.data[0].get("is_active"): raise HTTPException(409, "Cannot prepare a contract for an inactive organisation.")
+    request = supabase.table("learnora_organisation_requests").select("id").eq("organisation_id", organisation_id).order("created_at", desc=True).limit(1).execute()
+    request_id = request.data[0]["id"] if request.data else None
+    existing = supabase.table("learnora_contracts").select("*").eq("organisation_id", organisation_id).eq("status", "draft").order("created_at", desc=True).limit(1).execute()
+    contract_data = {"organisation_id": organisation_id, "request_id": request_id, "contract_number": payload.contract_number.strip(), "status": "draft", "currency": payload.currency.strip().upper(), "start_date": payload.start_date, "end_date": payload.end_date, "commercial_terms": payload.payment_terms, "created_by": staff.user_id}
+    result = supabase.table("learnora_contracts").update(contract_data).eq("id", existing.data[0]["id"]).execute() if existing.data else supabase.table("learnora_contracts").insert(contract_data).execute()
+    if not result.data: raise HTTPException(500, "Unable to save contract preparation.")
+    contract = result.data[0]
+    latest = supabase.table("learnora_contract_versions").select("version_number").eq("contract_id", contract["id"]).order("version_number", desc=True).limit(1).execute()
+    next_version = (latest.data[0]["version_number"] + 1) if latest.data else 1
+    values = payload.model_dump(); values["organisation_id"] = organisation_id; values["request_id"] = request_id
+    version = supabase.table("learnora_contract_versions").insert({"contract_id": contract["id"], "version_number": next_version, "terms": __import__("json").dumps(values, ensure_ascii=False)}).execute()
+    if not version.data: raise HTTPException(500, "Unable to save contract terms version.")
+    return {"success": True, "contract": contract, "version": version.data[0]}
 @router.get("/creators/applications")
 def creator_applications(staff: InternalStaffContext = _staff("users.view")):
     result = supabase.table("learnora_creator_applications").select("*").order("created_at", desc=True).execute()
