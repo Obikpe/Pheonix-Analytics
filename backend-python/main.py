@@ -7,7 +7,7 @@ ENV_PATH = Path(__file__).parent / ".env"
 load_dotenv(dotenv_path=ENV_PATH, override=True)
 
 # 2. NOW import routers
-from routers import auth, grading, progress, billing, webhooks, community, grader, admin, organisations, organisation_members, courses, course_access, course_content, internal_auth, internal_staff, internal_teams, commercial, creator, lifecycle, learning_structure, media, access, organisation_teams, ai, creator_finance, evidence, internal_operations
+from routers import auth, grading, progress, billing, webhooks, community, grader, admin, organisations, organisation_members, courses, course_access, course_content, internal_auth, internal_staff, internal_teams, commercial, creator, lifecycle, learning_structure, media, access, organisation_teams, ai, creator_finance, evidence, internal_operations, internal_content
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -98,6 +98,7 @@ app.include_router(course_content.router)
 app.include_router(internal_auth.router)
 app.include_router(internal_staff.router)
 app.include_router(internal_teams.router)\napp.include_router(internal_operations.router)
+app.include_router(internal_content.router)
 app.include_router(commercial.router)
 app.include_router(creator.router)
 app.include_router(lifecycle.router)
