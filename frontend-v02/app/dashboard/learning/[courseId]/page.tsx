@@ -1,8 +1,8 @@
 "use client";
 import{useEffect,useMemo,useRef,useState}from"react";
-import Shell from"../../../components/dashboard/Shell";
-import EmptyState from"../../../components/feedback/EmptyState";
-import{request}from"../../../lib/api/client";
+import Shell from"../../../../components/dashboard/Shell";
+import EmptyState from"../../../../components/feedback/EmptyState";
+import{request}from"../../../../lib/api/client";
 
 export default function LearningPlayer({params}:{params:{courseId:string}}){
  const[d,setD]=useState<any>(),[err,setErr]=useState(""),[media,setMedia]=useState<any>({videos:[],resources:[]});
