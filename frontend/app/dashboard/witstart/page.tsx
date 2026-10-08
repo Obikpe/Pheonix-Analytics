@@ -14,7 +14,7 @@ import Playground from '@/components/Playground';
 import courses from '@/data/courses.json';
 import lessons_index from '@/data/lessons_index.json';
 
-const API_URL = 'https://learnora-backend.vercel.app';
+const API_URL = process.env.NEXT_PUBLIC_API_URL
 
 type Tab =
   | 'learning'
