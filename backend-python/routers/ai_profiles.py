@@ -55,6 +55,75 @@ def _validate_profile(profile: dict) -> list[str]:
 
     return errors
 
+@router.get("/health")
+def health(staff: InternalStaffContext = _staff("ai.manage")):
+    profiles_result = supabase.table("learnora_ai_profiles").select(
+        "profile_key,display_name,provider_key,model,fallback_provider_key,"
+        "fallback_model,enabled"
+    ).order("profile_key").execute()
+
+    providers_result = supabase.table("learnora_ai_providers").select(
+        "provider_key,display_name,base_url,default_model,enabled,priority"
+    ).order("priority").execute()
+
+    limits_result = supabase.table("learnora_ai_limits").select(
+        "scope_type,scope_id,feature,requests_per_day,requests_per_month,"
+        "max_input_chars,max_output_tokens,enabled"
+    ).order("scope_type").order("feature").execute()
+
+    recent = supabase.table("ai_usage_logs").select(
+        "feature,provider,model,request_status,latency_ms,metadata,created_at"
+    ).order("created_at", desc=True).limit(200).execute().data or []
+
+    successful = [row for row in recent if row.get("request_status") == "success"]
+    failed = [row for row in recent if row.get("request_status") != "success"]
+    fallback_count = sum(
+        1 for row in successful
+        if (row.get("metadata") or {}).get("fallback_used")
+    )
+    latencies = [
+        int(row["latency_ms"]) for row in successful
+        if row.get("latency_ms") is not None
+    ]
+
+    return {
+        "success": True,
+        "summary": {
+            "profiles": len(profiles_result.data or []),
+            "enabled_profiles": sum(
+                1 for row in (profiles_result.data or []) if row.get("enabled", True)
+            ),
+            "providers": len(providers_result.data or []),
+            "enabled_providers": sum(
+                1 for row in (providers_result.data or []) if row.get("enabled", True)
+            ),
+            "recent_requests": len(recent),
+            "recent_successes": len(successful),
+            "recent_failures": len(failed),
+            "recent_fallbacks": fallback_count,
+            "average_latency_ms": (
+                round(sum(latencies) / len(latencies))
+                if latencies else None
+            ),
+        },
+        "providers": [
+            {
+                **row,
+                "api_key_configured": bool(_api_key(row.get("provider_key") or "")),
+            }
+            for row in (providers_result.data or [])
+        ],
+        "limits": limits_result.data or [],
+        "profiles": [
+            {
+                **row,
+                "validation_errors": _validate_profile(row),
+                "provider_configured": bool(_api_key(row.get("provider_key") or "")),
+            }
+            for row in (profiles_result.data or [])
+        ],
+    }
+
 @router.get("/profiles")
 def profiles(staff: InternalStaffContext = _staff("ai.manage")):
     result = supabase.table("learnora_ai_profiles").select(
