@@ -416,6 +416,8 @@ async def generate(
         "latency_ms": latency,
         "usage": usage,
         "profile": profile,
+        "fallback_used": bool(result.get("fallback_used")),
+        "fallback_reason": result.get("fallback_reason"),
     }
 
 
