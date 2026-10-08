@@ -14,3 +14,5 @@ export const createOrganisation=(payload:any)=>request<any>("/operations/organis
 export const updateOrganisation=(id:string,payload:any)=>request<any>("/operations/organisations/"+encodeURIComponent(id),{method:"PATCH",body:JSON.stringify(payload)});
 
 export const reviewCreatorApplication=(id:string,status:"approved"|"declined")=>request<any>("/operations/creators/applications/"+encodeURIComponent(id),{method:"PATCH",body:JSON.stringify({status})});
+
+export const updateOrganisationRequest=(id:string,status:string)=>request<any>("/operations/organisation-requests/"+encodeURIComponent(id),{method:"PATCH",body:JSON.stringify({status})});
