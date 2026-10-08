@@ -117,6 +117,90 @@ def _api_key(provider_key: str) -> str:
     return os.getenv(f"{provider_key.upper()}_API_KEY", "").strip()
 
 
+async def _attempt(
+    provider_key: str,
+    model: str,
+    messages: list[dict[str, str]],
+    *,
+    max_tokens: int,
+    temperature: float,
+    referer: str,
+    title: str,
+    timeout: float,
+) -> dict[str, Any]:
+    started = time.perf_counter()
+    provider = _provider(provider_key)
+    if not provider.get("enabled", True):
+        return {"status": "provider_disabled", "provider": provider_key, "model": model}
+
+    api_key = _api_key(provider_key)
+    if not api_key:
+        return {"status": "not_configured", "provider": provider_key, "model": model}
+
+    if provider_key != "openrouter":
+        return {"status": "unsupported_provider", "provider": provider_key, "model": model}
+
+    base_url = (
+        provider.get("base_url")
+        or os.getenv("OPENROUTER_BASE_URL", DEFAULT_BASE_URL)
+    ).rstrip("/")
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+        "HTTP-Referer": os.getenv("LEARNORA_AI_REFERER", referer),
+        "X-Title": title,
+    }
+    payload = {
+        "model": model,
+        "messages": messages,
+        "max_tokens": max_tokens,
+        "temperature": temperature,
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.post(
+                base_url + "/chat/completions",
+                headers=headers,
+                json=payload,
+            )
+        if response.status_code >= 400:
+            return {
+                "status": "error",
+                "provider": provider_key,
+                "model": model,
+                "http_status": response.status_code,
+                "error": f"{provider_key} returned HTTP {response.status_code}",
+                "latency_ms": int((time.perf_counter() - started) * 1000),
+            }
+        data = response.json()
+        content = ((data.get("choices") or [{}])[0].get("message") or {}).get("content")
+        if not content:
+            return {
+                "status": "error",
+                "provider": provider_key,
+                "model": model,
+                "error": "AI provider returned no content.",
+                "latency_ms": int((time.perf_counter() - started) * 1000),
+            }
+        return {
+            "status": "success",
+            "content": content,
+            "provider": provider_key,
+            "model": model,
+            "latency_ms": int((time.perf_counter() - started) * 1000),
+            "usage": data.get("usage") or {},
+        }
+    except Exception as exc:
+        return {
+            "status": "error",
+            "provider": provider_key,
+            "model": model,
+            "error": str(exc)[:500],
+            "latency_ms": int((time.perf_counter() - started) * 1000),
+        }
+
+
 async def generate(
     profile_key: str,
     messages: list[dict[str, str]],
@@ -128,9 +212,7 @@ async def generate(
     title: str = "Learnora ME",
     timeout: float = 60,
 ) -> dict[str, Any]:
-    started = time.perf_counter()
     config = provider_configuration(profile_key, model_override)
-
     if not config["enabled"]:
         return {
             "status": "disabled",
@@ -138,64 +220,51 @@ async def generate(
             "model": config["model"],
         }
 
-    provider_key = config["provider_key"]
-    api_key = _api_key(provider_key)
-    if not api_key:
-        return {
-            "status": "not_configured",
-            "provider": provider_key,
-            "model": config["model"],
-        }
+    max_tokens = max_output_tokens or config["max_output_tokens"]
+    temp = temperature if temperature is not None else config["temperature"]
 
-    if provider_key != "openrouter":
-        return {
-            "status": "unsupported_provider",
-            "provider": provider_key,
-            "model": config["model"],
-        }
-
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
-        "HTTP-Referer": os.getenv("LEARNORA_AI_REFERER", referer),
-        "X-Title": title,
-    }
-    payload = {
+    attempts = [{
+        "provider_key": config["provider_key"],
         "model": config["model"],
-        "messages": messages,
-        "max_tokens": max_output_tokens or config["max_output_tokens"],
-        "temperature": temperature if temperature is not None else config["temperature"],
+        "type": "primary",
+    }]
+
+    if config.get("fallback_model"):
+        attempts.append({
+            "provider_key": config.get("fallback_provider_key") or config["provider_key"],
+            "model": config["fallback_model"],
+            "type": "fallback",
+        })
+
+    failures = []
+    for attempt in attempts:
+        result = await _attempt(
+            attempt["provider_key"],
+            attempt["model"],
+            messages,
+            max_tokens=max_tokens,
+            temperature=temp,
+            referer=referer,
+            title=title,
+            timeout=timeout,
+        )
+        result["attempt_type"] = attempt["type"]
+        if result["status"] == "success":
+            result["attempts"] = failures + [result["attempt_type"]]
+            if failures:
+                result["fallback_used"] = True
+                result["fallback_reason"] = failures[-1].get("error") or failures[-1].get("status")
+            return result
+        failures.append(result)
+
+    primary = attempts[0]
+    last = failures[-1] if failures else {}
+    return {
+        "status": last.get("status", "error"),
+        "provider": last.get("provider", primary["provider_key"]),
+        "model": last.get("model", primary["model"]),
+        "error": last.get("error", "All configured AI attempts failed.")[:500],
+        "latency_ms": sum(int(item.get("latency_ms") or 0) for item in failures),
+        "attempts": failures,
+        "fallback_used": len(failures) > 1,
     }
-
-    try:
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            response = await client.post(
-                config["base_url"] + "/chat/completions",
-                headers=headers,
-                json=payload,
-            )
-
-        if response.status_code >= 400:
-            raise RuntimeError(f"{provider_key} returned HTTP {response.status_code}")
-
-        data = response.json()
-        content = ((data.get("choices") or [{}])[0].get("message") or {}).get("content")
-        if not content:
-            raise RuntimeError("AI provider returned no content.")
-
-        return {
-            "status": "success",
-            "content": content,
-            "provider": provider_key,
-            "model": config["model"],
-            "latency_ms": int((time.perf_counter() - started) * 1000),
-            "usage": data.get("usage") or {},
-        }
-    except Exception as exc:
-        return {
-            "status": "error",
-            "provider": provider_key,
-            "model": config["model"],
-            "latency_ms": int((time.perf_counter() - started) * 1000),
-            "error": str(exc)[:500],
-        }
