@@ -180,6 +180,19 @@ def contract_preparation(
     }
 
 
+class ContractPreparationIn(BaseModel):
+    contract_number: str = Field(..., min_length=2, max_length=100)
+    currency: str = Field("NGN", min_length=3, max_length=10)
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    payment_terms: Optional[str] = Field(None, max_length=2000)
+    pricing_summary: Optional[str] = Field(None, max_length=4000)
+    learner_capacity: Optional[int] = Field(None, ge=0)
+    instructor_capacity: Optional[int] = Field(None, ge=0)
+    cohort_capacity: Optional[int] = Field(None, ge=0)
+    custom_requirements: list[str] = Field(default_factory=list)
+    notes: Optional[str] = Field(None, max_length=4000)
+
 @router.get("/creators/applications")
 def creator_applications(staff: InternalStaffContext = _staff("users.view")):
     result = supabase.table("learnora_creator_applications").select("*").order("created_at", desc=True).execute()
