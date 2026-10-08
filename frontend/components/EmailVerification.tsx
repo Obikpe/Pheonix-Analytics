@@ -22,7 +22,7 @@ import {
 } from 'lucide-react';
 
 const API_URL =
-  'https://learnora-backend.vercel.app';
+  process.env.NEXT_PUBLIC_API_URL;
 
 type VerificationResponse = {
   access_token?: string;
