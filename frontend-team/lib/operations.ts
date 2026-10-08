@@ -7,6 +7,8 @@ export const organisationContract = (id:string) => request<any>("/operations/org
 export const organisationCapacity = (id:string) => request<any>("/operations/organisations/"+encodeURIComponent(id)+"/capacity");
 export const contractPreparation = (id:string) => request<any>("/operations/organisations/"+encodeURIComponent(id)+"/contract-preparation");
 export const contractRules=(id:string)=>request<any>("/operations/organisations/"+encodeURIComponent(id)+"/contract-rules");
+export const contractTemplates=()=>request<any>("/operations/contract-templates");
+export const contractTemplateClauses=(id:string)=>request<any>("/operations/contract-templates/"+encodeURIComponent(id)+"/clauses");
 export const saveContractPreparation=(id:string,payload:any)=>request<any>("/operations/organisations/"+encodeURIComponent(id)+"/contract-preparation",{method:"POST",body:JSON.stringify(payload)});
 export const organisationRequests = () => request<any>("/operations/organisation-requests");
 export const creatorApplications = () => request<any>("/operations/creators/applications");
