@@ -1,0 +1,1 @@
+import EmptyState from"./EmptyState";export default function LivePanel({title,children,empty=false}:{title:string;children?:React.ReactNode;empty?:boolean}){return <section className="glass rounded-3xl p-6"><h2 className="text-xl font-semibold">{title}</h2><div className="mt-5">{empty?<EmptyState/>:children}</div></section>}
