@@ -4,6 +4,7 @@ These endpoints are intentionally separate from learner/admin public APIs so
 the internal frontend can authenticate with the internal staff token only.
 """
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field, HTTPException
 from .internal_auth import InternalStaffContext, require_internal_permission
 from .auth import supabase
 
@@ -24,7 +25,53 @@ def organisation(organisation_id: str, staff: InternalStaffContext = _staff("org
     result = supabase.table("organisations").select("*").eq("id", organisation_id).limit(1).execute()
     if not result.data:
         raise HTTPException(404, "Organisation not found.")
-    return {"success": True, "organisation": result.data[0]}
+    returclass OrganisationCreate(BaseModel):
+    name: str = Field(..., min_length=2, max_length=150)
+    slug: str = Field(..., min_length=2, max_length=100)
+    organisation_type: str = Field("academy", min_length=2, max_length=50)
+    template: str = Field("academy", min_length=2, max_length=50)
+    description: Optional[str] = Field(None, max_length=2000)
+    logo_url: Optional[str] = Field(None, max_length=1000)
+    brand_primary: Optional[str] = Field(None, max_length=50)
+    brand_secondary: Optional[str] = Field(None, max_length=50)
+
+class OrganisationUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=2, max_length=150)
+    slug: Optional[str] = Field(None, min_length=2, max_length=100)
+    organisation_type: Optional[str] = Field(None, min_length=2, max_length=50)
+    template: Optional[str] = Field(None, min_length=2, max_length=50)
+    description: Optional[str] = Field(None, max_length=2000)
+    logo_url: Optional[str] = Field(None, max_length=1000)
+    brand_primary: Optional[str] = Field(None, max_length=50)
+    brand_secondary: Optional[str] = Field(None, max_length=50)
+    is_active: Optional[bool] = None
+
+@router.post("/organisations")
+def create_organisation(payload: OrganisationCreate, staff: InternalStaffContext = Depends(require_internal_permission("organisations.create"))):
+    name = payload.name.strip()
+    slug = payload.slug.strip().lower().replace(" ", "-")
+    if supabase.table("organisations").select("id").eq("slug", slug).limit(1).execute().data:
+        raise HTTPException(status_code=400, detail="An organisation with this slug already exists.")
+    row = supabase.table("organisations").insert({"name": name, "slug": slug, "organisation_type": payload.organisation_type.strip().lower(), "template": payload.template.strip().lower(), "description": payload.description.strip() if payload.description else None, "logo_url": payload.logo_url.strip() if payload.logo_url else None, "brand_primary": payload.brand_primary.strip() if payload.brand_primary else None, "brand_secondary": payload.brand_secondary.strip() if payload.brand_secondary else None, "is_active": True}).execute()
+    if not row.data: raise HTTPException(status_code=500, detail="Organisation creation failed.")
+    return {"success": True, "organisation": row.data[0]}
+
+@router.patch("/organisations/{organisation_id}")
+def update_organisation(organisation_id: str, payload: OrganisationUpdate, staff: InternalStaffContext = Depends(require_internal_permission("organisations.update"))):
+    if not supabase.table("organisations").select("id").eq("id", organisation_id).limit(1).execute().data:
+        raise HTTPException(status_code=404, detail="Organisation not found.")
+    data = payload.model_dump(exclude_unset=True)
+    for key in ("name", "organisation_type", "template", "logo_url", "brand_primary", "brand_secondary", "description", "slug"):
+        if key in data and isinstance(data[key], str): data[key] = data[key].strip() or None
+    if data.get("slug"):
+        data["slug"] = data["slug"].lower().replace(" ", "-")
+        if supabase.table("organisations").select("id").eq("slug", data["slug"]).neq("id", organisation_id).limit(1).execute().data:
+            raise HTTPException(status_code=400, detail="An organisation with this slug already exists.")
+    if not data: raise HTTPException(status_code=400, detail="No changes supplied.")
+    row = supabase.table("organisations").update(data).eq("id", organisation_id).execute()
+    if not row.data: raise HTTPException(status_code=500, detail="Organisation update failed.")
+    return {"success": True, "organisation": row.data[0]}
+n {"success": True, "organisation": result.data[0]}
 
 @router.get("/organisations/{organisation_id}/members")
 def organisation_members(organisation_id: str, staff: InternalStaffContext = _staff("organisations.members")):
