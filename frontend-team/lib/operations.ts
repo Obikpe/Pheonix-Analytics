@@ -1,0 +1,16 @@
+import{request}from"./api";
+export const internalStaff=()=>request<any>("/staff");
+export const internalRoles=()=>request<any>("/staff/roles/catalog");
+export const departments=()=>request<any>("/departments");
+export const teams=()=>request<any>("/teams");
+export const teamMembers=(id:string)=>request<any>("/teams/"+encodeURIComponent(id)+"/members");
+export const organisations=()=>request<any>("/organisations");
+export const organisationMembers=(id:string)=>request<any>("/organisations/"+encodeURIComponent(id)+"/members");
+export const memberSummary=(id:string)=>request<any>("/organisations/"+encodeURIComponent(id)+"/members/summary");
+export const organisationContract=(id:string)=>request<any>("/commercial/organisations/"+encodeURIComponent(id)+"/contract");
+export const organisationCapacity=(id:string)=>request<any>("/commercial/organisations/"+encodeURIComponent(id)+"/capacity");
+export const organisationRequests=()=>request<any>("/commercial/organisation-requests");
+export const creatorApplications=()=>request<any>("/creator/admin/applications");
+export const creatorPayouts=()=>request<any>("/creator-finance/admin/payouts");
+export const aiProviders=()=>request<any>("/ai/admin/providers");
+export const aiLimits=()=>request<any>("/ai/admin/limits");
