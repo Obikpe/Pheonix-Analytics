@@ -1,0 +1,31 @@
+name: Learnora frontends
+on:
+  push:
+    paths:
+      - "frontend-v02/**"
+      - "frontend-team/**"
+      - ".github/workflows/learnora-frontends.yml"
+  pull_request:
+    paths:
+      - "frontend-v02/**"
+      - "frontend-team/**"
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        app: [frontend-v02, frontend-team]
+    defaults:
+      run:
+        working-directory: \${{ matrix.app }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: \${{ matrix.app }}/package-lock.json
+      - run: npm install
+      - run: npm run build
+        env:
+          NEXT_PUBLIC_API_URL: https://learnora-backend-v02.vercel.app
