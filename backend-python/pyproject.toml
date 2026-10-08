@@ -3,16 +3,20 @@ name = "learnora-backend"
 version = "2.0.0"
 requires-python = ">=3.11"
 dependencies = [
-    "fastapi",
-    "slowapi",
-    "python-dotenv",
-    "bcrypt",
-    "python-jose",
-    "supabase",
+    "fastapi==0.110.0",
+    "uvicorn[standard]==0.29.0",
+    "supabase==2.4.0",
+    "pydantic==2.6.0",
+    "pydantic[email]==2.6.0",
+    "python-jose[cryptography]==3.3.0",
+    "argon2-cffi==23.1.0",
+    "bcrypt==4.1.3",
+    "slowapi==0.1.9",
+    "python-multipart==0.0.9",
+    "bleach==6.1.0",
+    "python-dotenv==1.0.0",
+    "email-validator==2.1.0",
     "httpx",
-    "pydantic",
-    "pyJWT",
-    "passlib"
 ]
 
 [tool.vercel]
