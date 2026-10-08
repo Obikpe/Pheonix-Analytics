@@ -250,6 +250,67 @@ def course_progress(
     }
 
 
+@router.get("/lessons/{lesson_id}/media")
+def lesson_media(
+    lesson_id: str,
+    user: CurrentUser = Depends(get_current_user),
+):
+    course_id = _course_for_lesson(lesson_id)
+    if not _enrolment(str(user.id), course_id):
+        raise HTTPException(403, "You are not enrolled in this course.")
+
+    videos = (
+        supabase.table("lesson_videos")
+        .select("*")
+        .eq("lesson_id", lesson_id)
+        .order("created_at", desc=True)
+        .execute()
+    ).data or []
+
+    for video in videos:
+        video["signed_url"] = None
+        if video.get("provider") == "supabase" and video.get("storage_path"):
+            try:
+                signed = supabase.storage.from_("learnora-course-media").create_signed_url(
+                    video["storage_path"],
+                    3600,
+                )
+                data = getattr(signed, "data", None) or signed
+                if isinstance(data, dict):
+                    video["signed_url"] = data.get("signedUrl") or data.get("signed_url")
+            except Exception:
+                video["signed_url"] = None
+
+    resources = (
+        supabase.table("lesson_resources")
+        .select("*")
+        .eq("lesson_id", lesson_id)
+        .order("created_at", desc=True)
+        .execute()
+    ).data or []
+
+    for resource in resources:
+        resource["signed_url"] = None
+        if resource.get("storage_path"):
+            try:
+                signed = supabase.storage.from_("learnora-course-media").create_signed_url(
+                    resource["storage_path"],
+                    3600,
+                )
+                data = getattr(signed, "data", None) or signed
+                if isinstance(data, dict):
+                    resource["signed_url"] = data.get("signedUrl") or data.get("signed_url")
+            except Exception:
+                resource["signed_url"] = None
+
+    return {
+        "success": True,
+        "lesson_id": lesson_id,
+        "videos": videos,
+        "resources": resources,
+    }
+
+
 @router.put("/lessons/{lesson_id}")
 def update_lesson_progress(
     lesson_id: str,
