@@ -113,6 +113,73 @@ def organisation_capacity(organisation_id: str, staff: InternalStaffContext = _s
     entitlements = supabase.table("learnora_contract_entitlements").select("*").eq("contract_id", cid).execute().data or []
     return {"success": True, "contract": contract.data[0], "capacity": entitlements}
 
+@router.get("/organisations/{organisation_id}/contract-preparation")
+def contract_preparation(
+    organisation_id: str,
+    staff: InternalStaffContext = _staff("organisations.view"),
+):
+    organisation_result = (
+        supabase.table("organisations")
+        .select("*")
+        .eq("id", organisation_id)
+        .limit(1)
+        .execute()
+    )
+    if not organisation_result.data:
+        raise HTTPException(status_code=404, detail="Organisation not found.")
+
+    request_result = (
+        supabase.table("learnora_organisation_requests")
+        .select("*")
+        .eq("organisation_id", organisation_id)
+        .order("created_at", desc=True)
+        .limit(1)
+        .execute()
+    )
+    contract_result = (
+        supabase.table("learnora_contracts")
+        .select("*")
+        .eq("organisation_id", organisation_id)
+        .order("created_at", desc=True)
+        .limit(1)
+        .execute()
+    )
+
+    contract = contract_result.data[0] if contract_result.data else None
+    versions = []
+    entitlements = []
+
+    if contract:
+        versions = (
+            supabase.table("learnora_contract_versions")
+            .select("*")
+            .eq("contract_id", contract["id"])
+            .order("version_number", desc=True)
+            .execute()
+        ).data or []
+
+        entitlements = (
+            supabase.table("learnora_contract_entitlements")
+            .select("*")
+            .eq("contract_id", contract["id"])
+            .order("entitlement_key")
+            .execute()
+        ).data or []
+
+    request = request_result.data[0] if request_result.data else None
+
+    return {
+        "success": True,
+        "organisation": organisation_result.data[0],
+        "request": request,
+        "contract": contract,
+        "versions": versions,
+        "entitlements": entitlements,
+        "ready_for_terms": bool(request),
+        "ready_for_draft": bool(request and contract),
+    }
+
+
 @router.get("/creators/applications")
 def creator_applications(staff: InternalStaffContext = _staff("users.view")):
     result = supabase.table("learnora_creator_applications").select("*").order("created_at", desc=True).execute()
