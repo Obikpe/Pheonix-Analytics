@@ -1,7 +1,3 @@
 "use client";
-
-import ContentWorkspace from "../../components/ContentWorkspace";
-
-export default function Content(){
-  return <ContentWorkspace/>;
-}
+import ContentManager from "../../components/ContentManager";
+export default function Content(){return <ContentManager/>}
