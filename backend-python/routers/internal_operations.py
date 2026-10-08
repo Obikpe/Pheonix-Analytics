@@ -203,3 +203,14 @@ def review_creator_application(
             raise HTTPException(status_code=500, detail="Creator account activation failed.")
 
     return {"success": True, "status": payload.status}
+
+
+@router.get("/organisation-requests")
+def organisation_requests(staff: InternalStaffContext = _staff("organisations.view")):
+    result = (
+        supabase.table("learnora_organisation_requests")
+        .select("*")
+        .order("created_at", desc=True)
+        .execute()
+    )
+    return {"success": True, "requests": result.data or []}
