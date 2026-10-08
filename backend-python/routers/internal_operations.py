@@ -214,3 +214,53 @@ def organisation_requests(staff: InternalStaffContext = _staff("organisations.vi
         .execute()
     )
     return {"success": True, "requests": result.data or []}
+
+
+class OrganisationRequestStatus(BaseModel):
+    status: str = Field(..., min_length=1, max_length=40)
+
+@router.patch("/organisation-requests/{request_id}")
+def update_organisation_request(
+    request_id: str,
+    payload: OrganisationRequestStatus,
+    staff: InternalStaffContext = _staff("organisations.update"),
+):
+    allowed = {
+        "submitted",
+        "under_review",
+        "discussion",
+        "contract_preparation",
+        "contract_sent",
+        "signed",
+        "pending_approval",
+        "active",
+        "declined",
+        "closed",
+    }
+    if payload.status not in allowed:
+        raise HTTPException(status_code=400, detail="Invalid organisation request status.")
+
+    existing = (
+        supabase.table("learnora_organisation_requests")
+        .select("*")
+        .eq("id", request_id)
+        .limit(1)
+        .execute()
+    )
+    if not existing.data:
+        raise HTTPException(status_code=404, detail="Organisation request not found.")
+
+    row = existing.data[0]
+    if payload.status == "active" and not row.get("organisation_id"):
+        raise HTTPException(status_code=409, detail="An organisation must be linked before activation.")
+
+    updated = (
+        supabase.table("learnora_organisation_requests")
+        .update({"status": payload.status})
+        .eq("id", request_id)
+        .execute()
+    )
+    if not updated.data:
+        raise HTTPException(status_code=500, detail="Unable to update organisation request.")
+
+    return {"success": True, "request": updated.data[0]}
