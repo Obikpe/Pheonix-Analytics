@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from .auth import hash_password, log_audit_event, norm_email, supabase
 from .internal_auth import InternalStaffContext, get_current_staff, require_internal_permission
-from .permissions import PermissionContext, require_platform_role
+from .permissions import PermissionContext, require_platform_role, require_permission
 
 router=APIRouter(prefix="/api/internal/staff",tags=["Internal Staff"])
 SAFE="id,user_id,employee_code,job_title,status,joined_at,left_at,created_by,created_at,updated_at"
