@@ -1,0 +1,1 @@
+export default function Logo(){return <span className="flex items-center gap-2 font-display text-2xl">Learnora <span className="gold">ME</span></span>}
