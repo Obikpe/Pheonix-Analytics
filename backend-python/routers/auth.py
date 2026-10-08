@@ -99,15 +99,15 @@ SUPABASE_URL = os.getenv(
     "",
 ).strip()
 
-SUPABASE_KEY = os.getenv(
-    "SUPABASE_SECRET_KEY",
-    "",
-).strip()
+SUPABASE_KEY = (
+    os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()
+    or os.getenv("SUPABASE_SECRET_KEY", "").strip()
+)
 
 if not SUPABASE_URL or not SUPABASE_KEY:
     if APP_ENV != "development":
         raise RuntimeError(
-            "SUPABASE_URL and SUPABASE_SECRET_KEY must be set."
+            "SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set."
         )
 
 supabase: Client = create_client(
