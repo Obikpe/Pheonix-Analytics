@@ -518,7 +518,7 @@ def assign_course(
                         {
                             "access_type": access_type,
                             "status": "active",
-                            "assigned_by": None,
+                            "assigned_by": context.user_id,
                         }
                     )
                     .eq(
@@ -569,6 +569,7 @@ def assign_course(
             "organisation_id": organisation_id,
             "access_type": access_type,
             "status": "active",
+            "assigned_by": context.user_id,
         }
 
         try:
