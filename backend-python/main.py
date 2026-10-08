@@ -110,7 +110,7 @@ app.include_router(creator_finance.router)
 app.include_router(evidence.router)
 @app.get("/")
 def health():
-    return {"status": "ok", "service": "pheonix-python-secure", "routers": ["auth", "grading", "admin", "progress","grader", "billing", "webhooks"]}
+    return {"status": "ok", "service": "learnora-backend", "version": "2.0.0-secure"}
 
 @app.get("/api/health")
 def api_health():
