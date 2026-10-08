@@ -1,11 +1,7 @@
 """Learnora AI service layer.
 
-The database remains the source of truth. AI may explain, coach, generate
-practice, and interpret learning evidence, but it must not invent completion,
-credentials, scores, purchases, permissions, or other authoritative state.
-
-OpenRouter is the first provider and can be replaced without changing the
-router contract.
+AI is an interpretation and assistance layer. Database records remain
+authoritative for identity, access, progress, purchases, scores and evidence.
 """
 
 import os
@@ -16,11 +12,7 @@ import httpx
 
 from routers.auth import supabase
 
-DEFAULT_MODEL = os.getenv(
-    "OPENROUTER_MODEL",
-    "openrouter/auto",
-).strip()
-
+DEFAULT_MODEL = os.getenv("OPENROUTER_MODEL", "openrouter/auto").strip()
 OPENROUTER_URL = os.getenv(
     "OPENROUTER_BASE_URL",
     "https://openrouter.ai/api/v1",
@@ -28,47 +20,43 @@ OPENROUTER_URL = os.getenv(
 
 SYSTEM_PROMPTS = {
     "tutor": (
-        "You are Learnora AI Tutor. Explain concepts clearly, use examples, "
-        "ask useful checking questions, and adapt explanations to the learner. "
-        "Never claim a learner completed work they have not shown."
+        "You are Learnora AI Tutor. Explain clearly, use examples, check "
+        "understanding, and never claim work was completed unless the data "
+        "or learner message proves it."
     ),
     "coach": (
-        "You are Learnora Learning Coach. Help the learner plan study, "
-        "practise deliberately, reflect on weak areas, and choose the next "
-        "useful action. Prefer concrete steps over generic motivation."
+        "You are Learnora Learning Coach. Turn goals into concrete study "
+        "actions, deliberate practice and reflection."
     ),
     "practice": (
-        "You are Learnora Practice Coach. Generate practical exercises from "
-        "the learner's topic and context. Give hints before full solutions "
-        "unless the learner explicitly asks for the solution."
+        "You are Learnora Practice Coach. Create practical exercises and "
+        "give hints before solutions unless the learner asks for the answer."
     ),
     "project": (
-        "You are Learnora Project Coach. Help learners scope, debug, explain "
-        "and improve projects. Never fabricate project results, links, "
-        "datasets, evidence, or completed work."
+        "You are Learnora Project Coach. Help scope, debug and improve "
+        "projects without fabricating evidence, results or links."
     ),
     "instructor": (
-        "You are Learnora Instructor Assistant. Help instructors draft "
-        "explanations, exercises, rubrics, feedback and learning activities. "
-        "Do not invent learner performance data."
+        "You are Learnora Instructor Assistant. Help instructors create "
+        "explanations, exercises, rubrics and feedback without inventing "
+        "learner performance."
     ),
     "organisation": (
         "You are Learnora Organisation Assistant. Help authorised users "
-        "understand learning operations, course delivery, cohorts and "
-        "progress. Treat database-derived facts as authoritative."
+        "with learning operations, cohorts, courses and progress. Database "
+        "facts are authoritative."
     ),
 }
 
 
-def _safe_int(value, fallback):
+def _int(value, fallback):
     try:
         return int(value)
     except (TypeError, ValueError):
         return fallback
 
 
-def _effective_limits(user_id: str, organisation_id: str | None, feature: str):
-    """Resolve the most specific active AI limit without trusting the client."""
+def _effective_limits(user_id, organisation_id, feature):
     rows = (
         supabase
         .table("learnora_ai_limits")
@@ -81,31 +69,38 @@ def _effective_limits(user_id: str, organisation_id: str | None, feature: str):
 
     candidates = [
         ("user", str(user_id), feature),
-        ("organisation", str(organisation_id) if organisation_id else None, feature),
+        (
+            "organisation",
+            str(organisation_id) if organisation_id else None,
+            feature,
+        ),
         ("feature", None, feature),
         ("global", "*", "*"),
     ]
 
-    for scope_type, scope_id, scope_feature in candidates:
+    for scope_type, scope_id, wanted_feature in candidates:
         for row in rows:
             if not row.get("enabled", True):
                 continue
             if row.get("scope_type") != scope_type:
                 continue
-            if scope_id is not None and str(row.get("scope_id")) != str(scope_id):
+            actual_scope = row.get("scope_id")
+            if scope_id is not None and str(actual_scope) != str(scope_id):
                 continue
-            if scope_id is None and row.get("scope_id") not in (None, ""):
+            if scope_id is None and actual_scope not in (None, ""):
                 continue
-            if row.get("feature") not in (None, "*", scope_feature):
+            actual_feature = row.get("feature")
+            if actual_feature not in (None, "*", wanted_feature):
                 continue
+
             return {
                 "enabled": True,
-                "requests_per_day": row.get("requests_per_day"),
+                "requests_per_day": row.get("requests_per_day") or 20,
                 "requests_per_month": row.get("requests_per_month"),
-                "max_input_chars": _safe_int(
+                "max_input_chars": _int(
                     row.get("max_input_chars"), 12000
                 ),
-                "max_output_tokens": _safe_int(
+                "max_output_tokens": _int(
                     row.get("max_output_tokens"), 1200
                 ),
             }
@@ -119,7 +114,7 @@ def _effective_limits(user_id: str, organisation_id: str | None, feature: str):
     }
 
 
-def _usage_count(user_id: str, organisation_id: str | None, feature: str):
+def _daily_usage(user_id):
     start = datetime.now(timezone.utc).replace(
         hour=0,
         minute=0,
@@ -127,21 +122,21 @@ def _usage_count(user_id: str, organisation_id: str | None, feature: str):
         microsecond=0,
     ).isoformat()
 
-    query = (
+    result = (
         supabase
         .table("ai_usage_logs")
         .select("id")
         .eq("user_id", user_id)
         .eq("request_status", "success")
         .gte("created_at", start)
+        .execute()
     )
-
-    rows = query.execute().data or []
-    return len(rows)
+    return len(result.data or [])
 
 
-def _fallback(feature: str, message: str) -> str:
+def _fallback(feature, message):
     text = message.strip()
+
     if not text:
         return (
             "Tell me what you are learning or trying to accomplish, "
@@ -150,36 +145,30 @@ def _fallback(feature: str, message: str) -> str:
 
     if feature == "practice":
         return (
-            "Let's practise this step by step. First, explain in your own "
-            f"words what you already understand about: {text[:300]}"
+            "Let's practise step by step. First, explain what you already "
+            f"understand about: {text[:300]}"
         )
 
     if feature == "coach":
         return (
-            "Start with one concrete action: define what you want to achieve "
-            f"with '{text[:300]}', then choose the smallest task you can "
-            "complete in 15 minutes."
+            f"For '{text[:300]}', define the outcome, then choose the "
+            "smallest useful task you can complete in 15 minutes."
         )
 
     if feature == "project":
         return (
             f"For '{text[:300]}', define the goal, inputs, expected output "
-            "and how you will prove the result. Then tackle one small "
-            "component at a time."
+            "and how you will prove the result."
         )
 
     return (
-        f"Let's break this down. What part of '{text[:300]}' is confusing, "
+        f"Let's break this down. What part of '{text[:300]}' is confusing "
         "or where are you currently stuck?"
     )
 
 
-def _learning_context(
-    user_id: str,
-    organisation_id: str | None,
-) -> str:
-    """Build a small, factual context block from Learnora's database."""
-    facts: list[str] = []
+def _learning_context(user_id, organisation_id):
+    facts = []
 
     try:
         user = (
@@ -191,18 +180,17 @@ def _learning_context(
             .execute()
         )
         if user.data:
-            name = user.data[0].get("name")
-            role = user.data[0].get("role")
-            if name:
-                facts.append(f"Learner name: {name}")
-            if role:
-                facts.append(f"Account role: {role}")
+            row = user.data[0]
+            if row.get("name"):
+                facts.append(f"Learner name: {row['name']}")
+            if row.get("role"):
+                facts.append(f"Account role: {row['role']}")
     except Exception:
         pass
 
     if organisation_id:
         try:
-            organisation = (
+            org = (
                 supabase
                 .table("organisations")
                 .select("name")
@@ -210,10 +198,8 @@ def _learning_context(
                 .limit(1)
                 .execute()
             )
-            if organisation.data:
-                facts.append(
-                    f"Organisation: {organisation.data[0].get('name')}"
-                )
+            if org.data and org.data[0].get("name"):
+                facts.append(f"Organisation: {org.data[0]['name']}")
         except Exception:
             pass
 
@@ -228,28 +214,27 @@ def _learning_context(
             .execute()
         ).data or []
 
-        course_ids = [row["course_id"] for row in enrolments if row.get("course_id")]
-        if course_ids:
+        ids = [row["course_id"] for row in enrolments if row.get("course_id")]
+        if ids:
             courses = (
                 supabase
                 .table("learnora_courses")
                 .select("id,title,level")
-                .in_("id", course_ids)
+                .in_("id", ids)
                 .execute()
             ).data or []
 
             course_map = {str(row["id"]): row for row in courses}
             names = []
-            for row in enrolments:
-                course = course_map.get(str(row["course_id"]))
+            for enrolment in enrolments:
+                course = course_map.get(str(enrolment["course_id"]))
                 if course:
                     names.append(
-                        f"{course.get('title')} ({row.get('status')})"
+                        f"{course.get('title')} ({enrolment.get('status')})"
                     )
-
             if names:
                 facts.append(
-                    "Current/finished courses: " + "; ".join(names[:8])
+                    "Courses: " + "; ".join(names[:8])
                 )
     except Exception:
         pass
@@ -260,16 +245,18 @@ def _learning_context(
             .table("learner_skills")
             .select("skill_id,proficiency,status")
             .eq("user_id", user_id)
-            .limit(15)
+            .limit(10)
             .execute()
         ).data or []
 
         if skills:
-            skill_text = "; ".join(
-                f"{row.get('skill_id')}: {row.get('proficiency')}"
-                for row in skills[:10]
+            facts.append(
+                "Recorded skills: "
+                + "; ".join(
+                    f"{row.get('skill_id')}: {row.get('proficiency')}"
+                    for row in skills
+                )
             )
-            facts.append("Recorded skills: " + skill_text)
     except Exception:
         pass
 
@@ -277,17 +264,17 @@ def _learning_context(
         return ""
 
     return (
-        "Learnora context below is factual application data. "
-        "Do not infer facts that are not present.\n"
+        "Learnora context is factual application data. Do not infer facts "
+        "that are not present.\n"
         + "\n".join(f"- {fact}" for fact in facts)
     )
 
 
-def _conversation_history(conversation_id: str | None):
+def _history(conversation_id):
     if not conversation_id:
         return []
 
-    rows = (
+    result = (
         supabase
         .table("learnora_ai_messages")
         .select("role,content")
@@ -296,13 +283,14 @@ def _conversation_history(conversation_id: str | None):
         .order("created_at", desc=True)
         .limit(18)
         .execute()
-    ).data or []
+    )
 
+    rows = result.data or []
     rows.reverse()
     return rows
 
 
-def _log_usage(payload: dict):
+def _log(payload):
     try:
         supabase.table("ai_usage_logs").insert(payload).execute()
     except Exception as exc:
@@ -310,14 +298,18 @@ def _log_usage(payload: dict):
 
 
 async def generate(
-    user_id: str,
-    feature: str,
-    message: str,
-    organisation_id: str | None = None,
-    conversation_id: str | None = None,
-    model: str | None = None,
+    user_id,
+    feature,
+    message,
+    organisation_id=None,
+    conversation_id=None,
+    model=None,
 ):
-    limits = _effective_limits(user_id, organisation_id, feature)
+    limits = _effective_limits(
+        user_id,
+        organisation_id,
+        feature,
+    )
 
     if not limits["enabled"]:
         return {
@@ -327,9 +319,7 @@ async def generate(
             "model": None,
         }
 
-    if _usage_count(user_id, organisation_id, feature) >= (
-        limits["requests_per_day"] or 20
-    ):
+    if _daily_usage(user_id) >= limits["requests_per_day"]:
         return {
             "status": "rate_limited",
             "content": _fallback(feature, message),
@@ -341,7 +331,7 @@ async def generate(
         return {
             "status": "input_too_large",
             "content": (
-                f"Your message is too long for this AI plan. "
+                "Your message is too long for this AI plan. "
                 f"Please keep it under {limits['max_input_chars']} characters."
             ),
             "provider": "rules",
@@ -356,3 +346,183 @@ async def generate(
         .select("provider_key,default_model,enabled,priority")
         .eq("provider_key", "openrouter")
         .limit(1)
+        .execute()
+    )
+
+    provider_row = provider_result.data[0] if provider_result.data else None
+    provider_enabled = (
+        provider_row.get("enabled", True)
+        if provider_row
+        else True
+    )
+    api_key = os.getenv("OPENROUTER_API_KEY", "").strip()
+
+    if not provider_enabled or not api_key:
+        latency = int((time.perf_counter() - started) * 1000)
+        reason = (
+            "provider_disabled"
+            if not provider_enabled
+            else "provider_key_missing"
+        )
+
+        content = _fallback(feature, message)
+        _log({
+            "user_id": user_id,
+            "organisation_id": organisation_id,
+            "feature": feature,
+            "provider": "rules",
+            "model": None,
+            "request_status": "success",
+            "latency_ms": latency,
+            "metadata": {"fallback": True, "reason": reason},
+        })
+
+        return {
+            "status": "success",
+            "content": content,
+            "provider": "rules",
+            "model": None,
+            "latency_ms": latency,
+        }
+
+    selected_model = (
+        model
+        or (provider_row.get("default_model") if provider_row else None)
+        or DEFAULT_MODEL
+    )
+
+    messages = [{
+        "role": "system",
+        "content": SYSTEM_PROMPTS.get(
+            feature,
+            SYSTEM_PROMPTS["tutor"],
+        ),
+    }]
+
+    context = _learning_context(
+        user_id,
+        organisation_id,
+    )
+    if context:
+        messages.append({
+            "role": "system",
+            "content": context,
+        })
+
+    messages.extend(_history(conversation_id))
+    messages.append({
+        "role": "user",
+        "content": message,
+    })
+
+    try:
+        response = await _call_openrouter(
+            api_key=api_key,
+            model=selected_model,
+            messages=messages,
+            max_tokens=limits["max_output_tokens"],
+            conversation_id=conversation_id,
+        )
+
+        content = (
+            (response.get("choices") or [{}])[0]
+            .get("message", {})
+            .get("content")
+        )
+        if not content:
+            raise RuntimeError("Provider returned no content.")
+
+        usage = response.get("usage") or {}
+        latency = int((time.perf_counter() - started) * 1000)
+
+        _log({
+            "user_id": user_id,
+            "organisation_id": organisation_id,
+            "feature": feature,
+            "provider": "openrouter",
+            "model": selected_model,
+            "request_status": "success",
+            "latency_ms": latency,
+            "input_tokens": usage.get("prompt_tokens"),
+            "output_tokens": usage.get("completion_tokens"),
+            "metadata": {"session_id": conversation_id},
+        })
+
+        return {
+            "status": "success",
+            "content": content,
+            "provider": "openrouter",
+            "model": selected_model,
+            "latency_ms": latency,
+            "usage": usage,
+        }
+
+    except Exception as exc:
+        latency = int((time.perf_counter() - started) * 1000)
+
+        _log({
+            "user_id": user_id,
+            "organisation_id": organisation_id,
+            "feature": feature,
+            "provider": "openrouter",
+            "model": selected_model,
+            "request_status": "failed",
+            "latency_ms": latency,
+            "metadata": {
+                "error": str(exc)[:500],
+                "fallback": True,
+                "session_id": conversation_id,
+            },
+        })
+
+        return {
+            "status": "success",
+            "content": _fallback(feature, message),
+            "provider": "rules",
+            "model": None,
+            "latency_ms": latency,
+            "fallback_reason": "provider_error",
+        }
+
+
+async def _call_openrouter(
+    *,
+    api_key,
+    model,
+    messages,
+    max_tokens,
+    conversation_id=None,
+):
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+        "HTTP-Referer": os.getenv(
+            "LEARNORA_AI_REFERER",
+            "https://learnora-me.vercel.app",
+        ),
+        "X-Title": "Learnora ME",
+    }
+
+    payload = {
+        "model": model,
+        "messages": messages,
+        "max_tokens": max_tokens,
+        "temperature": 0.3,
+    }
+
+    if conversation_id:
+        payload["session_id"] = str(conversation_id)
+
+    async with httpx.AsyncClient(timeout=45) as client:
+        response = await client.post(
+            OPENROUTER_URL + "/chat/completions",
+            headers=headers,
+            json=payload,
+        )
+
+    if response.status_code >= 400:
+        raise RuntimeError(
+            f"OpenRouter returned HTTP {response.status_code}"
+        )
+
+    return response.json()
