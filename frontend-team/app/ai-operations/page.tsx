@@ -2,21 +2,23 @@
 
 import {useEffect,useState} from "react";
 import Shell from "../../components/Shell";
-import {aiProfiles,teamMe,updateAiProfile,testAiProfile} from "../../lib/api";
+import {aiHealth,aiProfiles,teamMe,updateAiProfile,testAiProfile} from "../../lib/api";
 
 type TestState={status:string;latency_ms?:number;provider?:string;model?:string;fallback_used?:boolean;error?:string;errors?:string[]};
 
 export default function AIOperations(){
   const [user,setUser]=useState<any>(null);
   const [profiles,setProfiles]=useState<any[]>([]);
+  const [health,setHealth]=useState<any>(null);
   const [saving,setSaving]=useState("");
   const [testing,setTesting]=useState("");
   const [tests,setTests]=useState<Record<string,TestState>>({});
   const [error,setError]=useState("");
 
   const load=async()=>{
-    const result=await aiProfiles();
+    const [result,healthResult]=await Promise.all([aiProfiles(),aiHealth()]);
     setProfiles(result.profiles||[]);
+    setHealth(healthResult);
   };
 
   useEffect(()=>{
@@ -36,6 +38,8 @@ export default function AIOperations(){
         enabled:Boolean(profile.enabled),
       });
       setProfiles(prev=>prev.map(p=>p.profile_key===profile.profile_key?{...result.profile,validation_errors:[],provider_supported:true}:p));
+      const fresh=await aiHealth();
+      setHealth(fresh);
     }catch(e:any){setError(e?.message||"Unable to save AI profile.")}
     finally{setSaving("")}
   };
@@ -45,6 +49,8 @@ export default function AIOperations(){
     try{
       const result=await testAiProfile(profile.profile_key);
       setTests(prev=>({...prev,[profile.profile_key]:result}));
+      const fresh=await aiHealth();
+      setHealth(fresh);
     }catch(e:any){
       setTests(prev=>({...prev,[profile.profile_key]:{status:"error",error:e?.message||"Health test failed."}}));
     }finally{setTesting("")}
@@ -52,15 +58,30 @@ export default function AIOperations(){
 
   if(!user)return <div className="p-10">Loading secure workspace…</div>;
 
+  const summary=health?.summary;
+
   return <Shell roles={user.roles||[]} active="ai-operations">
     <div className="mb-8">
       <h1 className="text-4xl font-semibold">AI Operations</h1>
       <p className="mt-2 max-w-3xl text-slate-500">
-        Configure, validate and test Learnora AI without changing feature code.
+        Configure, validate, test and monitor Learnora AI without changing feature code.
       </p>
     </div>
 
     {error&&<div className="mb-5 rounded-xl border border-red-500/20 bg-red-500/5 p-4 text-sm text-red-300">{error}</div>}
+
+    {summary&&<div className="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+      {[
+        ["Profiles",summary.profiles+"/"+summary.enabled_profiles+" enabled"],
+        ["Providers",summary.providers+"/"+summary.enabled_providers+" enabled"],
+        ["Recent requests",summary.recent_requests],
+        ["Failures",summary.recent_failures],
+        ["Avg latency",summary.average_latency_ms!=null?summary.average_latency_ms+" ms":"—"],
+      ].map(([label,value])=><div key={String(label)} className="rounded-2xl border border-white/[.07] bg-[#0e1319] p-4">
+        <div className="text-xs uppercase tracking-wide text-slate-600">{label}</div>
+        <div className="mt-2 text-xl font-semibold text-slate-100">{value}</div>
+      </div>)}
+    </div>}
 
     <div className="mb-6 rounded-2xl border border-white/[.07] bg-[#0e1319] p-5">
       <div className="font-medium text-slate-200">AI control path</div>
@@ -70,6 +91,14 @@ export default function AIOperations(){
         <div>Health tests use a fixed harmless prompt.</div>
         <div>Fallback is reported when the primary attempt fails.</div>
       </div>
+      {health?.providers?.length>0&&<div className="mt-4 flex flex-wrap gap-2">
+        {health.providers.map((provider:any)=><span key={provider.provider_key} className="rounded-full border border-white/[.08] px-3 py-1 text-xs text-slate-400">
+          {provider.display_name}: {provider.enabled?(provider.api_key_configured?"ready":"key missing"):"disabled"}
+        </span>)}
+      </div>}
+      {health?.limits?.length>0&&<div className="mt-3 text-xs text-slate-500">
+        Active global limit: {health.limits[0].requests_per_day ?? "—"} requests/day{health.limits[0].requests_per_month!=null?(" · "+health.limits[0].requests_per_month+" requests/month"):""} · max {health.limits[0].max_input_chars} input chars · max {health.limits[0].max_output_tokens} output tokens.
+      </div>}
     </div>
 
     <div className="space-y-4">
