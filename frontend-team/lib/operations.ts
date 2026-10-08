@@ -12,3 +12,5 @@ export const aiProviders = () => request<any>("/operations/ai/providers");
 export const aiLimits = () => request<any>("/operations/ai/limits");
 export const createOrganisation=(payload:any)=>request<any>("/operations/organisations",{method:"POST",body:JSON.stringify(payload)});
 export const updateOrganisation=(id:string,payload:any)=>request<any>("/operations/organisations/"+encodeURIComponent(id),{method:"PATCH",body:JSON.stringify(payload)});
+
+export const reviewCreatorApplication=(id:string,status:"approved"|"declined")=>request<any>("/operations/creators/applications/"+encodeURIComponent(id),{method:"PATCH",body:JSON.stringify({status})});
