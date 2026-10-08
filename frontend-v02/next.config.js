@@ -1,2 +1,0 @@
-/** @type {import("next").NextConfig} */
-const nextConfig={async rewrites(){return[{source:"/backend-api/:path*",destination:"https://learnora-backend-v02.vercel.app/api/:path*"}]}};module.exports=nextConfig;
