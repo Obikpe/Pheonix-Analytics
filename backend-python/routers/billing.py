@@ -520,14 +520,6 @@ def verify_payment(body: VerifyPaymentRequest):
     # -----------------------------------------------------------------------
 
     try:
-        supabase.table("learnora_subscriptions").update({
-            "status": "cancelled",
-            "cancelled_at": now.isoformat(),
-            "updated_at": now.isoformat(),
-        }).eq("user_id", user["id"]).in_(
-            "status", ["trialing", "active", "past_due", "paused"]
-        ).execute()
-
         subscription = (
             supabase
             .table("learnora_subscriptions")
@@ -550,6 +542,16 @@ def verify_payment(body: VerifyPaymentRequest):
 
         if not subscription.data:
             raise RuntimeError("Subscription record was not created")
+
+        supabase.table("learnora_subscriptions").update({
+            "status": "cancelled",
+            "cancelled_at": now.isoformat(),
+            "updated_at": now.isoformat(),
+        }).eq("user_id", user["id"]).neq(
+            "id", subscription.data[0]["id"]
+        ).in_(
+            "status", ["trialing", "active", "past_due", "paused"]
+        ).execute()
 
     except Exception:
         log.exception(
