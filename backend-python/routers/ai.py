@@ -4,6 +4,8 @@ The frontend is not required for these endpoints; the API is the stable
 contract for Learnora's future AI experiences.
 """
 
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
@@ -262,7 +264,7 @@ async def ask(
         )
 
     supabase.table("learnora_ai_conversations").update({
-        "updated_at": "now()",
+        "updated_at": datetime.now(timezone.utc).isoformat(),
     }).eq("id", conversation_id).execute()
 
     return {
