@@ -88,7 +88,7 @@ def _provider(provider_key: str) -> dict[str, Any]:
 
 def provider_configuration(profile_key: str, model_override: str | None = None) -> dict[str, Any]:
     profile = resolve_profile(profile_key, model_override)
-    provider_key = profile.get("provider") or DEFAULT_PROVIDER
+    provider_key = profile.get("provider_key") or DEFAULT_PROVIDER
     provider = _provider(provider_key)
 
     model = profile.get("model") or provider.get("default_model") or DEFAULT_MODEL
