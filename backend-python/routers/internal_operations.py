@@ -10,6 +10,7 @@ from typing import Optional
 from .internal_auth import InternalStaffContext, require_internal_permission
 from .auth import supabase
 from services.contract_ai import generate_contract_draft
+from services.contract_qa import check_contract_draft
 
 router = APIRouter(prefix="/api/internal/operations", tags=["Internal Operations"])
 
@@ -257,9 +258,11 @@ async def generate_contract_draft_endpoint(organisation_id: str, staff: Internal
     result = await generate_contract_draft(row["id"], list(dict.fromkeys(rules)), terms)
     if result["status"] != "success": raise HTTPException(409, result["reason"])
     next_version = version.data[0]["version_number"] + 1
-    saved = supabase.table("learnora_contract_versions").insert({"contract_id": row["id"], "version_number": next_version, "terms": version.data[0].get("terms"), "draft_content": result["content"], "review_status": "draft"}).execute()
+    qa = check_contract_draft(result["content"], terms, list(dict.fromkeys(rules)))
+    review_status = "review_required" if qa["status"] != "pass" else "draft"
+    saved = supabase.table("learnora_contract_versions").insert({"contract_id": row["id"], "version_number": next_version, "terms": version.data[0].get("terms"), "draft_content": result["content"], "qa_result": qa, "review_status": review_status}).execute()
     if not saved.data: raise HTTPException(500, "Unable to save generated contract draft.")
-    return {"success": True, "contract": row, "version": saved.data[0], "provider": result["provider"], "model": result["model"]}
+    return {"success": True, "contract": row, "version": saved.data[0], "qa": qa, "provider": result["provider"], "model": result["model"]}
 @router.get("/creators/applications")
 def creator_applications(staff: InternalStaffContext = _staff("users.view")):
     result = supabase.table("learnora_creator_applications").select("*").order("created_at", desc=True).execute()
