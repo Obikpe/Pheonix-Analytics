@@ -58,17 +58,17 @@ def update_team(team_id:str,body:TeamRequest,staff:InternalStaffContext=Depends(
     return {"success":True,"team":r.data[0]}
 
 @router.get("/teams/{team_id}/members")
-def members(team_id:str,staff:InternalStaffContext=Depends(get_current_staff),_:PermissionContext=Depends(require_permission("staff.teams"))):
+def members(team_id:str,staff:InternalStaffContext=Depends(require_internal_permission("staff.teams"))):
     r=supabase.table("learnora_staff_team_members").select("*").eq("team_id",team_id).order("joined_at").execute()
     return {"success":True,"members":r.data or []}
 
 @router.post("/teams/{team_id}/members",status_code=201)
-def add_member(team_id:str,body:TeamMemberRequest,request:Request,staff:InternalStaffContext=Depends(get_current_staff),_:PermissionContext=Depends(require_permission("staff.teams"))):
+def add_member(team_id:str,body:TeamMemberRequest,request:Request,staff:InternalStaffContext=Depends(require_internal_permission("staff.teams"))):
     r=supabase.table("learnora_staff_team_members").upsert({"team_id":team_id,"staff_id":body.staff_id,"team_role":body.team_role.strip() or "member","status":"active","joined_at":datetime.now(timezone.utc).isoformat(),"left_at":None},on_conflict="team_id,staff_id").execute()
     if not r.data:raise HTTPException(500,"Unable to add team member")
     return {"success":True,"membership":r.data[0]}
 
 @router.delete("/teams/{team_id}/members/{staff_id}")
-def remove_member(team_id:str,staff_id:str,request:Request,staff:InternalStaffContext=Depends(get_current_staff),_:PermissionContext=Depends(require_permission("staff.teams"))):
+def remove_member(team_id:str,staff_id:str,request:Request,staff:InternalStaffContext=Depends(require_internal_permission("staff.teams"))):
     r=supabase.table("learnora_staff_team_members").update({"status":"inactive","left_at":datetime.now(timezone.utc).isoformat()}).eq("team_id",team_id).eq("staff_id",staff_id).execute()
     return {"success":True,"updated":len(r.data or [])}
