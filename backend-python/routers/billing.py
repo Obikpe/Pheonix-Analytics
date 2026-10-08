@@ -410,10 +410,12 @@ def verify_payment(body: VerifyPaymentRequest):
     try:
         already_used = (
             supabase
-            .table("users")
-            .select("id,email")
+            .table("learnora_subscriptions")
+            .select(
+                "id,user_id,status,provider_subscription_id"
+            )
             .eq(
-                "paystack_reference",
+                "provider_subscription_id",
                 verified_reference,
             )
             .limit(1)
@@ -421,21 +423,24 @@ def verify_payment(body: VerifyPaymentRequest):
             .data
             or []
         )
-
     except Exception:
         log.exception(
-            "Failed checking Paystack reference reuse"
+            "Failed checking subscription reference reuse"
         )
-
         raise HTTPException(
             status_code=500,
             detail="Unable to verify payment",
         )
 
     if already_used:
-        existing_id = already_used[0].get("id")
+        existing = already_used[0]
+        if str(existing.get("user_id")) != str(user.get("id")):
+            raise HTTPException(
+                status_code=400,
+                detail="This payment has already been used",
+            )
 
-        if existing_id == user.get("id"):
+        if existing.get("status") == "active":
             raise HTTPException(
                 status_code=400,
                 detail="This payment has already been processed",
@@ -443,11 +448,13 @@ def verify_payment(body: VerifyPaymentRequest):
 
         raise HTTPException(
             status_code=400,
-            detail="This payment has already been used",
+            detail="This payment reference already exists",
         )
 
     # -----------------------------------------------------------------------
     # 9. Validate billing interval
+    # -----------------------------------------------------------------------
+
     # -----------------------------------------------------------------------
 
     billing_interval = (
@@ -509,7 +516,55 @@ def verify_payment(body: VerifyPaymentRequest):
             update_fields["paystack_plan_code"] = plan_code
 
     # -----------------------------------------------------------------------
-    # 12. Update the existing learner
+    # 12. Persist the new subscription as the authoritative billing record
+    # -----------------------------------------------------------------------
+
+    try:
+        supabase.table("learnora_subscriptions").update({
+            "status": "cancelled",
+            "cancelled_at": now.isoformat(),
+            "updated_at": now.isoformat(),
+        }).eq("user_id", user["id"]).in_(
+            "status", ["trialing", "active", "past_due", "paused"]
+        ).execute()
+
+        subscription = (
+            supabase
+            .table("learnora_subscriptions")
+            .insert({
+                "user_id": user["id"],
+                "status": "active",
+                "plan_code": body.plan_code or "paid",
+                "billing_interval": billing_interval,
+                "currency": str(payment.get("currency") or "").upper(),
+                "amount_minor": int(payment.get("amount") or 0),
+                "provider": "paystack",
+                "provider_customer_id": customer.get("customer_code"),
+                "provider_subscription_id": verified_reference,
+                "starts_at": now.isoformat(),
+                "current_period_start": now.isoformat(),
+                "current_period_end": expires_at.isoformat(),
+            })
+            .execute()
+        )
+
+        if not subscription.data:
+            raise RuntimeError("Subscription record was not created")
+
+    except Exception:
+        log.exception(
+            "Failed creating authoritative Learnora subscription"
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Payment was verified, but the subscription record "
+                "could not be created."
+            ),
+        )
+
+    # -----------------------------------------------------------------------
+    # 13. Update the legacy learner billing fields
     # -----------------------------------------------------------------------
 
     try:
@@ -541,7 +596,7 @@ def verify_payment(body: VerifyPaymentRequest):
         )
 
     # -----------------------------------------------------------------------
-    # 13. Issue a fresh learner JWT
+    # 14. Issue a fresh learner JWT
     # -----------------------------------------------------------------------
 
     token = make_token(
@@ -551,7 +606,7 @@ def verify_payment(body: VerifyPaymentRequest):
     )
 
     # -----------------------------------------------------------------------
-    # 14. Return updated account state
+    # 15. Return updated account state
     # -----------------------------------------------------------------------
 
     return {
