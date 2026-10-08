@@ -10,6 +10,7 @@ export const contractRules=(id:string)=>request<any>("/operations/organisations/
 export const contractTemplates=()=>request<any>("/operations/contract-templates");
 export const contractTemplateClauses=(id:string)=>request<any>("/operations/contract-templates/"+encodeURIComponent(id)+"/clauses");
 export const saveContractPreparation=(id:string,payload:any)=>request<any>("/operations/organisations/"+encodeURIComponent(id)+"/contract-preparation",{method:"POST",body:JSON.stringify(payload)});
+export const generateContractDraft=(id:string)=>request<any>("/operations/organisations/"+encodeURIComponent(id)+"/contract-draft",{method:"POST"});
 export const organisationRequests = () => request<any>("/operations/organisation-requests");
 export const creatorApplications = () => request<any>("/operations/creators/applications");
 export const creatorPayouts = () => request<any>("/operations/creators/payouts");
