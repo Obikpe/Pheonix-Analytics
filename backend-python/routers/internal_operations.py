@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 from typing import Optional
 from .internal_auth import InternalStaffContext, require_internal_permission
 from .auth import supabase
+from services.contract_ai import generate_contract_draft
 
 router = APIRouter(prefix="/api/internal/operations", tags=["Internal Operations"])
 
@@ -240,6 +241,25 @@ def contract_template_clauses(template_id: str, staff: InternalStaffContext = _s
     if not template.data: raise HTTPException(404, "Contract template not found.")
     clauses = supabase.table("learnora_contract_clauses").select("*").eq("template_id", template_id).order("category").order("clause_key").order("version", desc=True).execute()
     return {"success": True, "template": template.data[0], "clauses": clauses.data or []}
+@router.post("/organisations/{organisation_id}/contract-draft")
+async def generate_contract_draft_endpoint(organisation_id: str, staff: InternalStaffContext = _staff("organisations.update")):
+    contract = supabase.table("learnora_contracts").select("*").eq("organisation_id", organisation_id).eq("status", "draft").order("created_at", desc=True).limit(1).execute()
+    if not contract.data: raise HTTPException(404, "No draft contract is available.")
+    row = contract.data[0]
+    version = supabase.table("learnora_contract_versions").select("*").eq("contract_id", row["id"]).order("version_number", desc=True).limit(1).execute()
+    if not version.data: raise HTTPException(409, "Commercial terms must be saved before drafting.")
+    try: terms = __import__("json").loads(version.data[0].get("terms") or "{}")
+    except Exception: raise HTTPException(409, "Saved contract terms are invalid.")
+    rules = ["parties","scope","fees_and_payment","term_and_renewal","confidentiality","data_protection","ip","acceptable_use","termination","liability","dispute_resolution","governing_law","notices","signatures"]
+    if terms.get("learner_capacity") is not None: rules.append("capacity")
+    if terms.get("custom_requirements"): rules.append("custom_requirements")
+    if terms.get("pricing_summary"): rules.append("commercial_schedule")
+    result = await generate_contract_draft(row["id"], list(dict.fromkeys(rules)), terms)
+    if result["status"] != "success": raise HTTPException(409, result["reason"])
+    next_version = version.data[0]["version_number"] + 1
+    saved = supabase.table("learnora_contract_versions").insert({"contract_id": row["id"], "version_number": next_version, "terms": result["content"]}).execute()
+    if not saved.data: raise HTTPException(500, "Unable to save generated contract draft.")
+    return {"success": True, "contract": row, "version": saved.data[0], "provider": result["provider"], "model": result["model"]}
 @router.get("/creators/applications")
 def creator_applications(staff: InternalStaffContext = _staff("users.view")):
     result = supabase.table("learnora_creator_applications").select("*").order("created_at", desc=True).execute()
