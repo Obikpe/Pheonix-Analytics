@@ -1,0 +1,10 @@
+"use client";
+import{useEffect,useState}from"react";
+import{currentUser}from"../../../lib/api";
+import{courses,progress,evidence}from"../../../lib/api/learning";
+import Shell from"../../../components/dashboard/Shell";
+import SectionHeader from"../../../components/dashboard/SectionHeader";
+import DataTable from"../../../components/dashboard/DataTable";
+import EmptyState from"../../../components/feedback/EmptyState";
+const labels:any={learning:"My learning",discover:"Discover",practice:"Practise",projects:"Projects",skills:"Skills",evidence:"Evidence",certificates:"Certificates",community:"Community",settings:"Settings"};
+export default function Page({params}:{params:{section:string}}){const[u,setU]=useState<any>(null),[data,setData]=useState<any>(null),[err,setErr]=useState("");useEffect(()=>{currentUser().then(setU).catch(()=>location.href="/login")},[]);useEffect(()=>{if(!u)return;const s=params.section;const fn=s==="discover"?courses():s==="learning"?progress():s==="evidence"?evidence():Promise.resolve(null);fn.then(setData).catch(e=>setErr(e.message))},[u,params.section]);if(!u)return <div className="p-10">Loading your Learnora workspace…</div>;const list=data?.courses||data?.progress||data?.evidence||[];return <Shell active={params.section}><SectionHeader eyebrow="Learnora" title={labels[params.section]||"Learnora"} description="Your live learning workspace."/>{err?<div className="rounded-2xl border border-red-500/20 bg-red-500/5 p-5 text-red-300">{err}</div>:params.section==="discover"?<DataTable rows={list} columns={[{key:"title",label:"Course"},{key:"level",label:"Level"},{key:"status",label:"Status"},{key:"estimated_hours",label:"Hours"}]}/>:params.section==="learning"?<DataTable rows={list} columns={[{key:"course_title",label:"Course"},{key:"progress",label:"Progress"},{key:"status",label:"Status"}]}/>:params.section==="evidence"?<DataTable rows={list} columns={[{key:"title",label:"Evidence"},{key:"type",label:"Type"},{key:"status",label:"Status"}]}/>:<EmptyState title="Ready when you are" message="This area will show your live Learnora records when your account has them."/>}</Shell>}
