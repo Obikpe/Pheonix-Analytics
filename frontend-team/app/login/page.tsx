@@ -3,7 +3,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Brand from "../../components/Brand";
 import Toast from "../../components/Toast";
-import { teamLogin, setToken } from "../../lib/api";
+import { teamLogin, teamMe, setToken } from "../../lib/api";
 
 function hasSuperAdminRole(value: any) {
   const roles = Array.isArray(value?.roles)
@@ -30,7 +30,8 @@ export default function Login() {
     try {
       const result: any = await teamLogin(email, password);
       setToken(result.token || result.access_token);
-      router.push(hasSuperAdminRole(result) ? "/super-admin" : "/");
+      const currentUser: any = await teamMe();
+      router.push(hasSuperAdminRole(currentUser) ? "/super-admin" : "/");
     } catch (err: any) {
       setError(err?.message || "Unable to sign in. Please try again.");
     } finally {
