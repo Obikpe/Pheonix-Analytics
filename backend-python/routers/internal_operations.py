@@ -229,6 +229,17 @@ def contract_rules(organisation_id: str, staff: InternalStaffContext = _staff("o
     if terms.get("custom_requirements"): rules.append("custom_requirements")
     if terms.get("pricing_summary"): rules.append("commercial_schedule")
     return {"success": True, "organisation": organisation.data[0], "request": request.data[0] if request.data else None, "contract": row, "required_sections": list(dict.fromkeys(rules)), "ai_allowed": bool(row and terms)}
+@router.get("/contract-templates")
+def contract_templates(staff: InternalStaffContext = _staff("organisations.view")):
+    result = supabase.table("learnora_contract_templates").select("*").order("jurisdiction").order("template_key").order("version", desc=True).execute()
+    return {"success": True, "templates": result.data or []}
+
+@router.get("/contract-templates/{template_id}/clauses")
+def contract_template_clauses(template_id: str, staff: InternalStaffContext = _staff("organisations.view")):
+    template = supabase.table("learnora_contract_templates").select("*").eq("id", template_id).limit(1).execute()
+    if not template.data: raise HTTPException(404, "Contract template not found.")
+    clauses = supabase.table("learnora_contract_clauses").select("*").eq("template_id", template_id).order("category").order("clause_key").order("version", desc=True).execute()
+    return {"success": True, "template": template.data[0], "clauses": clauses.data or []}
 @router.get("/creators/applications")
 def creator_applications(staff: InternalStaffContext = _staff("users.view")):
     result = supabase.table("learnora_creator_applications").select("*").order("created_at", desc=True).execute()
