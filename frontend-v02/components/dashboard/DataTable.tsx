@@ -1,0 +1,6 @@
+import EmptyState from "../feedback/EmptyState";
+type Column<T>={key:keyof T|string;label:string;render?:(row:T)=>React.ReactNode};
+export default function DataTable<T extends Record<string,any>>({columns,rows,emptyTitle="No records yet",emptyMessage="There is no live data to display."}:{columns:Column<T>[];rows:T[];emptyTitle?:string;emptyMessage?:string}){
+ if(!rows.length)return <EmptyState title={emptyTitle} message={emptyMessage}/>;
+ return <div className="overflow-hidden rounded-2xl border border-white/[.07] bg-[#0e1319]"><div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="border-b border-white/[.07] text-xs uppercase tracking-[.16em] text-slate-500"><tr>{columns.map(c=><th key={String(c.key)} className="px-5 py-4 font-medium">{c.label}</th>)}</tr></thead><tbody className="divide-y divide-white/[.05]">{rows.map((r,i)=><tr key={String(r.id??i)} className="hover:bg-white/[.02]">{columns.map(c=><td key={String(c.key)} className="px-5 py-4 text-slate-300">{c.render?c.render(r):String(r[c.key]??"—")}</td>)}</tr>)}</tbody></table></div></div>;
+}
