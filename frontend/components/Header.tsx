@@ -16,7 +16,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 
-const API_URL = 'https://learnora-backend.vercel.app';
+const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
 type LoginRole =
   | 'normal'
