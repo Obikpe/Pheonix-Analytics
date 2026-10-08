@@ -211,6 +211,24 @@ def save_contract_preparation(organisation_id: str, payload: ContractPreparation
     version = supabase.table("learnora_contract_versions").insert({"contract_id": contract["id"], "version_number": next_version, "terms": __import__("json").dumps(values, ensure_ascii=False)}).execute()
     if not version.data: raise HTTPException(500, "Unable to save contract terms version.")
     return {"success": True, "contract": contract, "version": version.data[0]}
+@router.get("/organisations/{organisation_id}/contract-rules")
+def contract_rules(organisation_id: str, staff: InternalStaffContext = _staff("organisations.view")):
+    organisation = supabase.table("organisations").select("id,name,organisation_type").eq("id", organisation_id).limit(1).execute()
+    if not organisation.data: raise HTTPException(404, "Organisation not found.")
+    request = supabase.table("learnora_organisation_requests").select("*").eq("organisation_id", organisation_id).order("created_at", desc=True).limit(1).execute()
+    contract = supabase.table("learnora_contracts").select("*").eq("organisation_id", organisation_id).eq("status", "draft").order("created_at", desc=True).limit(1).execute()
+    row = contract.data[0] if contract.data else None
+    terms = {}
+    if row:
+        latest = supabase.table("learnora_contract_versions").select("terms").eq("contract_id", row["id"]).order("version_number", desc=True).limit(1).execute()
+        if latest.data and latest.data[0].get("terms"):
+            try: terms = __import__("json").loads(latest.data[0]["terms"])
+            except Exception: terms = {}
+    rules = ["parties","scope","fees_and_payment","term_and_renewal","confidentiality","data_protection","ip","acceptable_use","termination","liability","dispute_resolution","governing_law","notices","signatures"]
+    if terms.get("learner_capacity") is not None: rules.append("capacity")
+    if terms.get("custom_requirements"): rules.append("custom_requirements")
+    if terms.get("pricing_summary"): rules.append("commercial_schedule")
+    return {"success": True, "organisation": organisation.data[0], "request": request.data[0] if request.data else None, "contract": row, "required_sections": list(dict.fromkeys(rules)), "ai_allowed": bool(row and terms)}
 @router.get("/creators/applications")
 def creator_applications(staff: InternalStaffContext = _staff("users.view")):
     result = supabase.table("learnora_creator_applications").select("*").order("created_at", desc=True).execute()
