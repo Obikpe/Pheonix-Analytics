@@ -1,0 +1,1 @@
+"use client";import {AppRoute} from "../../components/Learnora";export default function CatchAll({params}:{params:{slug:string[]}}){return <AppRoute path={params.slug}/>} 
