@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Shell from "../../components/Shell";
 import EmptyState from "../../components/EmptyState";
 import { teamMe } from "../../lib/api";
-import { creatorApplications, creatorPayouts } from "../../lib/operations";
+import { creatorApplications, creatorPayouts, reviewCreatorApplication } from "../../lib/operations";
 
 function money(minor: number | null | undefined, currency = "NGN") {
   if (minor == null) return "—";
@@ -21,6 +21,8 @@ export default function CreatorsPage() {
   const [payouts, setPayouts] = useState<any[]>([]);
   const [selected, setSelected] = useState<any>(null);
   const [error, setError] = useState("");
+  const [reviewing, setReviewing] = useState<"approved" | "declined" | null>(null);
+  const [reviewError, setReviewError] = useState("");
 
   useEffect(() => {
     teamMe().then(setUser).catch(() => { location.href = "/login"; });
@@ -44,6 +46,23 @@ export default function CreatorsPage() {
     () => payouts.filter((x) => ["requested", "processing"].includes(x.status)).length,
     [payouts]
   );
+
+  async function review(status: "approved" | "declined") {
+    if (!selected || reviewing) return;
+    setReviewing(status);
+    setReviewError("");
+    try {
+      await reviewCreatorApplication(String(selected.id), status);
+      const response = await creatorApplications();
+      const next = response.applications || [];
+      setApplications(next);
+      setSelected(next.find((item: any) => String(item.id) === String(selected.id)) || null);
+    } catch (e: any) {
+      setReviewError(e?.message || "Unable to update creator application.");
+    } finally {
+      setReviewing(null);
+    }
+  }
 
   if (!user) return <div className="p-10">Loading secure workspace…</div>;
 
@@ -108,6 +127,21 @@ export default function CreatorsPage() {
             </div>
             <Status value={selected.status} />
           </div>
+          {["submitted", "under_review"].includes(selected.status) && (
+            <div className="mt-5 rounded-xl border border-white/[.07] bg-black/20 p-4">
+              <p className="text-sm text-slate-400">Review this application before activating creator access.</p>
+              <div className="mt-4 flex flex-wrap gap-3">
+                <button disabled={!!reviewing} onClick={() => review("approved")} className="rounded-lg bg-[#d7ad35] px-4 py-2 text-sm font-medium text-black disabled:opacity-50">
+                  {reviewing === "approved" ? "Approving…" : "Approve creator"}
+                </button>
+                <button disabled={!!reviewing} onClick={() => review("declined")} className="rounded-lg border border-red-400/30 px-4 py-2 text-sm text-red-200 disabled:opacity-50">
+                  {reviewing === "declined" ? "Declining…" : "Decline application"}
+                </button>
+              </div>
+              {reviewError && <p className="mt-3 text-sm text-red-200">{reviewError}</p>}
+            </div>
+          )}
+
           <pre className="mt-5 max-h-96 overflow-auto rounded-xl bg-black/20 p-4 text-xs leading-6 text-slate-400">
             {JSON.stringify(selected.application_data || selected, null, 2)}
           </pre>
