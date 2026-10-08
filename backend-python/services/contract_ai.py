@@ -19,7 +19,7 @@ async def generate_contract_draft(contract_id: str, required_sections: list[str]
     if not selected:
         return {"status": "not_ready", "reason": "No approved clauses match the contract rules."}
 
-    system = (
+    clause_pack = "\n\n".join(\n        "CLAUSE " + str(c["clause_key"]) + "\n" + str(c["approved_text"])\n        for c in selected\n    )\n\n    system = (
         "You are Learnora's controlled contract drafting engine. "
         "Draft only from the supplied commercial terms and approved clauses. "
         "Never invent prices, dates, addresses, registration numbers, bank details, "
@@ -52,4 +52,4 @@ async def generate_contract_draft(contract_id: str, required_sections: list[str]
             "model": result.get("model"),
         }
 
-    return {"status": "success", "content": content, "provider": "openrouter", "model": model}
+    return {"status": "success", "content": result["content"], "provider": result["provider"], "model": result["model"]}
