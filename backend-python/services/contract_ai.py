@@ -1,10 +1,6 @@
-import os
 import json
-import httpx
-
 from routers.auth import supabase
-
-OPENROUTER_URL = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1").rstrip("/")
+from services.ai_gateway import generate as generate_llm
 
 
 async def generate_contract_draft(contract_id: str, required_sections: list[str], terms: dict):
@@ -23,24 +19,6 @@ async def generate_contract_draft(contract_id: str, required_sections: list[str]
     if not selected:
         return {"status": "not_ready", "reason": "No approved clauses match the contract rules."}
 
-    api_key = os.getenv("OPENROUTER_API_KEY", "").strip()
-    if not api_key:
-        return {"status": "not_ready", "reason": "AI provider is not configured."}
-
-    provider = (
-        supabase.table("learnora_ai_providers")
-        .select("default_model,enabled")
-        .eq("provider_key", "openrouter")
-        .limit(1)
-        .execute()
-    ).data
-    provider = provider[0] if provider else {}
-    if not provider.get("enabled", True):
-        return {"status": "not_ready", "reason": "AI provider is disabled."}
-
-    model = provider.get("default_model") or os.getenv("OPENROUTER_MODEL", "openrouter/auto")
-    clause_pack = "\n\n".join(f"CLAUSE {c['clause_key']}\n{c['approved_text']}" for c in selected)
-
     system = (
         "You are Learnora's controlled contract drafting engine. "
         "Draft only from the supplied commercial terms and approved clauses. "
@@ -57,25 +35,21 @@ async def generate_contract_draft(contract_id: str, required_sections: list[str]
         "\nAPPROVED CLAUSES:\n" + clause_pack
     )
 
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
-        "HTTP-Referer": os.getenv("LEARNORA_AI_REFERER", "https://learnora-me.vercel.app"),
-        "X-Title": "Learnora ME Contract Drafting",
-    }
-    payload = {
-        "model": model,
-        "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
-        "max_tokens": 8000,
-        "temperature": 0.1,
-    }
+    result = await generate_llm(
+        "contract_drafting",
+        [{"role": "system", "content": system}, {"role": "user", "content": user}],
+        max_output_tokens=8000,
+        temperature=0.1,
+        title="Learnora ME Contract Drafting",
+        timeout=60,
+    )
 
-    async with httpx.AsyncClient(timeout=60) as client:
-        response = await client.post(OPENROUTER_URL + "/chat/completions", headers=headers, json=payload)
-    if response.status_code >= 400:
-        raise RuntimeError(f"OpenRouter returned HTTP {response.status_code}")
-    data = response.json()
-    content = ((data.get("choices") or [{}])[0].get("message") or {}).get("content")
-    if not content:
-        raise RuntimeError("AI provider returned no contract draft.")
+    if result["status"] != "success":
+        return {
+            "status": "not_ready",
+            "reason": result.get("error") or result["status"],
+            "provider": result.get("provider"),
+            "model": result.get("model"),
+        }
+
     return {"status": "success", "content": content, "provider": "openrouter", "model": model}
