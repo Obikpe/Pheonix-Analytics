@@ -4,7 +4,6 @@ AI is an interpretation and assistance layer. Database records remain
 authoritative for identity, access, progress, purchases, scores and evidence.
 """
 
-import os
 import time
 from datetime import datetime, timezone
 
@@ -39,6 +38,33 @@ SYSTEM_PROMPTS = {
         "with learning operations, cohorts, courses and progress. Database "
         "facts are authoritative."
     ),
+    "contract_drafting": (
+        "You are Learnora Contract Drafting Assistant. Draft only from the "
+        "structured commercial terms and approved clause library supplied to "
+        "you. Never invent parties, prices, dates, legal rights, obligations "
+        "or other commercial facts."
+    ),
+    "content_generation": (
+        "You are Learnora Content Generation Assistant. Create accurate, "
+        "structured learning content from the supplied brief. Do not invent "
+        "learner outcomes, citations or platform facts."
+    ),
+    "advanced_reasoning": (
+        "You are Learnora Advanced Reasoning Assistant. Analyse the supplied "
+        "facts carefully, state uncertainty, and do not invent missing evidence."
+    ),
+}
+
+FEATURE_PROFILES = {
+    "tutor": "tutor",
+    "coach": "coach",
+    "practice": "practice",
+    "project": "project",
+    "instructor": "instructor",
+    "organisation": "organisation",
+    "contract_drafting": "contract_drafting",
+    "content_generation": "content_generation",
+    "advanced_reasoning": "advanced_reasoning",
 }
 
 
@@ -62,11 +88,7 @@ def _effective_limits(user_id, organisation_id, feature):
 
     candidates = [
         ("user", str(user_id), feature),
-        (
-            "organisation",
-            str(organisation_id) if organisation_id else None,
-            feature,
-        ),
+        ("organisation", str(organisation_id) if organisation_id else None, feature),
         ("feature", None, feature),
         ("global", "*", "*"),
     ]
@@ -77,11 +99,13 @@ def _effective_limits(user_id, organisation_id, feature):
                 continue
             if row.get("scope_type") != scope_type:
                 continue
+
             actual_scope = row.get("scope_id")
             if scope_id is not None and str(actual_scope) != str(scope_id):
                 continue
             if scope_id is None and actual_scope not in (None, ""):
                 continue
+
             actual_feature = row.get("feature")
             if actual_feature not in (None, "*", wanted_feature):
                 continue
@@ -90,12 +114,8 @@ def _effective_limits(user_id, organisation_id, feature):
                 "enabled": True,
                 "requests_per_day": row.get("requests_per_day") or 20,
                 "requests_per_month": row.get("requests_per_month"),
-                "max_input_chars": _int(
-                    row.get("max_input_chars"), 12000
-                ),
-                "max_output_tokens": _int(
-                    row.get("max_output_tokens"), 1200
-                ),
+                "max_input_chars": _int(row.get("max_input_chars"), 12000),
+                "max_output_tokens": _int(row.get("max_output_tokens"), 1200),
             }
 
     return {
@@ -107,14 +127,7 @@ def _effective_limits(user_id, organisation_id, feature):
     }
 
 
-def _daily_usage(user_id):
-    start = datetime.now(timezone.utc).replace(
-        hour=0,
-        minute=0,
-        second=0,
-        microsecond=0,
-    ).isoformat()
-
+def _usage_since(user_id, start):
     result = (
         supabase
         .table("ai_usage_logs")
@@ -125,6 +138,18 @@ def _daily_usage(user_id):
         .execute()
     )
     return len(result.data or [])
+
+
+def _usage_window_start(days: int):
+    now = datetime.now(timezone.utc)
+    if days == 1:
+        return now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+    return datetime(
+        now.year,
+        now.month,
+        1,
+        tzinfo=timezone.utc,
+    ).isoformat()
 
 
 def _fallback(feature, message):
@@ -152,6 +177,12 @@ def _fallback(feature, message):
         return (
             f"For '{text[:300]}', define the goal, inputs, expected output "
             "and how you will prove the result."
+        )
+
+    if feature == "advanced_reasoning":
+        return (
+            f"Let's reason from the available evidence about '{text[:300]}'. "
+            "Separate known facts, assumptions and the next evidence needed."
         )
 
     return (
@@ -226,9 +257,7 @@ def _learning_context(user_id, organisation_id):
                         f"{course.get('title')} ({enrolment.get('status')})"
                     )
             if names:
-                facts.append(
-                    "Courses: " + "; ".join(names[:8])
-                )
+                facts.append("Courses: " + "; ".join(names[:8]))
     except Exception:
         pass
 
@@ -296,13 +325,8 @@ async def generate(
     message,
     organisation_id=None,
     conversation_id=None,
-    model=None,
 ):
-    limits = _effective_limits(
-        user_id,
-        organisation_id,
-        feature,
-    )
+    limits = _effective_limits(user_id, organisation_id, feature)
 
     if not limits["enabled"]:
         return {
@@ -312,12 +336,30 @@ async def generate(
             "model": None,
         }
 
-    if _daily_usage(user_id) >= limits["requests_per_day"]:
+    daily_limit = limits.get("requests_per_day")
+    if daily_limit is not None and _usage_since(
+        user_id,
+        _usage_window_start(1),
+    ) >= int(daily_limit):
         return {
             "status": "rate_limited",
             "content": _fallback(feature, message),
             "provider": "rules",
             "model": None,
+            "limit_scope": "day",
+        }
+
+    monthly_limit = limits.get("requests_per_month")
+    if monthly_limit is not None and _usage_since(
+        user_id,
+        _usage_window_start(30),
+    ) >= int(monthly_limit):
+        return {
+            "status": "rate_limited",
+            "content": _fallback(feature, message),
+            "provider": "rules",
+            "model": None,
+            "limit_scope": "month",
         }
 
     if len(message) > limits["max_input_chars"]:
@@ -332,11 +374,7 @@ async def generate(
         }
 
     started = time.perf_counter()
-
-    profile = feature if feature in {
-        "tutor", "coach", "practice", "project",
-        "instructor", "organisation",
-    } else "tutor"
+    profile = FEATURE_PROFILES.get(feature, "tutor")
 
     messages = [{
         "role": "system",
@@ -353,7 +391,6 @@ async def generate(
     result = await generate_llm(
         profile,
         messages,
-        model_override=model,
         max_output_tokens=limits["max_output_tokens"],
         title="Learnora ME",
         timeout=45,
@@ -368,7 +405,9 @@ async def generate(
         }
 
     if result["status"] != "success":
-        latency = result.get("latency_ms") or int((time.perf_counter() - started) * 1000)
+        latency = result.get("latency_ms") or int(
+            (time.perf_counter() - started) * 1000
+        )
         _log({
             "user_id": user_id,
             "organisation_id": organisation_id,
@@ -394,7 +433,9 @@ async def generate(
         }
 
     usage = result.get("usage") or {}
-    latency = result.get("latency_ms") or int((time.perf_counter() - started) * 1000)
+    latency = result.get("latency_ms") or int(
+        (time.perf_counter() - started) * 1000
+    )
     _log({
         "user_id": user_id,
         "organisation_id": organisation_id,
@@ -405,7 +446,12 @@ async def generate(
         "latency_ms": latency,
         "input_tokens": usage.get("prompt_tokens"),
         "output_tokens": usage.get("completion_tokens"),
-        "metadata": {"session_id": conversation_id, "profile": profile},
+        "metadata": {
+            "session_id": conversation_id,
+            "profile": profile,
+            "fallback_used": bool(result.get("fallback_used")),
+            "fallback_reason": result.get("fallback_reason"),
+        },
     })
 
     return {
