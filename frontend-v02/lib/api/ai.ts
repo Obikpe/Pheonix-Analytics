@@ -1,0 +1,1 @@
+import{request}from"./client";export const tutor=(message:string)=>request<any>("/ai/ask",{method:"POST",body:JSON.stringify({feature:"tutor",message})});export const aiUsage=()=>request<any>("/ai/usage")
