@@ -4,6 +4,7 @@ These endpoints are intentionally separate from learner/admin public APIs so
 the internal frontend can authenticate with the internal staff token only.
 """
 from fastapi import APIRouter, Depends, HTTPException
+from datetime import datetime, timezone
 from pydantic import BaseModel, Field
 from typing import Optional
 from .internal_auth import InternalStaffContext, require_internal_permission
@@ -133,3 +134,72 @@ def ai_providers(staff: InternalStaffContext = _staff("ai.manage")):
 def ai_limits(staff: InternalStaffContext = _staff("ai.manage")):
     result = supabase.table("learnora_ai_limits").select("*").order("scope_type").order("feature").execute()
     return {"success": True, "limits": result.data or []}
+
+
+class CreatorReview(BaseModel):
+    status: str = Field(..., min_length=1, max_length=20)
+
+@router.patch("/creators/applications/{application_id}")
+def review_creator_application(
+    application_id: str,
+    payload: CreatorReview,
+    staff: InternalStaffContext = _staff("users.update"),
+):
+    if payload.status not in {"approved", "declined"}:
+        raise HTTPException(status_code=400, detail="Status must be approved or declined.")
+
+    application = (
+        supabase.table("learnora_creator_applications")
+        .select("*")
+        .eq("id", application_id)
+        .limit(1)
+        .execute()
+    )
+    if not application.data:
+        raise HTTPException(status_code=404, detail="Creator application not found.")
+
+    row = application.data[0]
+    now = datetime.now(timezone.utc).isoformat()
+
+    updated = (
+        supabase.table("learnora_creator_applications")
+        .update({
+            "status": payload.status,
+            "reviewed_by": staff.user_id,
+            "reviewed_at": now,
+        })
+        .eq("id", application_id)
+        .execute()
+    )
+    if not updated.data:
+        raise HTTPException(status_code=500, detail="Unable to update creator application.")
+
+    if payload.status == "approved":
+        existing = (
+            supabase.table("learnora_creator_accounts")
+            .select("id")
+            .eq("user_id", row["user_id"])
+            .limit(1)
+            .execute()
+        )
+        account_payload = {
+            "user_id": row["user_id"],
+            "status": "approved",
+            "approved_by": staff.user_id,
+            "approved_at": now,
+            "application_id": application_id,
+        }
+        if existing.data:
+            account = (
+                supabase.table("learnora_creator_accounts")
+                .update(account_payload)
+                .eq("id", existing.data[0]["id"])
+                .execute()
+            )
+        else:
+            account = supabase.table("learnora_creator_accounts").insert(account_payload).execute()
+
+        if not account.data:
+            raise HTTPException(status_code=500, detail="Creator account activation failed.")
+
+    return {"success": True, "status": payload.status}
