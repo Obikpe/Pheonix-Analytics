@@ -5,6 +5,7 @@ export const organisationMembers = (id:string) => request<any>("/operations/orga
 export const memberSummary = (id:string) => request<any>("/operations/organisations/"+encodeURIComponent(id)+"/members/summary");
 export const organisationContract = (id:string) => request<any>("/operations/organisations/"+encodeURIComponent(id)+"/contract");
 export const organisationCapacity = (id:string) => request<any>("/operations/organisations/"+encodeURIComponent(id)+"/capacity");
+export const contractPreparation = (id:string) => request<any>("/operations/organisations/"+encodeURIComponent(id)+"/contract-preparation");
 export const organisationRequests = () => request<any>("/operations/organisation-requests");
 export const creatorApplications = () => request<any>("/operations/creators/applications");
 export const creatorPayouts = () => request<any>("/operations/creators/payouts");
