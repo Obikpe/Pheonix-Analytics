@@ -1,6 +1,9 @@
 import {request} from "./api";
 
 export const contentCourses = () => request<any>("/content/courses");
+export const contentCourse=(courseId:string)=>request<any>("/content/courses/"+encodeURIComponent(courseId));
+export const updateCourse=(id:string,payload:any)=>request<any>("/content/courses/"+encodeURIComponent(id),{method:"PATCH",body:JSON.stringify(payload)});
+export const archiveCourse=(id:string)=>request<any>("/content/courses/"+encodeURIComponent(id)+"/archive",{method:"POST"});
 export const contentModules = (courseId:string) => request<any>("/content/courses/"+encodeURIComponent(courseId)+"/modules");
 export const contentLessons = (moduleId:string) => request<any>("/content/modules/"+encodeURIComponent(moduleId)+"/lessons");
 export const contentLesson = (lessonId:string) => request<any>("/content/lessons/"+encodeURIComponent(lessonId));
