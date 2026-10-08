@@ -15,7 +15,7 @@ from .permissions import (
     get_permission_context,
     require_permission,
 )
-from services.ai import generate
+from services.ai_profiles import generate
 
 router = APIRouter(
     prefix="/api/ai",
