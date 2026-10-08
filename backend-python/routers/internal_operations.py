@@ -257,7 +257,7 @@ async def generate_contract_draft_endpoint(organisation_id: str, staff: Internal
     result = await generate_contract_draft(row["id"], list(dict.fromkeys(rules)), terms)
     if result["status"] != "success": raise HTTPException(409, result["reason"])
     next_version = version.data[0]["version_number"] + 1
-    saved = supabase.table("learnora_contract_versions").insert({"contract_id": row["id"], "version_number": next_version, "terms": result["content"]}).execute()
+    saved = supabase.table("learnora_contract_versions").insert({"contract_id": row["id"], "version_number": next_version, "terms": version.data[0].get("terms"), "draft_content": result["content"], "review_status": "draft"}).execute()
     if not saved.data: raise HTTPException(500, "Unable to save generated contract draft.")
     return {"success": True, "contract": row, "version": saved.data[0], "provider": result["provider"], "model": result["model"]}
 @router.get("/creators/applications")
