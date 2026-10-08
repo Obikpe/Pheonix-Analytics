@@ -1,0 +1,1 @@
+export default function ActionButton({children,...p}:React.ButtonHTMLAttributes<HTMLButtonElement>){return <button {...p} className={"rounded-xl border border-[#d7ad35]/25 bg-[#d7ad35]/10 px-4 py-2.5 text-sm font-medium text-[#f2d477] transition hover:bg-[#d7ad35]/20 disabled:cursor-not-allowed disabled:opacity-50 "+(p.className||"")}>{children}</button>}
