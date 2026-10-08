@@ -13,3 +13,4 @@ export const teamMembers=(id:string)=>request<any>("/teams/"+encodeURIComponent(
 
 export const aiProfiles=()=>request<any>("/ai/profiles");
 export const updateAiProfile=(key:string,payload:any)=>request<any>("/ai/profiles/"+encodeURIComponent(key),{method:"PATCH",body:JSON.stringify(payload)});
+export const testAiProfile=(key:string)=>request<any>("/ai/profiles/"+encodeURIComponent(key)+"/test",{method:"POST"});
