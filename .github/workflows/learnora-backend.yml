@@ -33,3 +33,12 @@ jobs:
               ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
           print("Python AST validation passed")
           PY
+      - name: Install backend dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Import application
+        env:
+          APP_ENV: development
+          SUPABASE_URL: https://example.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: eyJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJzdXBhYmFzZSJ9.test-signature
+          JWT_SECRET: learnora-ci-only-secret-32-characters-minimum
+        run: python -c "import main; print('Learnora application import passed')"
