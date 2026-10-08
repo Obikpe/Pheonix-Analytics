@@ -1,0 +1,1 @@
+export default function EmptyState(){return <div className="rounded-2xl border border-dashed border-white/10 p-10 text-center text-sm text-slate-500">No live records were returned by the backend for this view.</div>}
