@@ -1,1 +1,2 @@
-export default function EmptyState(){return <div className="rounded-2xl border border-dashed border-white/10 p-10 text-center text-sm text-slate-500">No live records were returned by the backend for this view.</div>}
+type Props={title?:string;message?:string};
+export default function EmptyState({title="No records",message="No live records were returned by the backend for this view."}:Props){return <div className="rounded-2xl border border-dashed border-white/10 p-10 text-center"><p className="text-sm text-slate-300">{title}</p><p className="mt-2 text-sm text-slate-500">{message}</p></div>}
