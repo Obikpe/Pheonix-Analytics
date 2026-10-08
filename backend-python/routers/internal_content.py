@@ -1,6 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException
 from .auth import supabase
 from .internal_auth import InternalStaffContext, require_internal_permission
+from pydantic import BaseModel, Field
+from typing import Optional, Literal
 
 router = APIRouter(prefix="/api/internal/content", tags=["Internal Content"])
 
@@ -8,6 +10,51 @@ router = APIRouter(prefix="/api/internal/content", tags=["Internal Content"])
 def courses(staff: InternalStaffContext = Depends(require_internal_permission("courses.view"))):
     rows = supabase.table("learnora_courses").select("id,title,slug,organisation_id,ownership,status,created_at,updated_at").order("created_at", desc=True).execute()
     return {"success": True, "courses": rows.data or []}
+
+class CourseWrite(BaseModel):
+    title: Optional[str] = Field(None, min_length=1, max_length=200)
+    slug: Optional[str] = Field(None, min_length=1, max_length=200)
+    short_description: Optional[str] = Field(None, max_length=1000)
+    description: Optional[str] = Field(None, max_length=10000)
+    level: Optional[str] = Field(None, max_length=40)
+    status: Optional[Literal["draft", "published", "archived"]] = None
+    ownership: Optional[str] = Field(None, max_length=40)
+    thumbnail_url: Optional[str] = Field(None, max_length=2000)
+    estimated_hours: Optional[float] = Field(None, ge=0)
+
+@router.get("/courses/{course_id}")
+def get_course(course_id: str, staff: InternalStaffContext = Depends(require_internal_permission("courses.view"))):
+    row = supabase.table("learnora_courses").select("*").eq("id", course_id).limit(1).execute()
+    if not row.data:
+        raise HTTPException(status_code=404, detail="Course not found.")
+    return {"success": True, "course": row.data[0]}
+
+@router.patch("/courses/{course_id}")
+def update_course(course_id: str, payload: CourseWrite, staff: InternalStaffContext = Depends(require_internal_permission("content.manage"))):
+    if not supabase.table("learnora_courses").select("id").eq("id", course_id).limit(1).execute().data:
+        raise HTTPException(status_code=404, detail="Course not found.")
+    data = payload.model_dump(exclude_unset=True)
+    for key in ("title", "slug", "short_description", "description", "level", "ownership", "thumbnail_url"):
+        if key in data and isinstance(data[key], str):
+            data[key] = data[key].strip() or None
+    if data.get("slug"):
+        data["slug"] = data["slug"].lower().replace(" ", "-")
+        duplicate = supabase.table("learnora_courses").select("id").eq("slug", data["slug"]).neq("id", course_id).limit(1).execute()
+        if duplicate.data:
+            raise HTTPException(status_code=400, detail="A course with this slug already exists.")
+    if not data:
+        raise HTTPException(status_code=400, detail="No changes supplied.")
+    row = supabase.table("learnora_courses").update(data).eq("id", course_id).execute()
+    if not row.data:
+        raise HTTPException(status_code=500, detail="Course update failed.")
+    return {"success": True, "course": row.data[0]}
+
+@router.post("/courses/{course_id}/archive")
+def archive_course(course_id: str, staff: InternalStaffContext = Depends(require_internal_permission("content.manage"))):
+    row = supabase.table("learnora_courses").update({"status": "archived"}).eq("id", course_id).execute()
+    if not row.data:
+        raise HTTPException(status_code=404, detail="Course not found.")
+    return {"success": True, "course": row.data[0]}
 
 @router.get("/courses/{course_id}/modules")
 def modules(course_id: str, staff: InternalStaffContext = Depends(require_internal_permission("courses.view"))):
