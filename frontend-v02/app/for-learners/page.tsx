@@ -1,0 +1,1 @@
+import PublicNav from"../../components/public/PublicNav";import PublicFooter from"../../components/public/PublicFooter";import AudiencePage from"../../components/public/AudiencePage";export default function Page(){return <><PublicNav/><AudiencePage type="learner"/><PublicFooter/></>}
