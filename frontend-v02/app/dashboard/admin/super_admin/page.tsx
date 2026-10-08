@@ -388,7 +388,7 @@ export default function SuperAdminDashboard() {
               <section>
                 <SectionHead title="People & Staff" description="Manage the internal Learnora workforce. Staff identities are separate from customer organisation users." action={<Button onClick={() => setModal('staff')}><Plus size={16}/> Add staff</Button>} />
                 <Toolbar search={search} setSearch={setSearch} placeholder="Search staff by name, email or title" />
-                <Card className="overflow-hidden"><Table headers={['Name','Email','Job title','Status','Roles','Joined']} rows={filteredStaff.map(s => [str(s,'name'),str(s,'email'),str(s,'job_title'),str((s.staff as AnyRow)?.status || s.status), Array.isArray(s.roles) ? (s.roles as AnyRow[]).map(r => String(r.name || r.slug)).join(', ') : '—', fmtDate((s.staff as AnyRow)?.joined_at)])} /></Card>
+                <Card className="overflow-hidden"><Table headers={['Name','Email','Job title','Status','Roles','Joined']} rows={filteredStaff.map(s => [str(s,'name'),str(s,'email'),str(s,'job_title'),String((s.staff as AnyRow)?.status || s.status || '—'), Array.isArray(s.roles) ? (s.roles as AnyRow[]).map(r => String(r.name || r.slug)).join(', ') : '—', fmtDate((s.staff as AnyRow)?.joined_at)])} /></Card>
               </section>
             ) : section === 'teams' ? (
               <section>
