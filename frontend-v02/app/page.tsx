@@ -1,1 +1,0 @@
-"use client";import {Home} from "../components/Learnora";export default function Page(){return <Home/>}
