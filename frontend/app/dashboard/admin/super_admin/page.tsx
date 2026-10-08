@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 
-const API_URL = 'https://learnora-backend.vercel.app';
+const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
 export const dynamic = 'force-dynamic';
 
