@@ -1,9 +1,7 @@
 """Central Learnora AI gateway.
 
 AI features select a named profile; profiles select provider/model configuration.
-Feature code must not hard-code an LLM model. This keeps model changes
-configuration-only and allows different Learnora AI capabilities to use
-different models later.
+Feature code must not hard-code an LLM model.
 """
 
 import os
@@ -18,17 +16,16 @@ DEFAULT_PROVIDER = "openrouter"
 DEFAULT_MODEL = "openrouter/free"
 DEFAULT_BASE_URL = "https://openrouter.ai/api/v1"
 
-
 PROFILE_DEFAULTS = {
-    "tutor": {"provider": "openrouter", "model": "openrouter/free", "temperature": 0.3, "max_output_tokens": 1200},
-    "coach": {"provider": "openrouter", "model": "openrouter/free", "temperature": 0.3, "max_output_tokens": 1200},
-    "practice": {"provider": "openrouter", "model": "openrouter/free", "temperature": 0.3, "max_output_tokens": 1200},
-    "project": {"provider": "openrouter", "model": "openrouter/free", "temperature": 0.3, "max_output_tokens": 1400},
-    "instructor": {"provider": "openrouter", "model": "openrouter/free", "temperature": 0.3, "max_output_tokens": 1400},
-    "organisation": {"provider": "openrouter", "model": "openrouter/free", "temperature": 0.3, "max_output_tokens": 1400},
-    "contract_drafting": {"provider": "openrouter", "model": "openrouter/free", "temperature": 0.1, "max_output_tokens": 8000},
-    "content_generation": {"provider": "openrouter", "model": "openrouter/free", "temperature": 0.3, "max_output_tokens": 2000},
-    "advanced_reasoning": {"provider": "openrouter", "model": "openrouter/free", "temperature": 0.2, "max_output_tokens": 2000},
+    "tutor": {"provider_key": "openrouter", "model": "openrouter/free", "temperature": 0.3, "max_output_tokens": 1200},
+    "coach": {"provider_key": "openrouter", "model": "openrouter/free", "temperature": 0.3, "max_output_tokens": 1200},
+    "practice": {"provider_key": "openrouter", "model": "openrouter/free", "temperature": 0.3, "max_output_tokens": 1200},
+    "project": {"provider_key": "openrouter", "model": "openrouter/free", "temperature": 0.3, "max_output_tokens": 1400},
+    "instructor": {"provider_key": "openrouter", "model": "openrouter/free", "temperature": 0.3, "max_output_tokens": 1400},
+    "organisation": {"provider_key": "openrouter", "model": "openrouter/free", "temperature": 0.3, "max_output_tokens": 1400},
+    "contract_drafting": {"provider_key": "openrouter", "model": "openrouter/free", "temperature": 0.1, "max_output_tokens": 8000},
+    "content_generation": {"provider_key": "openrouter", "model": "openrouter/free", "temperature": 0.3, "max_output_tokens": 2000},
+    "advanced_reasoning": {"provider_key": "openrouter", "model": "openrouter/free", "temperature": 0.2, "max_output_tokens": 2000},
 }
 
 
@@ -53,11 +50,8 @@ def _profile(profile_key: str) -> dict[str, Any]:
     return defaults
 
 
-def resolve_profile(profile_key: str, model_override: str | None = None) -> dict[str, Any]:
-    profile = _profile(profile_key)
-    if model_override:
-        profile["model"] = model_override
-    return profile
+def resolve_profile(profile_key: str) -> dict[str, Any]:
+    return _profile(profile_key)
 
 
 def _provider(provider_key: str) -> dict[str, Any]:
@@ -86,8 +80,8 @@ def _provider(provider_key: str) -> dict[str, Any]:
     }
 
 
-def provider_configuration(profile_key: str, model_override: str | None = None) -> dict[str, Any]:
-    profile = resolve_profile(profile_key, model_override)
+def provider_configuration(profile_key: str) -> dict[str, Any]:
+    profile = resolve_profile(profile_key)
     provider_key = profile.get("provider_key") or DEFAULT_PROVIDER
     provider = _provider(provider_key)
 
@@ -173,6 +167,7 @@ async def _attempt(
                 "error": f"{provider_key} returned HTTP {response.status_code}",
                 "latency_ms": int((time.perf_counter() - started) * 1000),
             }
+
         data = response.json()
         content = ((data.get("choices") or [{}])[0].get("message") or {}).get("content")
         if not content:
@@ -183,6 +178,7 @@ async def _attempt(
                 "error": "AI provider returned no content.",
                 "latency_ms": int((time.perf_counter() - started) * 1000),
             }
+
         return {
             "status": "success",
             "content": content,
@@ -205,14 +201,14 @@ async def generate(
     profile_key: str,
     messages: list[dict[str, str]],
     *,
-    model_override: str | None = None,
     max_output_tokens: int | None = None,
     temperature: float | None = None,
     referer: str = "https://learnora-me.vercel.app",
     title: str = "Learnora ME",
     timeout: float = 60,
 ) -> dict[str, Any]:
-    config = provider_configuration(profile_key, model_override)
+    config = provider_configuration(profile_key)
+
     if not config["enabled"]:
         return {
             "status": "disabled",
@@ -249,12 +245,14 @@ async def generate(
             timeout=timeout,
         )
         result["attempt_type"] = attempt["type"]
+
         if result["status"] == "success":
             result["attempts"] = failures + [result["attempt_type"]]
             if failures:
                 result["fallback_used"] = True
                 result["fallback_reason"] = failures[-1].get("error") or failures[-1].get("status")
             return result
+
         failures.append(result)
 
     primary = attempts[0]
