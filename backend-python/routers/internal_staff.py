@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from .auth import hash_password, log_audit_event, norm_email, supabase
 from .internal_auth import InternalStaffContext, get_current_staff, require_internal_permission
-from .permissions import PermissionContext, require_platform_role, require_permission
+from .permissions import PermissionContext, require_platform_role
 
 router=APIRouter(prefix="/api/internal/staff",tags=["Internal Staff"])
 SAFE="id,user_id,employee_code,job_title,status,joined_at,left_at,created_by,created_at,updated_at"
@@ -99,7 +99,7 @@ def assign_role(staff_id:str,body:AssignRoleRequest,staff:InternalStaffContext=D
     return {"success":True,"assignment":r.data[0] if r.data else None}
 
 @router.delete("/{staff_id}/roles/{role_slug}")
-def remove_role(staff_id:str,role_slug:str,staff:InternalStaffContext=Depends(get_current_staff),_:PermissionContext=Depends(require_permission("staff.roles"))):
+def remove_role(staff_id:str,role_slug:str,staff:InternalStaffContext=Depends(require_internal_permission("staff.roles"))):
     role=role_row(role_slug)
     if not role:raise HTTPException(404,"Role not found")
     r=supabase.table("learnora_staff_role_assignments").update({"status":"inactive"}).eq("staff_id",staff_id).eq("role_id",role["id"]).execute()
