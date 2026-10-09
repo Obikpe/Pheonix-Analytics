@@ -445,6 +445,86 @@ def update_cohort_member(
     return {"success": True, "member": result.data[0]}
 
 
+@router.get("/{organisation_id}/cohort-courses")
+def list_organisation_cohort_courses(organisation_id: str, context: PermissionContext = Depends(require_permission("organisations.view"))):
+    _assert_organisation_scope(context, organisation_id)
+    cohort_rows = (supabase.table("cohorts").select("id,name").eq("organisation_id", organisation_id).execute()).data or []
+    cohort_ids = [str(row["id"]) for row in cohort_rows]
+    if not cohort_ids:
+        return {"success": True, "assignments": []}
+    rows = (supabase.table("cohort_course_assignments").select("*").in_("cohort_id", cohort_ids).order("assigned_at", desc=True).execute()).data or []
+    course_ids = list({str(row["course_id"]) for row in rows})
+    course_map = {}
+    if course_ids:
+        courses = (supabase.table("learnora_courses").select("id,title,slug,status").in_("id", course_ids).execute()).data or []
+        course_map = {str(row["id"]): row for row in courses}
+    cohort_map = {str(row["id"]): row for row in cohort_rows}
+    return {"success": True, "assignments": [{**row, "course": course_map.get(str(row["course_id"])), "cohort": cohort_map.get(str(row["cohort_id"]))} for row in rows]}
+
+
+@router.post("/{organisation_id}/cohorts/{cohort_id}/courses", status_code=201)
+def assign_course_to_cohort(organisation_id: str, cohort_id: str, body: dict, context: PermissionContext = Depends(require_permission("organisations.update"))):
+    organisation = _assert_organisation_scope(context, organisation_id)
+    _require_active_organisation(organisation)
+    course_id = str(body.get("course_id") or "")
+    if not course_id:
+        raise HTTPException(400, "course_id is required.")
+    cohort = (supabase.table("cohorts").select("id,status").eq("id", cohort_id).eq("organisation_id", organisation_id).limit(1).execute()).data
+    if not cohort:
+        raise HTTPException(404, "Cohort not found.")
+    if cohort[0].get("status") not in {"draft", "upcoming", "active"}:
+        raise HTTPException(409, "This cohort is closed to course assignment.")
+    course_rows = (supabase.table("learnora_courses").select("id,title,status,ownership,organisation_id").eq("id", course_id).limit(1).execute()).data
+    if not course_rows or course_rows[0].get("status") != "published":
+        raise HTTPException(404, "Only published courses can be assigned.")
+    course = course_rows[0]
+    if course.get("ownership") == "organisation" and str(course.get("organisation_id")) != str(organisation_id):
+        raise HTTPException(403, "An organisation cannot assign another organisation's private course.")
+    if course.get("ownership") not in {"learnora", "creator", "organisation"}:
+        raise HTTPException(403, "This course cannot be assigned through an organisation workspace.")
+
+    access = (supabase.table("course_access").select("id,status").eq("organisation_id", organisation_id).eq("course_id", course_id).limit(1).execute()).data
+    if not access or access[0].get("status") != "active":
+        ensure_org_capacity(organisation_id, "courses")
+        if access:
+            supabase.table("course_access").update({"status": "active", "access_type": "assigned"}).eq("id", access[0]["id"]).execute()
+        else:
+            supabase.table("course_access").insert({
+                "course_id": course_id, "organisation_id": organisation_id,
+                "access_type": "assigned", "status": "active",
+                "assigned_by": context.user_id, "assigned_at": datetime.now(timezone.utc).isoformat(),
+            }).execute()
+
+    existing = (supabase.table("cohort_course_assignments").select("id,status").eq("cohort_id", cohort_id).eq("course_id", course_id).limit(1).execute()).data
+    now = datetime.now(timezone.utc).isoformat()
+    if existing:
+        updated = supabase.table("cohort_course_assignments").update({"status": "active", "updated_at": now}).eq("id", existing[0]["id"]).execute()
+        assignment_row = (updated.data or existing)[0]
+    else:
+        inserted = supabase.table("cohort_course_assignments").insert({
+            "cohort_id": cohort_id, "course_id": course_id, "assigned_by": context.user_id,
+            "status": "active", "assigned_at": now, "updated_at": now,
+        }).execute()
+        if not inserted.data:
+            raise HTTPException(500, "Course assignment could not be saved.")
+        assignment_row = inserted.data[0]
+
+    cohort_members = (supabase.table("cohort_members").select("user_id").eq("cohort_id", cohort_id).eq("status", "active").execute()).data or []
+    created = 0
+    for cohort_member in cohort_members:
+        existing_enrolment = (supabase.table("learnora_enrolments").select("id").eq("user_id", cohort_member["user_id"]).eq("course_id", course_id).in_("status", ["active", "completed"]).limit(1).execute()).data
+        if existing_enrolment:
+            continue
+        enrolled = supabase.table("learnora_enrolments").insert({
+            "user_id": cohort_member["user_id"], "course_id": course_id,
+            "organisation_id": organisation_id, "cohort_id": cohort_id,
+            "status": "active", "enrolled_at": now, "source_type": "cohort_assignment",
+        }).execute()
+        if enrolled.data:
+            created += 1
+    return {"success": True, "assignment": assignment_row, "enrolments_created": created}
+
+
 @router.get("/{organisation_id}/teams")
 def list_organisation_teams(
     organisation_id: str,
