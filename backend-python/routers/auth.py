@@ -2699,15 +2699,22 @@ def verify_email(
         }
 
     # ---------------------------------------------------------------
-    # START 7-DAY TRIAL
+    # VERIFY IDENTITY WITHOUT GRANTING A LEARNER TRIAL TO PROSPECTS
     # ---------------------------------------------------------------
 
+    is_prospect = user.get("role") == "organisation_prospect"
     trial_ends_at = (
-        now
-        + timedelta(
-            days=TRIAL_DAYS
-        )
+        None
+        if is_prospect
+        else now + timedelta(days=TRIAL_DAYS)
     )
+    verification_update = {
+        "sub_status": "expired" if is_prospect else "trialing",
+        "is_paid": False,
+        "subscription_tier": "free",
+        "trial_ends_at": trial_ends_at.isoformat() if trial_ends_at else None,
+        "email_verified_at": now.isoformat(),
+    }
 
     try:
 
@@ -2715,17 +2722,7 @@ def verify_email(
             supabase
             .table("users")
             .update(
-                {
-                    "sub_status": "trialing",
-                    "is_paid": False,
-                    "subscription_tier": "free",
-                    "trial_ends_at": (
-                        trial_ends_at.isoformat()
-                    ),
-                    "email_verified_at": (
-                        now.isoformat()
-                    ),
-                }
+                verification_update
             )
             .eq(
                 "id",
