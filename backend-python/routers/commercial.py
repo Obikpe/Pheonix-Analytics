@@ -173,7 +173,17 @@ def create_request(body: OrganisationRequestIn, request: Request):
         supabase.table("learnora_organisation_requests").delete().eq("id", request_row["id"]).execute()
         raise HTTPException(409, "A verified account already exists for this email. Please use a separate prospect email.")
 
-    supabase.table("users").update({"role": "organisation_prospect"}).eq("id", portal_user["id"]).select("id,role").execute()
+    role_update = (
+        supabase.table("users")
+        .update({"role": "organisation_prospect"})
+        .eq("id", portal_user["id"])
+        .select("id,role")
+        .execute()
+    )
+    if not role_update.data or role_update.data[0].get("role") != "organisation_prospect":
+        supabase.table("learnora_organisation_requests").delete().eq("id", request_row["id"]).execute()
+        raise HTTPException(500, "The portal identity could not be configured.")
+
     linked = (
         supabase
         .table("learnora_organisation_requests")
