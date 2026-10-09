@@ -14,6 +14,15 @@ export default function OrganisationWorkspace() {
   const [user, setUser] = useState<any>(null);
   const [org, setOrg] = useState<any>(null);
   const [members, setMembers] = useState<any[]>([]);
+  const [programmes, setProgrammes] = useState<any[]>([]);
+  const [cohorts, setCohorts] = useState<any[]>([]);
+  const [teams, setTeams] = useState<any[]>([]);
+  const [programmeForm, setProgrammeForm] = useState<any>({ name: "", description: "", start_date: "", end_date: "" });
+  const [cohortForm, setCohortForm] = useState<any>({ name: "", description: "", programme_id: "", start_date: "", end_date: "", capacity: "", instructor_capacity: "" });
+  const [teamForm, setTeamForm] = useState<any>({ name: "", slug: "", description: "", manager_user_id: "" });
+  const [cohortUserIds, setCohortUserIds] = useState<Record<string, string>>({});
+  const [teamUserIds, setTeamUserIds] = useState<Record<string, string>>({});
+  const [teamRoles, setTeamRoles] = useState<Record<string, string>>({});
   const [summary, setSummary] = useState<any>({});
   const [contract, setContract] = useState<any>(null);
   const [capacity, setCapacity] = useState<any>({});
@@ -35,18 +44,24 @@ export default function OrganisationWorkspace() {
         return;
       }
       const id = encodeURIComponent(me.organisation_id);
-      const [orgResult, memberResult, summaryResult, contractResult, capacityResult] = await Promise.all([
+      const [orgResult, memberResult, summaryResult, contractResult, capacityResult, programmeResult, cohortResult, teamResult] = await Promise.all([
         request<any>("/organisations/" + id),
         request<any>("/organisations/" + id + "/members"),
         request<any>("/organisations/" + id + "/members/summary"),
         request<any>("/commercial/organisations/" + id + "/contract"),
         request<any>("/commercial/organisations/" + id + "/capacity"),
+        request<any>("/organisations/" + id + "/programmes"),
+        request<any>("/organisations/" + id + "/cohorts"),
+        request<any>("/organisations/" + id + "/teams"),
       ]);
       setOrg(orgResult.organisation || orgResult);
       setMembers(memberResult.members || []);
       setSummary(summaryResult.summary || {});
       setContract(contractResult.contract || null);
       setCapacity(capacityResult || {});
+      setProgrammes(programmeResult.programmes || []);
+      setCohorts(cohortResult.cohorts || []);
+      setTeams(teamResult.teams || []);
     } catch (e: any) {
       setError(e.message || "The organisation workspace could not be loaded.");
     } finally {
