@@ -2,13 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { ArrowLeft, CheckCircle2, Users } from "lucide-react";
-import { currentUser } from "../../../../lib/api";
 import { request } from "../../../../lib/api/client";
 import Logo from "../../../../components/brand/Logo";
 import EmptyState from "../../../../components/feedback/EmptyState";
 
 export default function TeamWorkspace({ params }: { params: { teamId: string } }) {
-  const [user, setUser] = useState<any>(null);
   const [data, setData] = useState<any>(null);
   const [userId, setUserId] = useState("");
   const [role, setRole] = useState("member");
@@ -19,8 +17,6 @@ export default function TeamWorkspace({ params }: { params: { teamId: string } }
   async function load() {
     setError("");
     try {
-      const me = await currentUser();
-      setUser(me);
       const workspace = await request<any>("/organisations/team-workspace/" + encodeURIComponent(params.teamId));
       setData(workspace);
     } catch (e: any) {
