@@ -6,7 +6,7 @@ the internal frontend can authenticate with the internal staff token only.
 from fastapi import APIRouter, Depends, HTTPException
 from datetime import datetime, timezone
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Any, Optional
 from .internal_auth import InternalStaffContext, require_internal_permission
 from .auth import supabase
 from services.contract_ai import generate_contract_draft
@@ -40,6 +40,7 @@ class OrganisationCreate(BaseModel):
     logo_url: Optional[str] = Field(None, max_length=1000)
     brand_primary: Optional[str] = Field(None, max_length=50)
     brand_secondary: Optional[str] = Field(None, max_length=50)
+    settings: dict[str, Any] = Field(default_factory=dict)
 
 class OrganisationUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=2, max_length=150)
@@ -50,6 +51,7 @@ class OrganisationUpdate(BaseModel):
     logo_url: Optional[str] = Field(None, max_length=1000)
     brand_primary: Optional[str] = Field(None, max_length=50)
     brand_secondary: Optional[str] = Field(None, max_length=50)
+    settings: Optional[dict[str, Any]] = None
     is_active: Optional[bool] = None
 
 @router.post("/organisations")
@@ -58,7 +60,7 @@ def create_organisation(payload: OrganisationCreate, staff: InternalStaffContext
     slug = payload.slug.strip().lower().replace(" ", "-")
     if supabase.table("organisations").select("id").eq("slug", slug).limit(1).execute().data:
         raise HTTPException(status_code=400, detail="An organisation with this slug already exists.")
-    row = supabase.table("organisations").insert({"name": name, "slug": slug, "organisation_type": payload.organisation_type.strip().lower(), "template": payload.template.strip().lower(), "description": payload.description.strip() if payload.description else None, "logo_url": payload.logo_url.strip() if payload.logo_url else None, "brand_primary": payload.brand_primary.strip() if payload.brand_primary else None, "brand_secondary": payload.brand_secondary.strip() if payload.brand_secondary else None, "is_active": True}).execute()
+    row = supabase.table("organisations").insert({"name": name, "slug": slug, "organisation_type": payload.organisation_type.strip().lower(), "template": payload.template.strip().lower(), "description": payload.description.strip() if payload.description else None, "logo_url": payload.logo_url.strip() if payload.logo_url else None, "brand_primary": payload.brand_primary.strip() if payload.brand_primary else None, "brand_secondary": payload.brand_secondary.strip() if payload.brand_secondary else None, "settings": payload.settings, "is_active": True}).execute()
     if not row.data: raise HTTPException(status_code=500, detail="Organisation creation failed.")
     return {"success": True, "organisation": row.data[0]}
 
