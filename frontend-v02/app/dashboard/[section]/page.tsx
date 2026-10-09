@@ -1,6 +1,6 @@
 "use client";
 import { useEffect,useState } from "react";
-import { ArrowRight, BookOpen, FileCheck2, FolderKanban, Sparkles } from "lucide-react";
+import { ArrowRight, BookOpen, FileCheck2, Sparkles } from "lucide-react";
 import { currentUser } from "../../../lib/api";
 import { courses,progress,evidence } from "../../../lib/api/learning";
 import { request } from "../../../lib/api/client";
