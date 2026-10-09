@@ -5,6 +5,7 @@ All writes are scoped to the authenticated learner and an actual enrolment.
 """
 
 from datetime import datetime, timezone
+from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -25,6 +26,15 @@ class LessonProgressIn(BaseModel):
 
 class LessonNoteIn(BaseModel):
     content: str = Field(default="", max_length=20000)
+
+
+class QuizAttemptIn(BaseModel):
+    answers: dict[str, Any] = Field(default_factory=dict)
+
+
+class AssignmentSubmissionIn(BaseModel):
+    submission_text: str = Field(default="", max_length=20000)
+    file_url: Optional[str] = Field(default=None, max_length=2000)
 
 
 def _course_for_lesson(lesson_id: str):
