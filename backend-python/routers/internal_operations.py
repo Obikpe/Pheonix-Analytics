@@ -408,7 +408,7 @@ def activate_approved_contract(
     if contract.get("status") != "signed" or not contract.get("approved_at"):
         raise HTTPException(409, "A signed contract must be explicitly approved before activation.")
     now = datetime.now(timezone.utc).isoformat()
-    updated = supabase.table("learnora_contracts").update({"status": "active"}).eq("id", contract_id).eq("status", "signed").not_.is_("approved_at", "null").execute()
+    updated = supabase.table("learnora_contracts").update({"status": "active"}).eq("id", contract_id).eq("status", "signed").eq("approved_at", contract["approved_at"]).execute()
     if not updated.data:
         raise HTTPException(409, "Contract state changed; activation was not applied.")
 
