@@ -240,6 +240,7 @@ if len(JWT_SECRET) < 32:
 LEARNER_ROLES = {
     "normal",
     "witstart",
+    "organisation_prospect",
 }
 
 ADMIN_ROLES = {
@@ -1588,6 +1589,13 @@ def get_current_user(
             user
         )
     )
+    if role == "organisation_prospect":
+        entitlement = {
+            **entitlement,
+            "is_paid": False,
+            "access_state": "prospect",
+            "course_access": False,
+        }
 
     return CurrentUser(
         id=(
@@ -2125,6 +2133,13 @@ def login(
             user
         )
     )
+    if role == "organisation_prospect":
+        entitlement = {
+            **entitlement,
+            "is_paid": False,
+            "access_state": "prospect",
+            "course_access": False,
+        }
 
     token = make_token(
         email=email,
