@@ -380,20 +380,49 @@ def add_cohort_member(
     cohort = supabase.table("cohorts").select("id,status").eq("id", cohort_id).eq("organisation_id", organisation_id).limit(1).execute()
     if not cohort.data:
         raise HTTPException(404, "Cohort not found.")
+    if cohort.data[0].get("status") not in {"draft", "upcoming", "active"}:
+        raise HTTPException(409, "This cohort is closed to new members.")
     member = supabase.table("organisation_members").select("id,role,status").eq("organisation_id", organisation_id).eq("user_id", body.user_id).eq("status", "active").limit(1).execute()
     if not member.data or member.data[0].get("role") != "learner":
         raise HTTPException(400, "Only active learners in this organisation can be added to a cohort.")
-    ensure_cohort_capacity(cohort_id)
+    existing = supabase.table("cohort_members").select("id,status").eq("cohort_id", cohort_id).eq("user_id", body.user_id).limit(1).execute()
     now = datetime.now(timezone.utc).isoformat()
-    result = supabase.table("cohort_members").insert({
-        "cohort_id": cohort_id,
-        "user_id": body.user_id,
-        "joined_at": now,
-        "status": "active",
-    }).execute()
-    if not result.data:
-        raise HTTPException(409, "The learner may already be a member of this cohort.")
-    return {"success": True, "member": result.data[0]}
+    if existing.data:
+        if existing.data[0].get("status") != "active":
+            membership = supabase.table("cohort_members").update({"status": "active", "joined_at": now}).eq("id", existing.data[0]["id"]).execute()
+            member_row = (membership.data or [existing.data[0]])[0]
+        else:
+            member_row = existing.data[0]
+    else:
+        ensure_cohort_capacity(cohort_id)
+        membership = supabase.table("cohort_members").insert({
+            "cohort_id": cohort_id,
+            "user_id": body.user_id,
+            "joined_at": now,
+            "status": "active",
+        }).execute()
+        if not membership.data:
+            raise HTTPException(500, "Cohort membership could not be saved.")
+        member_row = membership.data[0]
+
+    assignments = supabase.table("cohort_course_assignments").select("course_id").eq("cohort_id", cohort_id).eq("status", "active").execute()
+    created_enrolments = 0
+    for assignment in assignments.data or []:
+        existing_enrolment = supabase.table("learnora_enrolments").select("id").eq("user_id", body.user_id).eq("course_id", assignment["course_id"]).in_("status", ["active", "completed"]).limit(1).execute()
+        if existing_enrolment.data:
+            continue
+        enrolment = supabase.table("learnora_enrolments").insert({
+            "user_id": body.user_id,
+            "course_id": assignment["course_id"],
+            "organisation_id": organisation_id,
+            "cohort_id": cohort_id,
+            "status": "active",
+            "enrolled_at": now,
+            "source_type": "cohort_assignment",
+        }).execute()
+        if enrolment.data:
+            created_enrolments += 1
+    return {"success": True, "member": member_row, "enrolments_created": created_enrolments}
 
 
 @router.patch("/{organisation_id}/cohorts/{cohort_id}/members/{membership_id}")
