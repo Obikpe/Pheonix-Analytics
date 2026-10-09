@@ -180,6 +180,22 @@ export default function OrganisationWorkspace() {
     } catch (e: any) { setError(e.message || "Learner could not be added to the cohort."); }
   }
 
+  async function assignCourseToCohort(cohortId: string) {
+    if (!user?.organisation_id || !courseSelections[cohortId]) return;
+    setError("");
+    setNotice("");
+    try {
+      const result = await request<any>("/organisations/" + encodeURIComponent(user.organisation_id) + "/cohorts/" + encodeURIComponent(cohortId) + "/courses", {
+        method: "POST",
+        body: JSON.stringify({ course_id: courseSelections[cohortId] }),
+      });
+      setNotice("Course assigned. " + (result.enrolments_created || 0) + " new learner enrolments created.");
+      await load();
+    } catch (e: any) {
+      setError(e.message || "Course could not be assigned to this cohort.");
+    }
+  }
+
   async function addTeamMember(teamId: string) {
     if (!user?.organisation_id || !teamUserIds[teamId]?.trim()) return;
     setError(""); setNotice("");
