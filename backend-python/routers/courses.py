@@ -612,7 +612,7 @@ def self_enrol_in_free_course(
 
     course_result = (
         supabase.table("learnora_courses")
-        .select("id,title,status,ownership,organisation_id,settings")
+        .select("id,title,status,ownership,organisation_id,creator_id,settings")
         .eq("id", course_id)
         .limit(1)
         .execute()
@@ -622,8 +622,20 @@ def self_enrol_in_free_course(
     course = course_result.data[0]
     if course.get("status") != "published":
         raise HTTPException(409, "Only published courses can be enrolled in.")
-    if course.get("ownership") != "learnora":
-        raise HTTPException(403, "Organisation and creator courses must be assigned through their authorised workspace.")
+    if course.get("ownership") == "organisation":
+        raise HTTPException(403, "Organisation courses must be assigned through their authorised workspace.")
+    if course.get("ownership") not in {"learnora", "creator"}:
+        raise HTTPException(403, "This course cannot be self-enrolled.")
+    if course.get("ownership") == "creator":
+        creator = (
+            supabase.table("learnora_creator_accounts")
+            .select("id,status")
+            .eq("id", course.get("creator_id"))
+            .limit(1)
+            .execute()
+        ).data
+        if not creator or creator[0].get("status") not in {"approved", "active"}:
+            raise HTTPException(403, "This creator is not approved for course distribution.")
     settings = course.get("settings") or {}
     is_free = (
         settings.get("is_free") is True
