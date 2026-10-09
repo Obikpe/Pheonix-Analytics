@@ -1,6 +1,6 @@
 "use client";
 import{useEffect,useState}from"react";
-import{ArrowRight,BookOpen,CheckCircle2,Clock3,LockKeyhole}from"lucide-react";
+import{ArrowRight,BookOpen,Clock3,LockKeyhole}from"lucide-react";
 import{course,structure}from"../../../lib/api/learning";
 import{request}from"../../../lib/api/client";
 import{IMAGES}from"../../../lib/constants";
