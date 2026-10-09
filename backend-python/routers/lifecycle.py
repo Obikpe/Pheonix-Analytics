@@ -154,6 +154,73 @@ def org_status(
     }
 
 
+@router.post("/contracts/{contract_id}/approve")
+def approve_signed_contract(
+    contract_id: str,
+    context: PermissionContext = Depends(
+        require_permission("organisations.update")
+    ),
+):
+    """Record Learnora's explicit approval of an organisation-signed contract.
+
+    Signing and approval are separate states: only a platform administrator
+    may approve, and only a signed contract may be approved.
+    """
+    if not context.is_platform_admin:
+        raise HTTPException(
+            403,
+            "Only Learnora platform administrators can approve signed contracts.",
+        )
+
+    result = (
+        supabase
+        .table("learnora_contracts")
+        .select("*")
+        .eq("id", contract_id)
+        .limit(1)
+        .execute()
+    )
+    if not result.data:
+        raise HTTPException(404, "Contract not found.")
+
+    contract = result.data[0]
+    if contract.get("status") != "signed":
+        raise HTTPException(
+            409,
+            "Only signed contracts can be approved.",
+        )
+    if contract.get("approved_at"):
+        raise HTTPException(
+            409,
+            "This contract has already been approved.",
+        )
+
+    now = datetime.now(timezone.utc).isoformat()
+    updated = (
+        supabase
+        .table("learnora_contracts")
+        .update({"approved_at": now})
+        .eq("id", contract_id)
+        .eq("status", "signed")
+        .is_("approved_at", "null")
+        .execute()
+    )
+    if not updated.data:
+        raise HTTPException(
+            409,
+            "Contract state changed; approval was not applied.",
+        )
+
+    audit(
+        actor_user_id=context.user_id,
+        action="contract_approved",
+        resource_type="contract",
+        resource_id=contract_id,
+        organisation_id=contract["organisation_id"],
+    )
+    return {"success": True, "contract": updated.data[0]}
+
+
 @router.post("/contracts/{contract_id}/activate")
 def activate_contract(
     contract_id: str,
@@ -176,15 +243,21 @@ def activate_contract(
         )
 
     contract = result.data[0]
-    _org_access(
-        context,
-        str(contract["organisation_id"]),
-    )
+    if not context.is_platform_admin:
+        raise HTTPException(
+            403,
+            "Only Learnora platform administrators can activate an organisation contract.",
+        )
 
     if contract["status"] != "signed":
         raise HTTPException(
             409,
             "Only signed contracts can be activated.",
+        )
+    if not contract.get("approved_at"):
+        raise HTTPException(
+            409,
+            "Learnora must explicitly approve the signed contract before activation.",
         )
 
     now = datetime.now(timezone.utc).isoformat()
@@ -194,7 +267,6 @@ def activate_contract(
         .table("learnora_contracts")
         .update({
             "status": "active",
-            "approved_at": now,
         })
         .eq("id", contract_id)
         .eq("status", "signed")
