@@ -279,10 +279,32 @@ def activate_contract(
             "Contract state changed; activation was not applied.",
         )
 
+    organisation_id = str(contract["organisation_id"])
+    supabase.table("organisations").update({"is_active": True}).eq("id", organisation_id).execute()
+
+    if contract.get("request_id"):
+        request_row = supabase.table("learnora_organisation_requests").select("id,portal_user_id").eq("id", contract["request_id"]).limit(1).execute()
+        if request_row.data:
+            supabase.table("learnora_organisation_requests").update({"status": "active"}).eq("id", contract["request_id"]).execute()
+            portal_user_id = request_row.data[0].get("portal_user_id")
+            if portal_user_id:
+                existing_member = supabase.table("organisation_members").select("id").eq("organisation_id", organisation_id).eq("user_id", portal_user_id).limit(1).execute()
+                if existing_member.data:
+                    supabase.table("organisation_members").update({"role": "owner", "status": "active"}).eq("id", existing_member.data[0]["id"]).execute()
+                else:
+                    supabase.table("organisation_members").insert({
+                        "organisation_id": organisation_id,
+                        "user_id": portal_user_id,
+                        "role": "owner",
+                        "status": "active",
+                        "joined_at": now,
+                    }).execute()
+                supabase.table("users").update({"role": "normal"}).eq("id", portal_user_id).eq("role", "organisation_prospect").execute()
+
     supabase.table(
         "learnora_organisation_lifecycle"
     ).upsert({
-        "organisation_id": contract["organisation_id"],
+        "organisation_id": organisation_id,
         "status": "active",
         "changed_by": context.user_id,
         "updated_at": now,
