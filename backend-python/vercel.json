@@ -5,10 +5,15 @@
       "main": false
     }
   },
+  "functions": {
+    "main.py": {
+      "runtime": "vercel-python@4.2.0"
+    }
+  },
   "rewrites": [
     {
       "source": "/(.*)",
-      "destination": "/fastapi"
+      "destination": "/main.py"
     }
   ]
 }
