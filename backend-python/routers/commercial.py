@@ -80,7 +80,7 @@ def _active_contract(organisation_id: str):
         .table("learnora_contracts")
         .select("*")
         .eq("organisation_id", organisation_id)
-        .in_("status", ["signed", "active", "expiring"])
+        .in_("status", ["active", "expiring"])
         .order("created_at", desc=True)
         .limit(1)
         .execute()
@@ -161,6 +161,15 @@ def update_request(
         require_permission("organisations.update")
     ),
 ):
+    # Prospect onboarding is a Learnora-controlled workflow. Customer
+    # organisation administrators must not advance their own request into
+    # signed, approved, or active states.
+    if not context.is_platform_admin:
+        raise HTTPException(
+            403,
+            "Only Learnora platform administrators can update onboarding requests.",
+        )
+
     allowed = {
         "submitted",
         "under_review",
