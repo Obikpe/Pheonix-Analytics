@@ -1,0 +1,51 @@
+"use client";
+import { useState } from "react";
+import { ArrowLeft, ArrowRight, Building2, CheckCircle2, GraduationCap, Users } from "lucide-react";
+import PublicNav from "../../components/public/PublicNav";
+import PublicFooter from "../../components/public/PublicFooter";
+import Toast from "../../components/feedback/Toast";
+import { submitOrganisationRequest } from "../../lib/api/public";
+
+const inputClass="mt-2 w-full rounded-xl border border-white/10 bg-[#0b0f14] px-4 py-3 text-sm text-white outline-none transition focus:border-[#d7ad35]/60";
+export default function GetStartedPage() {
+  const [path,setPath]=useState<"learner"|"instructor"|"organisation"|null>(null);
+  const [busy,setBusy]=useState(false);
+  const [success,setSuccess]=useState<any>(null);
+  const [error,setError]=useState("");
+  const [form,setForm]=useState({organisation_name:"",contact_name:"",email:"",phone:"",country:"Nigeria",website:"",organisation_type:"business",request_type:"organisation_learning",organisation_size:"",expected_learners:"",expected_instructors:"",expected_teams:"",expected_cohorts:"",duration:"",notes:""});
+  function update(k:string,v:string){setForm(s=>({...s,[k]:v}));}
+  async function submit(e:any){e.preventDefault();setError("");setBusy(true);try{const payload:any={...form};for(const k of ["organisation_size","expected_learners","expected_instructors","expected_teams","expected_cohorts"])payload[k]=form[k as keyof typeof form]?Number(form[k as keyof typeof form]):null;payload.requirements=[];const r=await submitOrganisationRequest(payload);setSuccess(r.request); }catch(e:any){setError(e.message||"Your request could not be submitted. Please try again.");}finally{setBusy(false);}}
+  return <><PublicNav/><main className="mx-auto max-w-7xl px-5 pb-24 pt-36 lg:px-8">
+    <p className="text-xs font-bold uppercase tracking-[.22em] gold">Find your starting point</p><h1 className="mt-5 max-w-4xl font-display text-5xl leading-tight sm:text-6xl">Every learning journey starts somewhere.</h1><p className="mt-6 max-w-2xl text-lg leading-8 text-slate-400">Choose the path that best describes you. Learnora supports individual learners, instructors and organisations—with different experiences for each.</p>
+    {!path?<div className="mt-12 grid gap-5 md:grid-cols-3">{[
+      {key:"learner",icon:GraduationCap,title:"I want to learn",body:"Explore courses, practise new skills and build a record of your work.",cta:"Explore learning",href:"/courses"},
+      {key:"instructor",icon:Users,title:"I want to teach",body:"Explore the instructor directory and create an account to begin the instructor journey.",cta:"Meet instructors",href:"/tutors"},
+      {key:"organisation",icon:Building2,title:"I'm here for an organisation",body:"Tell Learnora about your people, learning priorities and programme needs.",cta:"Start an enquiry",href:""},
+    ].map(({key,icon:Icon,title,body,cta,href})=><button key={key} onClick={()=>key==="organisation"?setPath("organisation"):location.assign(href)} className="group rounded-[1.7rem] border border-white/[.08] bg-[#0e1319] p-7 text-left transition hover:-translate-y-1 hover:border-[#d7ad35]/35"><Icon className="gold" size={25}/><h2 className="mt-7 text-xl font-semibold">{title}</h2><p className="mt-3 min-h-14 text-sm leading-6 text-slate-400">{body}</p><span className="mt-6 inline-flex items-center gap-2 text-sm font-semibold gold">{cta}<ArrowRight size={15}/></span></button>)}</div>:<div className="mt-12 grid gap-10 lg:grid-cols-[.65fr_1.35fr]">
+      <aside className="h-fit rounded-2xl border border-white/10 bg-[#0e1319] p-6"><button onClick={()=>setPath(null)} className="inline-flex items-center gap-2 text-sm text-slate-400 hover:text-white"><ArrowLeft size={15}/> Change path</button><Building2 className="mt-8 gold" size={28}/><h2 className="mt-4 font-display text-3xl">Tell us what you need.</h2><p className="mt-4 text-sm leading-7 text-slate-400">This enquiry starts the organisation onboarding process. It does not activate a workspace or bypass contract review and approval.</p></aside>
+      <form onSubmit={submit} className="rounded-[1.7rem] border border-white/[.08] bg-[#0e1319] p-6 sm:p-8">
+        <h2 className="text-xl font-semibold">Organisation enquiry</h2><p className="mt-2 text-sm leading-6 text-slate-500">Share enough context for Learnora to understand your request.</p>
+        <div className="mt-7 grid gap-5 sm:grid-cols-2">
+          <label className="text-sm text-slate-300 sm:col-span-2">Organisation name<input className={inputClass} value={form.organisation_name} onChange={e=>update("organisation_name",e.target.value)} required minLength={2}/></label>
+          <label className="text-sm text-slate-300">Contact person<input className={inputClass} value={form.contact_name} onChange={e=>update("contact_name",e.target.value)} required minLength={2}/></label>
+          <label className="text-sm text-slate-300">Work email<input type="email" className={inputClass} value={form.email} onChange={e=>update("email",e.target.value)} required/></label>
+          <label className="text-sm text-slate-300">Phone (optional)<input className={inputClass} value={form.phone} onChange={e=>update("phone",e.target.value)}/></label>
+          <label className="text-sm text-slate-300">Country<input className={inputClass} value={form.country} onChange={e=>update("country",e.target.value)}/></label>
+          <label className="text-sm text-slate-300">Organisation type<select className={inputClass} value={form.organisation_type} onChange={e=>update("organisation_type",e.target.value)}><option value="business">Business</option><option value="school">School</option><option value="academy">Academy / training provider</option><option value="nonprofit">Non-profit</option><option value="team">Team / department</option><option value="other">Other</option></select></label>
+          <label className="text-sm text-slate-300">Website (optional)<input type="url" className={inputClass} value={form.website} onChange={e=>update("website",e.target.value)} placeholder="https://"/></label>
+          <label className="text-sm text-slate-300">Approximate organisation size<input type="number" min="1" className={inputClass} value={form.organisation_size} onChange={e=>update("organisation_size",e.target.value)}/></label>
+          <label className="text-sm text-slate-300">Expected learners<input type="number" min="0" className={inputClass} value={form.expected_learners} onChange={e=>update("expected_learners",e.target.value)}/></label>
+          <label className="text-sm text-slate-300">Expected instructors / tutors<input type="number" min="0" className={inputClass} value={form.expected_instructors} onChange={e=>update("expected_instructors",e.target.value)}/></label>
+          <label className="text-sm text-slate-300">Expected teams<input type="number" min="0" className={inputClass} value={form.expected_teams} onChange={e=>update("expected_teams",e.target.value)}/></label>
+          <label className="text-sm text-slate-300">Expected cohorts<input type="number" min="0" className={inputClass} value={form.expected_cohorts} onChange={e=>update("expected_cohorts",e.target.value)}/></label>
+          <label className="text-sm text-slate-300">Expected programme duration<input className={inputClass} value={form.duration} onChange={e=>update("duration",e.target.value)} placeholder="e.g. 6 months"/></label>
+          <label className="text-sm text-slate-300 sm:col-span-2">What are you trying to achieve?<textarea className={inputClass+" min-h-32 resize-y"} value={form.notes} onChange={e=>update("notes",e.target.value)} placeholder="Learning priorities, teams involved, desired outcomes…" /></label>
+        </div>
+        <button disabled={busy} className="mt-7 inline-flex items-center gap-2 rounded-xl bg-[#d7ad35] px-5 py-3.5 font-bold text-black disabled:cursor-not-allowed disabled:opacity-60">{busy?"Submitting…":"Submit enquiry"}<ArrowRight size={16}/></button>
+        <p className="mt-4 text-xs leading-5 text-slate-600">Learnora will review this request before a workspace is provisioned. Contract signing alone does not activate access.</p>
+      </form>
+    </div>}
+    {success&&<div role="status" className="mt-8 rounded-2xl border border-emerald-400/20 bg-emerald-400/[.06] p-6"><CheckCircle2 className="text-emerald-300" size={24}/><h2 className="mt-3 text-lg font-semibold">Enquiry received</h2><p className="mt-2 text-sm leading-6 text-slate-300">Your request has been recorded. Reference: <span className="font-mono text-emerald-200">{success.id}</span>. The next step is review and follow-up; this is not an active organisation workspace.</p><button onClick={()=>{setSuccess(null);setPath(null)}} className="mt-4 text-sm gold">Return to paths</button></div>}
+    {error&&<Toast title="Enquiry not submitted" message={error} type="error" onClose={()=>setError("")}/>}
+  </main><PublicFooter/></>;
+}
