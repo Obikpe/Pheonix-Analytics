@@ -495,7 +495,7 @@ export default function SuperAdminDashboard() {
                         {status==='submitted'&&<Button variant="ghost" onClick={()=>void updateRequestStatus(String(r.id),'under_review')}>Start review</Button>}
                         {['under_review','submitted'].includes(status)&&<Button variant="ghost" onClick={()=>void updateRequestStatus(String(r.id),'discussion')}>Discussion started</Button>}
                         {['under_review','discussion','contract_preparation'].includes(status)&&!r.organisation_id&&<Button onClick={()=>openOrganisationBuilder(r)}><Plus size={14}/> Build workspace</Button>}
-                        {r.organisation_id&&<Button variant="ghost" onClick={()=>{setSection('organisations');setNotice('Select this organisation to prepare or review its contract.')}}>Manage workspace</Button>}
+                        {r.organisation_id&&<Button variant="ghost" onClick={()=>{window.location.href='/organisations'}}>Manage workspace</Button>}
                         {r.organisation_id&&contract.status==='draft'&&version.draft_content&&qa.status==='pass'&&<Button onClick={()=>void sendContract(String(r.organisation_id))}>Send contract</Button>}
                         {r.organisation_id&&contract.status==='signed'&&!contract.approved_at&&<Button onClick={()=>void approveContract(String(contract.id))}>Approve signed contract</Button>}
                         {r.organisation_id&&contract.status==='signed'&&contract.approved_at&&<Button onClick={()=>void activateContract(String(contract.id))}>Activate workspace</Button>}
