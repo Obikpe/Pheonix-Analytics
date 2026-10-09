@@ -17,6 +17,9 @@ export default function OrganisationWorkspace() {
   const [programmes, setProgrammes] = useState<any[]>([]);
   const [cohorts, setCohorts] = useState<any[]>([]);
   const [teams, setTeams] = useState<any[]>([]);
+  const [courseCatalogue, setCourseCatalogue] = useState<any[]>([]);
+  const [cohortCourses, setCohortCourses] = useState<any[]>([]);
+  const [courseSelections, setCourseSelections] = useState<Record<string, string>>({});
   const [programmeForm, setProgrammeForm] = useState<any>({ name: "", description: "", start_date: "", end_date: "" });
   const [cohortForm, setCohortForm] = useState<any>({ name: "", description: "", programme_id: "", start_date: "", end_date: "", capacity: "", instructor_capacity: "" });
   const [teamForm, setTeamForm] = useState<any>({ name: "", slug: "", description: "", manager_user_id: "" });
@@ -44,7 +47,7 @@ export default function OrganisationWorkspace() {
         return;
       }
       const id = encodeURIComponent(me.organisation_id);
-      const [orgResult, memberResult, summaryResult, contractResult, capacityResult, programmeResult, cohortResult, teamResult] = await Promise.all([
+      const [orgResult, memberResult, summaryResult, contractResult, capacityResult, programmeResult, cohortResult, teamResult, cohortCourseResult, publicCourseResult] = await Promise.all([
         request<any>("/organisations/" + id),
         request<any>("/organisations/" + id + "/members"),
         request<any>("/organisations/" + id + "/members/summary"),
@@ -53,6 +56,8 @@ export default function OrganisationWorkspace() {
         request<any>("/organisations/" + id + "/programmes"),
         request<any>("/organisations/" + id + "/cohorts"),
         request<any>("/organisations/" + id + "/teams"),
+        request<any>("/organisations/" + id + "/cohort-courses"),
+        request<any>("/public/courses"),
       ]);
       setOrg(orgResult.organisation || orgResult);
       setMembers(memberResult.members || []);
@@ -62,6 +67,8 @@ export default function OrganisationWorkspace() {
       setProgrammes(programmeResult.programmes || []);
       setCohorts(cohortResult.cohorts || []);
       setTeams(teamResult.teams || []);
+      setCohortCourses(cohortCourseResult.assignments || []);
+      setCourseCatalogue(publicCourseResult.courses || []);
     } catch (e: any) {
       setError(e.message || "The organisation workspace could not be loaded.");
     } finally {
