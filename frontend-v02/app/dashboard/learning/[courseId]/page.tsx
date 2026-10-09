@@ -3,7 +3,7 @@ import{useEffect,useMemo,useRef,useState}from"react";
 import Shell from"../../../../components/dashboard/Shell";
 import EmptyState from"../../../../components/feedback/EmptyState";
 import{request}from"../../../../lib/api/client";
-import{FileText,Save,Sparkles,CheckCircle2,ClipboardCheck,FolderKanban,Send}from"lucide-react";
+import{FileText,Save,Sparkles,CheckCircle2,ClipboardCheck,Send}from"lucide-react";
 export default function LearningPlayer({params}:{params:{courseId:string}}){
  const[d,setD]=useState<any>(),[err,setErr]=useState(""),[media,setMedia]=useState<any>({videos:[],resources:[]}),[current,setCurrent]=useState<any>(null),[notes,setNotes]=useState(""),[noteBusy,setNoteBusy]=useState(false),[noteState,setNoteState]=useState(""),[noteError,setNoteError]=useState("");
  const lastSaved=useRef(0);const [activities,setActivities]=useState<any>({quizzes:[],assignments:[],projects:[]}),[quizData,setQuizData]=useState<any>(null),[quizAnswers,setQuizAnswers]=useState<any>({}),[quizResult,setQuizResult]=useState<any>(null),[quizBusy,setQuizBusy]=useState(false),[quizError,setQuizError]=useState(""),[assignmentData,setAssignmentData]=useState<any>(null),[assignmentText,setAssignmentText]=useState(""),[assignmentFile,setAssignmentFile]=useState(""),[assignmentBusy,setAssignmentBusy]=useState(false),[assignmentError,setAssignmentError]=useState(""),[projectSubmissions,setProjectSubmissions]=useState<any[]>([]),[projectId,setProjectId]=useState(""),[projectForm,setProjectForm]=useState<any>({title:"",description:"",repository_url:"",live_url:"",submission_url:""}),[projectBusy,setProjectBusy]=useState(false),[projectError,setProjectError]=useState(""),[projectNotice,setProjectNotice]=useState("");
