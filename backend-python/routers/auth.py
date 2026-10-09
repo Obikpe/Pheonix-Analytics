@@ -1023,6 +1023,8 @@ class CurrentUser(BaseModel):
 
     access_state: str = "expired"
     course_access: bool = False
+    organisation_id: Optional[str] = None
+    organisation_role: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
@@ -1597,6 +1599,34 @@ def get_current_user(
             "course_access": False,
         }
 
+    organisation_id = None
+    organisation_role = None
+    if role != "organisation_prospect":
+        try:
+            memberships = (
+                supabase.table("organisation_members")
+                .select("organisation_id,role")
+                .eq("user_id", user["id"])
+                .eq("status", "active")
+                .order("joined_at", desc=True)
+                .limit(10)
+                .execute()
+            ).data or []
+            for membership in memberships:
+                organisation = (
+                    supabase.table("organisations")
+                    .select("id,is_active")
+                    .eq("id", membership["organisation_id"])
+                    .limit(1)
+                    .execute()
+                )
+                if organisation.data and organisation.data[0].get("is_active"):
+                    organisation_id = str(membership["organisation_id"])
+                    organisation_role = str(membership["role"])
+                    break
+        except Exception:
+            pass
+
     return CurrentUser(
         id=(
             str(user["id"])
@@ -1634,6 +1664,8 @@ def get_current_user(
         course_access=(
             entitlement["course_access"]
         ),
+        organisation_id=organisation_id,
+        organisation_role=organisation_role,
     )
 
 
@@ -2141,6 +2173,34 @@ def login(
             "course_access": False,
         }
 
+    organisation_id = None
+    organisation_role = None
+    if role != "organisation_prospect":
+        try:
+            memberships = (
+                supabase.table("organisation_members")
+                .select("organisation_id,role")
+                .eq("user_id", user["id"])
+                .eq("status", "active")
+                .order("joined_at", desc=True)
+                .limit(10)
+                .execute()
+            ).data or []
+            for membership in memberships:
+                organisation = (
+                    supabase.table("organisations")
+                    .select("id,is_active")
+                    .eq("id", membership["organisation_id"])
+                    .limit(1)
+                    .execute()
+                )
+                if organisation.data and organisation.data[0].get("is_active"):
+                    organisation_id = str(membership["organisation_id"])
+                    organisation_role = str(membership["role"])
+                    break
+        except Exception:
+            pass
+
     token = make_token(
         email=email,
         role=role,
@@ -2181,6 +2241,8 @@ def login(
         "expires_at": (
             entitlement["expires_at"]
         ),
+        "organisation_id": organisation_id,
+        "organisation_role": organisation_role,
         "allowed": allowed_for(
             role,
             "learner",
