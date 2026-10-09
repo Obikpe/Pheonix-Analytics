@@ -1,15 +1,16 @@
 "use client";
 import { useEffect,useState } from "react";
-import { ArrowRight, BookOpen, CheckCircle2, FileCheck2, Sparkles } from "lucide-react";
+import { ArrowRight, BookOpen, CheckCircle2, FileCheck2, Sparkles, Users } from "lucide-react";
 import { currentUser } from "../../lib/api";
 import { progress,evidence } from "../../lib/api/learning";
+import { request } from "../../lib/api/client";
 import Shell from "../../components/dashboard/Shell";
 import StatCard from "../../components/dashboard/StatCard";
 import EmptyState from "../../components/feedback/EmptyState";
 
 export default function Page(){
- const [u,setU]=useState<any>(null),[learning,setLearning]=useState<any>(null),[record,setRecord]=useState<any>(null),[err,setErr]=useState(""),[loading,setLoading]=useState(true);
- useEffect(()=>{currentUser().then(me=>{if(me.role==="organisation_prospect"){location.href="/organisation-portal";return;}if(me.organisation_id&&["owner","admin"].includes(me.organisation_role)){location.href="/dashboard/organisation";return;}setU(me);}).catch(()=>location.href="/login");Promise.all([progress(),evidence()]).then(([p,e])=>{setLearning(p);setRecord(e)}).catch(e=>setErr(e.message||"Some learning records could not be loaded.")).finally(()=>setLoading(false));},[]);
+ const [u,setU]=useState<any>(null),[learning,setLearning]=useState<any>(null),[record,setRecord]=useState<any>(null),[teams,setTeams]=useState<any[]>([]),[err,setErr]=useState(""),[loading,setLoading]=useState(true);
+ useEffect(()=>{currentUser().then(me=>{if(me.role==="organisation_prospect"){location.href="/organisation-portal";return;}if(me.organisation_id&&["owner","admin"].includes(me.organisation_role)){location.href="/dashboard/organisation";return;}setU(me);}).catch(()=>location.href="/login");Promise.all([progress(),evidence()]).then(([p,e])=>{setLearning(p);setRecord(e)}).catch(e=>setErr(e.message||"Some learning records could not be loaded.")).finally(()=>setLoading(false));request<any>("/organisations/my-teams").then(x=>setTeams(x.teams||[])).catch(()=>setTeams([]));},[]);
  if(!u)return <div className="p-10 text-slate-500">Loading your Learnora workspace…</div>;
  const enrolled=learning?.courses||[];
  const completedLessons=enrolled.reduce((n:number,x:any)=>n+(x.completed_lessons||0),0);
@@ -25,6 +26,7 @@ export default function Page(){
    </div>
    <div className="rounded-2xl border border-white/[.08] bg-[#0e1319] p-5 sm:p-6"><Sparkles className="gold" size={21}/><h2 className="mt-4 text-lg font-semibold">Choose your next kind of support</h2><div className="mt-4 grid gap-3">{[{title:"Understand a concept",body:"Ask the AI tutor for an explanation.",href:"/dashboard/ai",icon:BookOpen},{title:"Practise deliberately",body:"Generate exercises and request hints.",href:"/dashboard/practice",icon:CheckCircle2},{title:"Review your evidence",body:"See the records connected to your learning.",href:"/dashboard/evidence",icon:FileCheck2}].map(({title,body,href,icon:Icon})=><a key={title} href={href} className="flex gap-3 rounded-xl border border-white/[.06] bg-black/10 p-4 hover:border-[#d7ad35]/25"><Icon size={18} className="mt-0.5 shrink-0 gold"/><div><p className="text-sm font-semibold">{title}</p><p className="mt-1 text-xs leading-5 text-slate-500">{body}</p></div><ArrowRight className="ml-auto mt-1 shrink-0 text-slate-600" size={14}/></a>)}</div></div>
   </section>
+  {teams.length>0&&<section className="mt-8 rounded-2xl border border-white/[.08] bg-[#0e1319] p-5 sm:p-6"><div className="flex items-center justify-between gap-3"><div><h2 className="text-lg font-semibold">Your organisation teams</h2><p className="mt-1 text-sm text-slate-500">Open the team workspace for your team-specific membership and collaboration context.</p></div><Users className="gold" size={20}/></div><div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{teams.map((team:any)=><a key={team.id} href={"/dashboard/team/"+team.id} className="rounded-xl border border-white/[.06] p-4 hover:border-[#d7ad35]/25"><div className="flex items-start justify-between gap-3"><p className="font-medium">{team.name}</p><span className="rounded-full border border-white/10 px-2 py-1 text-[10px] capitalize text-slate-400">{team.membership?.role||"member"}</span></div><p className="mt-2 text-xs leading-5 text-slate-500">{team.description||"Organisation team"}</p><span className="mt-4 inline-flex items-center gap-2 text-xs font-semibold gold">Open team <ArrowRight size={13}/></span></a>)}</div></section>}
   <div className="mt-6 flex items-start gap-3 rounded-xl border border-white/[.06] bg-white/[.015] p-4"><FileCheck2 className="mt-0.5 shrink-0 gold" size={17}/><p className="text-xs leading-6 text-slate-500">Learnora distinguishes activity from demonstrated competence. These numbers describe records returned by the platform; they do not, by themselves, verify a skill.</p></div>
  </Shell>;
 }
