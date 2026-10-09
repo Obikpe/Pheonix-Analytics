@@ -328,6 +328,12 @@ export default function OrganisationWorkspace() {
                 <div className="rounded-xl border border-white/[.06] bg-black/20 p-3 text-xs text-slate-500">Use an existing member's user ID when assigning them to a cohort or team.</div>
               </div>
 
+              <div className="mt-6 rounded-xl border border-white/[.07] bg-black/15 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-4"><div><h3 className="font-semibold">Organisation-wide course access</h3><p className="mt-1 text-xs leading-5 text-slate-500">Assign a published course to all active learners in this organisation. Cohort assignments can also target a smaller group.</p></div><span className="text-xs text-slate-500">{assignedCourses.length} active course access records</span></div>
+                <div className="mt-4 flex flex-wrap gap-2"><select aria-label="Choose course for organisation-wide assignment" value={orgCourseSelection} onChange={(e) => setOrgCourseSelection(e.target.value)} className="min-w-[240px] flex-1 rounded-xl border border-white/10 bg-[#090c10] px-3 py-3 text-sm"><option value="">Choose a published course</option>{courseCatalogue.map((course) => <option key={course.id} value={course.id}>{course.title}</option>)}</select><button disabled={!orgCourseSelection || !courseCatalogue.length} onClick={() => void assignCourseToOrganisation()} className="rounded-xl bg-[#d7ad35] px-4 py-3 text-sm font-bold text-black disabled:opacity-50">Assign to learners</button></div>
+                {assignedCourses.length > 0 && <div className="mt-4 grid gap-2 sm:grid-cols-2">{assignedCourses.map((assignment) => <div key={assignment.id} className="rounded-lg border border-white/[.06] p-3"><p className="text-sm font-medium">{assignment.course?.title || assignment.course_id}</p><p className="mt-1 text-xs text-slate-500">{assignment.access_type} · Assigned {assignment.assigned_at ? new Date(assignment.assigned_at).toLocaleDateString() : "date unavailable"}</p></div>)}</div>}
+                {!courseCatalogue.length && <p className="mt-3 text-xs leading-5 text-slate-600">No published courses are currently available to assign. Draft courses are intentionally excluded.</p>}
+              </div>
               <div className="mt-6 grid gap-4 xl:grid-cols-3">
                 <form onSubmit={createProgramme} className="rounded-xl border border-white/[.07] bg-black/15 p-4">
                   <h3 className="font-semibold">Create programme</h3>
