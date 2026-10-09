@@ -652,8 +652,10 @@ def self_enrol_in_free_course(
         .insert({
             "user_id": user.id,
             "course_id": course_id,
+            "organisation_id": None,
             "status": "active",
             "enrolled_at": now,
+            "source_type": "self_enrolment",
         })
         .execute()
     )
