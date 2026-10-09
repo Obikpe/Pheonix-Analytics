@@ -108,6 +108,85 @@ export default function OrganisationWorkspace() {
     }
   }
 
+  async function createProgramme(e: any) {
+    e.preventDefault();
+    if (!user?.organisation_id) return;
+    setBusy(true); setError(""); setNotice("");
+    try {
+      await request("/organisations/" + encodeURIComponent(user.organisation_id) + "/programmes", { method: "POST", body: JSON.stringify(programmeForm) });
+      setProgrammeForm({ name: "", description: "", start_date: "", end_date: "" });
+      setNotice("Programme created.");
+      await load();
+    } catch (e: any) { setError(e.message || "Programme could not be created."); }
+    finally { setBusy(false); }
+  }
+
+  async function createCohort(e: any) {
+    e.preventDefault();
+    if (!user?.organisation_id) return;
+    setBusy(true); setError(""); setNotice("");
+    try {
+      await request("/organisations/" + encodeURIComponent(user.organisation_id) + "/cohorts", {
+        method: "POST",
+        body: JSON.stringify({
+          ...cohortForm,
+          programme_id: cohortForm.programme_id || null,
+          start_date: cohortForm.start_date || null,
+          end_date: cohortForm.end_date || null,
+          capacity: cohortForm.capacity === "" ? null : Number(cohortForm.capacity),
+          instructor_capacity: cohortForm.instructor_capacity === "" ? null : Number(cohortForm.instructor_capacity),
+        }),
+      });
+      setCohortForm({ name: "", description: "", programme_id: "", start_date: "", end_date: "", capacity: "", instructor_capacity: "" });
+      setNotice("Cohort created.");
+      await load();
+    } catch (e: any) { setError(e.message || "Cohort could not be created."); }
+    finally { setBusy(false); }
+  }
+
+  async function createTeam(e: any) {
+    e.preventDefault();
+    if (!user?.organisation_id) return;
+    setBusy(true); setError(""); setNotice("");
+    try {
+      await request("/organisations/" + encodeURIComponent(user.organisation_id) + "/teams", {
+        method: "POST",
+        body: JSON.stringify({ ...teamForm, slug: teamForm.slug || null, manager_user_id: teamForm.manager_user_id || null }),
+      });
+      setTeamForm({ name: "", slug: "", description: "", manager_user_id: "" });
+      setNotice("Team created.");
+      await load();
+    } catch (e: any) { setError(e.message || "Team could not be created."); }
+    finally { setBusy(false); }
+  }
+
+  async function addCohortMember(cohortId: string) {
+    if (!user?.organisation_id || !cohortUserIds[cohortId]?.trim()) return;
+    setError(""); setNotice("");
+    try {
+      await request("/organisations/" + encodeURIComponent(user.organisation_id) + "/cohorts/" + encodeURIComponent(cohortId) + "/members", {
+        method: "POST", body: JSON.stringify({ user_id: cohortUserIds[cohortId].trim() }),
+      });
+      setCohortUserIds((old) => ({ ...old, [cohortId]: "" }));
+      setNotice("Learner added to cohort.");
+      await load();
+    } catch (e: any) { setError(e.message || "Learner could not be added to the cohort."); }
+  }
+
+  async function addTeamMember(teamId: string) {
+    if (!user?.organisation_id || !teamUserIds[teamId]?.trim()) return;
+    setError(""); setNotice("");
+    try {
+      await request("/organisations/" + encodeURIComponent(user.organisation_id) + "/teams/" + encodeURIComponent(teamId) + "/members", {
+        method: "POST",
+        body: JSON.stringify({ user_id: teamUserIds[teamId].trim(), role: teamRoles[teamId] || "member" }),
+      });
+      setTeamUserIds((old) => ({ ...old, [teamId]: "" }));
+      setNotice("Member added to team.");
+      await load();
+    } catch (e: any) { setError(e.message || "Member could not be added to the team."); }
+  }
+
   const modules = Array.isArray(org?.settings?.enabled_modules) ? org.settings.enabled_modules : [];
   const entitlements = Array.isArray(capacity?.entitlements) ? capacity.entitlements : Array.isArray(capacity?.capacity) ? capacity.capacity : [];
 
