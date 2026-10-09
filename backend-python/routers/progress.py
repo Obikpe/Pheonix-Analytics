@@ -150,6 +150,35 @@ def _course_summary(user_id: str, course_id: str):
     }
 
 
+@router.get("/lessons/{lesson_id}/notes")
+def get_lesson_note(lesson_id: str, user: CurrentUser = Depends(get_current_user)):
+    course_id = _course_for_lesson(lesson_id)
+    if not _enrolment(str(user.id), course_id):
+        raise HTTPException(403, "You are not enrolled in this course.")
+    result = supabase.table("learner_lesson_notes").select(
+        "id,content,created_at,updated_at"
+    ).eq("user_id", user.id).eq("lesson_id", lesson_id).limit(1).execute()
+    return {"success": True, "note": result.data[0] if result.data else None}
+
+
+@router.put("/lessons/{lesson_id}/notes")
+def save_lesson_note(lesson_id: str, body: LessonNoteIn, user: CurrentUser = Depends(get_current_user)):
+    course_id = _course_for_lesson(lesson_id)
+    if not _enrolment(str(user.id), course_id):
+        raise HTTPException(403, "You are not enrolled in this course.")
+    now = datetime.now(timezone.utc).isoformat()
+    result = supabase.table("learner_lesson_notes").upsert({
+        "user_id": user.id,
+        "course_id": course_id,
+        "lesson_id": lesson_id,
+        "content": body.content,
+        "updated_at": now,
+    }, on_conflict="user_id,lesson_id").execute()
+    if not result.data:
+        raise HTTPException(500, "Unable to save lesson note.")
+    return {"success": True, "note": result.data[0]}
+
+
 @router.get("/me")
 def my_progress(
     user: CurrentUser = Depends(get_current_user),
