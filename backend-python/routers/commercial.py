@@ -117,7 +117,7 @@ def create_request(body: OrganisationRequestIn, request: Request):
     if supabase.table("users").select("id").eq("email", email).limit(1).execute().data:
         raise HTTPException(
             409,
-            "This email already has a Learnora account. Sign in first or use a separate email for this prospect portal.",
+            "This email already has a Learnora account. Linking existing accounts to a new prospect portal is not supported yet; use a separate email.",
         )
     if supabase.table("admins").select("id").eq("email", email).limit(1).execute().data:
         raise HTTPException(409, "This email is already associated with a Learnora administrator account.")
@@ -173,12 +173,13 @@ def create_request(body: OrganisationRequestIn, request: Request):
         supabase.table("learnora_organisation_requests").delete().eq("id", request_row["id"]).execute()
         raise HTTPException(409, "A verified account already exists for this email. Please use a separate prospect email.")
 
-    supabase.table("users").update({"role": "organisation_prospect"}).eq("id", portal_user["id"]).execute()
+    supabase.table("users").update({"role": "organisation_prospect"}).eq("id", portal_user["id"]).select("id,role").execute()
     linked = (
         supabase
         .table("learnora_organisation_requests")
         .update({"portal_user_id": portal_user["id"]})
         .eq("id", request_row["id"])
+        .select("id,portal_user_id")
         .execute()
     )
     if not linked.data:
