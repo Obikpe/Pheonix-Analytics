@@ -9,7 +9,7 @@ import EmptyState from "../../components/feedback/EmptyState";
 
 export default function Page(){
  const [u,setU]=useState<any>(null),[learning,setLearning]=useState<any>(null),[record,setRecord]=useState<any>(null),[err,setErr]=useState(""),[loading,setLoading]=useState(true);
- useEffect(()=>{currentUser().then(setU).catch(()=>location.href="/login");Promise.all([progress(),evidence()]).then(([p,e])=>{setLearning(p);setRecord(e)}).catch(e=>setErr(e.message||"Some learning records could not be loaded.")).finally(()=>setLoading(false));},[]);
+ useEffect(()=>{currentUser().then(me=>{if(me.role==="organisation_prospect"){location.href="/organisation-portal";return;}if(me.organisation_id&&["owner","admin"].includes(me.organisation_role)){location.href="/dashboard/organisation";return;}setU(me);}).catch(()=>location.href="/login");Promise.all([progress(),evidence()]).then(([p,e])=>{setLearning(p);setRecord(e)}).catch(e=>setErr(e.message||"Some learning records could not be loaded.")).finally(()=>setLoading(false));},[]);
  if(!u)return <div className="p-10 text-slate-500">Loading your Learnora workspace…</div>;
  const enrolled=learning?.courses||[];
  const completedLessons=enrolled.reduce((n:number,x:any)=>n+(x.completed_lessons||0),0);
