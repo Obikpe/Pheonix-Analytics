@@ -161,6 +161,59 @@ def add_evidence(
     }
 
 
+@router.get("/projects/me")
+def my_project_submissions(
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Return only the authenticated learner's own project submissions."""
+    submissions = (
+        supabase
+        .table("project_submissions")
+        .select(
+            "id,project_id,title,description,repository_url,live_url,"
+            "submission_url,status,feedback,score,submitted_at,reviewed_at"
+        )
+        .eq("user_id", user.id)
+        .order("submitted_at", desc=True)
+        .execute()
+    ).data or []
+
+    project_ids = list({
+        str(row["project_id"])
+        for row in submissions
+        if row.get("project_id")
+    })
+    project_map = {}
+    if project_ids:
+        projects = (
+            supabase
+            .table("projects")
+            .select("id,title,description,skills")
+            .in_("id", project_ids)
+            .execute()
+        ).data or []
+        project_map = {
+            str(row["id"]): row
+            for row in projects
+        }
+
+    return {
+        "success": True,
+        "submissions": [
+            {
+                **row,
+                "project": project_map.get(str(row.get("project_id"))),
+                "review_state": (
+                    "reviewed"
+                    if row.get("reviewed_at")
+                    else "awaiting_review"
+                ),
+            }
+            for row in submissions
+        ],
+    }
+
+
 @router.post(
     "/projects/{project_id}/submissions",
     status_code=201,
