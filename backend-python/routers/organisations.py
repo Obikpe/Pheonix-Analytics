@@ -464,7 +464,7 @@ def assign_course_to_organisation(organisation_id: str, body: dict, context: Per
     course_id = str(body.get("course_id") or "")
     if not course_id:
         raise HTTPException(400, "course_id is required.")
-    course_rows = (supabase.table("learnora_courses").select("id,title,status,ownership,organisation_id").eq("id", course_id).limit(1).execute()).data
+    course_rows = (supabase.table("learnora_courses").select("id,title,status,ownership,organisation_id,creator_id").eq("id", course_id).limit(1).execute()).data
     if not course_rows or course_rows[0].get("status") != "published":
         raise HTTPException(404, "Only published courses can be assigned.")
     course = course_rows[0]
@@ -472,6 +472,10 @@ def assign_course_to_organisation(organisation_id: str, body: dict, context: Per
         raise HTTPException(403, "An organisation cannot assign another organisation's private course.")
     if course.get("ownership") not in {"learnora", "creator", "organisation"}:
         raise HTTPException(403, "This course cannot be assigned through an organisation workspace.")
+    if course.get("ownership") == "creator":
+        creator = (supabase.table("learnora_creator_accounts").select("id,status").eq("id", course.get("creator_id")).limit(1).execute()).data
+        if not creator or creator[0].get("status") not in {"approved", "active"}:
+            raise HTTPException(403, "This creator is not approved for course distribution.")
     access = (supabase.table("course_access").select("id,status").eq("organisation_id", organisation_id).eq("course_id", course_id).limit(1).execute()).data
     now = datetime.now(timezone.utc).isoformat()
     if not access or access[0].get("status") != "active":
@@ -563,6 +567,10 @@ def assign_course_to_cohort(organisation_id: str, cohort_id: str, body: dict, co
         raise HTTPException(403, "An organisation cannot assign another organisation's private course.")
     if course.get("ownership") not in {"learnora", "creator", "organisation"}:
         raise HTTPException(403, "This course cannot be assigned through an organisation workspace.")
+    if course.get("ownership") == "creator":
+        creator = (supabase.table("learnora_creator_accounts").select("id,status").eq("id", course.get("creator_id")).limit(1).execute()).data
+        if not creator or creator[0].get("status") not in {"approved", "active"}:
+            raise HTTPException(403, "This creator is not approved for course distribution.")
 
     access = (supabase.table("course_access").select("id,status").eq("organisation_id", organisation_id).eq("course_id", course_id).limit(1).execute()).data
     if not access or access[0].get("status") != "active":
