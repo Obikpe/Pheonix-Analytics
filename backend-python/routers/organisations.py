@@ -559,7 +559,7 @@ def assign_course_to_cohort(organisation_id: str, cohort_id: str, body: dict, co
         raise HTTPException(404, "Cohort not found.")
     if cohort[0].get("status") not in {"draft", "upcoming", "active"}:
         raise HTTPException(409, "This cohort is closed to course assignment.")
-    course_rows = (supabase.table("learnora_courses").select("id,title,status,ownership,organisation_id").eq("id", course_id).limit(1).execute()).data
+    course_rows = (supabase.table("learnora_courses").select("id,title,status,ownership,organisation_id,creator_id").eq("id", course_id).limit(1).execute()).data
     if not course_rows or course_rows[0].get("status") != "published":
         raise HTTPException(404, "Only published courses can be assigned.")
     course = course_rows[0]
