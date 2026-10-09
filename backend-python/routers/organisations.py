@@ -445,6 +445,27 @@ def update_cohort_member(
     return {"success": True, "member": result.data[0]}
 
 
+@router.get("/{organisation_id}/available-courses")
+def list_organisation_available_courses(organisation_id: str, context: PermissionContext = Depends(require_permission("organisations.view"))):
+    _assert_organisation_scope(context, organisation_id)
+    rows = (supabase.table("learnora_courses").select("id,title,slug,ownership,organisation_id,creator_id,status").eq("status", "published").order("title").execute()).data or []
+    creator_ids = list({str(row["creator_id"]) for row in rows if row.get("creator_id")})
+    creator_map = {}
+    if creator_ids:
+        creators = (supabase.table("learnora_creator_accounts").select("id,status").in_("id", creator_ids).execute()).data or []
+        creator_map = {str(row["id"]): row for row in creators}
+    available = []
+    for course in rows:
+        ownership = course.get("ownership")
+        if ownership == "learnora":
+            available.append(course)
+        elif ownership == "creator" and creator_map.get(str(course.get("creator_id")), {}).get("status") in {"approved", "active"}:
+            available.append(course)
+        elif ownership == "organisation" and str(course.get("organisation_id")) == str(organisation_id):
+            available.append(course)
+    return {"success": True, "courses": available}
+
+
 @router.get("/{organisation_id}/cohort-courses")
 def list_organisation_cohort_courses(organisation_id: str, context: PermissionContext = Depends(require_permission("organisations.view"))):
     _assert_organisation_scope(context, organisation_id)
