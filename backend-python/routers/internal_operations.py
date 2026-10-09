@@ -20,7 +20,7 @@ def _staff(permission: str):
 @router.get("/organisations")
 def organisations(staff: InternalStaffContext = _staff("organisations.view")):
     result = supabase.table("organisations").select(
-        "id,name,slug,organisation_type,template,is_active,created_at,updated_at"
+        "id,name,slug,organisation_type,template,description,logo_url,brand_primary,brand_secondary,settings,is_active,created_at,updated_at"
     ).order("created_at", desc=True).execute()
     return {"success": True, "organisations": result.data or []}
 
