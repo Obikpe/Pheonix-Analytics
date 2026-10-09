@@ -1,6 +1,6 @@
 "use client";
 import { useEffect,useState } from "react";
-import { ArrowRight,Building2,CheckCircle2,FileText,RefreshCw,Users } from "lucide-react";
+import { ArrowRight,Building2,FileText,RefreshCw,Users } from "lucide-react";
 import { currentUser } from "../../../lib/api";
 import { request } from "../../../lib/api/client";
 import Logo from "../../../components/brand/Logo";
