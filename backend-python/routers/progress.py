@@ -23,6 +23,10 @@ class LessonProgressIn(BaseModel):
     last_position_seconds: int = Field(default=0, ge=0)
 
 
+class LessonNoteIn(BaseModel):
+    content: str = Field(default="", max_length=20000)
+
+
 def _course_for_lesson(lesson_id: str):
     result = (
         supabase
