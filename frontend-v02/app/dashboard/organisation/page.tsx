@@ -57,7 +57,7 @@ export default function OrganisationWorkspace() {
         request<any>("/organisations/" + id + "/cohorts"),
         request<any>("/organisations/" + id + "/teams"),
         request<any>("/organisations/" + id + "/cohort-courses"),
-        request<any>("/public/courses"),
+        request<any>("/organisations/" + id + "/available-courses"),
       ]);
       setOrg(orgResult.organisation || orgResult);
       setMembers(memberResult.members || []);
