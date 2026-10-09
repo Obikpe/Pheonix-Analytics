@@ -404,15 +404,13 @@ def update_request(
             "Only Learnora platform administrators can update onboarding requests.",
         )
 
+    # Signature, approval and activation transitions are controlled by
+    # dedicated contract lifecycle endpoints, not generic status edits.
     allowed = {
         "submitted",
         "under_review",
         "discussion",
         "contract_preparation",
-        "contract_sent",
-        "signed",
-        "pending_approval",
-        "active",
         "declined",
         "closed",
     }
@@ -485,26 +483,33 @@ def create_contract(
         require_permission("organisations.update")
     ),
 ):
-    _scope(context, body.organisation_id)
+    if not context.is_platform_admin:
+        raise HTTPException(
+            403,
+            "Only Learnora platform administrators can create organisation contracts.",
+        )
 
     organisation = (
         supabase
         .table("organisations")
-        .select("id,is_active")
+        .select("id")
         .eq("id", body.organisation_id)
         .limit(1)
         .execute()
     )
     if not organisation.data:
-        raise HTTPException(
-            404,
-            "Organisation not found.",
+        raise HTTPException(404, "Organisation not found.")
+
+    if body.request_id:
+        request_row = (
+            supabase.table("learnora_organisation_requests")
+            .select("id,organisation_id")
+            .eq("id", body.request_id)
+            .limit(1)
+            .execute()
         )
-    if not organisation.data[0].get("is_active"):
-        raise HTTPException(
-            409,
-            "Cannot create a contract for an inactive organisation.",
-        )
+        if not request_row.data or str(request_row.data[0].get("organisation_id")) != str(body.organisation_id):
+            raise HTTPException(409, "Contract request and organisation do not match.")
 
     result = (
         supabase
