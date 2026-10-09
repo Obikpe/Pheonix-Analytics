@@ -9,6 +9,7 @@ Important:
 - Legacy admin roles remain supported elsewhere while migration is in progress.
 """
 
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -20,6 +21,7 @@ from .permissions import (
     get_permission_context,
     require_permission,
 )
+from services.capacity import ensure_org_capacity, ensure_cohort_capacity
 
 
 router = APIRouter(
@@ -62,6 +64,47 @@ class CreateOrganisation(BaseModel):
         default=None,
         max_length=50,
     )
+
+
+class ProgrammeCreate(BaseModel):
+    name: str = Field(..., min_length=2, max_length=150)
+    slug: Optional[str] = Field(default=None, max_length=100)
+    description: Optional[str] = Field(default=None, max_length=4000)
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    status: str = "draft"
+
+
+class CohortCreate(BaseModel):
+    name: str = Field(..., min_length=2, max_length=150)
+    description: Optional[str] = Field(default=None, max_length=4000)
+    programme_id: Optional[str] = None
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    capacity: Optional[int] = Field(default=None, ge=1)
+    instructor_capacity: Optional[int] = Field(default=None, ge=0)
+    status: str = "draft"
+
+
+class TeamCreate(BaseModel):
+    name: str = Field(..., min_length=2, max_length=150)
+    slug: Optional[str] = Field(default=None, max_length=100)
+    description: Optional[str] = Field(default=None, max_length=4000)
+    manager_user_id: Optional[str] = None
+    status: str = "active"
+
+
+class CohortMemberCreate(BaseModel):
+    user_id: str
+
+
+class TeamMemberCreate(BaseModel):
+    user_id: str
+    role: str = "member"
+
+
+class StructureStatusUpdate(BaseModel):
+    status: str
 
 
 class UpdateOrganisation(BaseModel):
@@ -160,6 +203,357 @@ def _ensure_slug_available(
             status_code=400,
             detail="An organisation with this slug already exists.",
         )
+
+
+def _assert_organisation_scope(context: PermissionContext, organisation_id: str):
+    organisation = _get_organisation(organisation_id)
+    if not organisation:
+        raise HTTPException(404, "Organisation not found.")
+    if not context.is_platform_admin and str(context.organisation_id or "") != str(organisation_id):
+        raise HTTPException(403, "You do not have access to this organisation.")
+    return organisation
+
+
+def _require_active_organisation(organisation: dict):
+    if not organisation.get("is_active"):
+        raise HTTPException(409, "This organisation workspace is inactive until its contract is approved and activated.")
+
+
+@router.get("/{organisation_id}/programmes")
+def list_organisation_programmes(
+    organisation_id: str,
+    context: PermissionContext = Depends(require_permission("organisations.view")),
+):
+    _assert_organisation_scope(context, organisation_id)
+    rows = supabase.table("learnora_programmes").select("*").eq("organisation_id", organisation_id).order("created_at", desc=True).execute()
+    return {"success": True, "programmes": rows.data or []}
+
+
+@router.post("/{organisation_id}/programmes", status_code=201)
+def create_organisation_programme(
+    organisation_id: str,
+    body: ProgrammeCreate,
+    context: PermissionContext = Depends(require_permission("organisations.update")),
+):
+    organisation = _assert_organisation_scope(context, organisation_id)
+    _require_active_organisation(organisation)
+    if body.status not in {"draft", "upcoming", "active"}:
+        raise HTTPException(400, "A new programme must be draft, upcoming or active.")
+    ensure_org_capacity(organisation_id, "programmes")
+    slug = _normalise_slug(body.slug or body.name)
+    existing = supabase.table("learnora_programmes").select("id").eq("organisation_id", organisation_id).eq("slug", slug).limit(1).execute()
+    if existing.data:
+        raise HTTPException(409, "A programme with this slug already exists in the organisation.")
+    now = datetime.now(timezone.utc).isoformat()
+    result = supabase.table("learnora_programmes").insert({
+        "organisation_id": organisation_id,
+        "name": body.name.strip(),
+        "slug": slug,
+        "description": body.description,
+        "start_date": body.start_date,
+        "end_date": body.end_date,
+        "status": body.status,
+        "created_by": context.user_id,
+        "created_at": now,
+        "updated_at": now,
+    }).execute()
+    if not result.data:
+        raise HTTPException(500, "Programme creation failed.")
+    return {"success": True, "programme": result.data[0]}
+
+
+@router.patch("/{organisation_id}/programmes/{programme_id}")
+def update_organisation_programme(
+    organisation_id: str,
+    programme_id: str,
+    body: dict,
+    context: PermissionContext = Depends(require_permission("organisations.update")),
+):
+    organisation = _assert_organisation_scope(context, organisation_id)
+    _require_active_organisation(organisation)
+    allowed = {"name", "description", "start_date", "end_date", "status"}
+    changes = {key: value for key, value in body.items() if key in allowed}
+    if not changes:
+        raise HTTPException(400, "No supported programme fields were supplied.")
+    if "status" in changes and changes["status"] not in {"draft", "upcoming", "active", "completed", "archived"}:
+        raise HTTPException(400, "Invalid programme status.")
+    changes["updated_at"] = datetime.now(timezone.utc).isoformat()
+    result = supabase.table("learnora_programmes").update(changes).eq("id", programme_id).eq("organisation_id", organisation_id).execute()
+    if not result.data:
+        raise HTTPException(404, "Programme not found.")
+    return {"success": True, "programme": result.data[0]}
+
+
+@router.get("/{organisation_id}/cohorts")
+def list_organisation_cohorts(
+    organisation_id: str,
+    context: PermissionContext = Depends(require_permission("organisations.view")),
+):
+    _assert_organisation_scope(context, organisation_id)
+    rows = supabase.table("cohorts").select("*").eq("organisation_id", organisation_id).order("created_at", desc=True).execute()
+    return {"success": True, "cohorts": rows.data or []}
+
+
+@router.post("/{organisation_id}/cohorts", status_code=201)
+def create_organisation_cohort(
+    organisation_id: str,
+    body: CohortCreate,
+    context: PermissionContext = Depends(require_permission("organisations.update")),
+):
+    organisation = _assert_organisation_scope(context, organisation_id)
+    _require_active_organisation(organisation)
+    if body.status not in {"draft", "upcoming", "active"}:
+        raise HTTPException(400, "A new cohort must be draft, upcoming or active.")
+    if body.programme_id:
+        programme = supabase.table("learnora_programmes").select("id").eq("id", body.programme_id).eq("organisation_id", organisation_id).limit(1).execute()
+        if not programme.data:
+            raise HTTPException(400, "The selected programme does not belong to this organisation.")
+    ensure_org_capacity(organisation_id, "cohorts")
+    now = datetime.now(timezone.utc).isoformat()
+    result = supabase.table("cohorts").insert({
+        "organisation_id": organisation_id,
+        "programme_id": body.programme_id,
+        "name": body.name.strip(),
+        "description": body.description,
+        "start_date": body.start_date,
+        "end_date": body.end_date,
+        "capacity": body.capacity,
+        "instructor_capacity": body.instructor_capacity,
+        "status": body.status,
+        "created_at": now,
+        "updated_at": now,
+    }).execute()
+    if not result.data:
+        raise HTTPException(500, "Cohort creation failed.")
+    return {"success": True, "cohort": result.data[0]}
+
+
+@router.patch("/{organisation_id}/cohorts/{cohort_id}")
+def update_organisation_cohort(
+    organisation_id: str,
+    cohort_id: str,
+    body: dict,
+    context: PermissionContext = Depends(require_permission("organisations.update")),
+):
+    organisation = _assert_organisation_scope(context, organisation_id)
+    _require_active_organisation(organisation)
+    allowed = {"name", "description", "programme_id", "start_date", "end_date", "capacity", "instructor_capacity", "status"}
+    changes = {key: value for key, value in body.items() if key in allowed}
+    if not changes:
+        raise HTTPException(400, "No supported cohort fields were supplied.")
+    if "status" in changes and changes["status"] not in {"draft", "upcoming", "active", "ending", "completed", "expired", "closed", "archived"}:
+        raise HTTPException(400, "Invalid cohort status.")
+    if changes.get("programme_id"):
+        programme = supabase.table("learnora_programmes").select("id").eq("id", changes["programme_id"]).eq("organisation_id", organisation_id).limit(1).execute()
+        if not programme.data:
+            raise HTTPException(400, "The selected programme does not belong to this organisation.")
+    changes["updated_at"] = datetime.now(timezone.utc).isoformat()
+    result = supabase.table("cohorts").update(changes).eq("id", cohort_id).eq("organisation_id", organisation_id).execute()
+    if not result.data:
+        raise HTTPException(404, "Cohort not found.")
+    return {"success": True, "cohort": result.data[0]}
+
+
+@router.get("/{organisation_id}/cohorts/{cohort_id}/members")
+def list_cohort_members(
+    organisation_id: str,
+    cohort_id: str,
+    context: PermissionContext = Depends(require_permission("organisations.view")),
+):
+    _assert_organisation_scope(context, organisation_id)
+    cohort = supabase.table("cohorts").select("id").eq("id", cohort_id).eq("organisation_id", organisation_id).limit(1).execute()
+    if not cohort.data:
+        raise HTTPException(404, "Cohort not found.")
+    rows = supabase.table("cohort_members").select("id,cohort_id,user_id,joined_at,status").eq("cohort_id", cohort_id).order("joined_at", desc=True).execute()
+    return {"success": True, "members": rows.data or []}
+
+
+@router.post("/{organisation_id}/cohorts/{cohort_id}/members", status_code=201)
+def add_cohort_member(
+    organisation_id: str,
+    cohort_id: str,
+    body: CohortMemberCreate,
+    context: PermissionContext = Depends(require_permission("organisations.members")),
+):
+    organisation = _assert_organisation_scope(context, organisation_id)
+    _require_active_organisation(organisation)
+    cohort = supabase.table("cohorts").select("id,status").eq("id", cohort_id).eq("organisation_id", organisation_id).limit(1).execute()
+    if not cohort.data:
+        raise HTTPException(404, "Cohort not found.")
+    member = supabase.table("organisation_members").select("id,role,status").eq("organisation_id", organisation_id).eq("user_id", body.user_id).eq("status", "active").limit(1).execute()
+    if not member.data or member.data[0].get("role") != "learner":
+        raise HTTPException(400, "Only active learners in this organisation can be added to a cohort.")
+    ensure_cohort_capacity(cohort_id)
+    now = datetime.now(timezone.utc).isoformat()
+    result = supabase.table("cohort_members").insert({
+        "cohort_id": cohort_id,
+        "user_id": body.user_id,
+        "joined_at": now,
+        "status": "active",
+    }).execute()
+    if not result.data:
+        raise HTTPException(409, "The learner may already be a member of this cohort.")
+    return {"success": True, "member": result.data[0]}
+
+
+@router.patch("/{organisation_id}/cohorts/{cohort_id}/members/{membership_id}")
+def update_cohort_member(
+    organisation_id: str,
+    cohort_id: str,
+    membership_id: str,
+    body: StructureStatusUpdate,
+    context: PermissionContext = Depends(require_permission("organisations.members")),
+):
+    _assert_organisation_scope(context, organisation_id)
+    if body.status not in {"active", "completed", "withdrawn"}:
+        raise HTTPException(400, "Invalid cohort membership status.")
+    cohort = supabase.table("cohorts").select("id").eq("id", cohort_id).eq("organisation_id", organisation_id).limit(1).execute()
+    if not cohort.data:
+        raise HTTPException(404, "Cohort not found.")
+    result = supabase.table("cohort_members").update({"status": body.status}).eq("id", membership_id).eq("cohort_id", cohort_id).execute()
+    if not result.data:
+        raise HTTPException(404, "Cohort membership not found.")
+    return {"success": True, "member": result.data[0]}
+
+
+@router.get("/{organisation_id}/teams")
+def list_organisation_teams(
+    organisation_id: str,
+    context: PermissionContext = Depends(require_permission("organisations.view")),
+):
+    _assert_organisation_scope(context, organisation_id)
+    rows = supabase.table("organisation_teams").select("*").eq("organisation_id", organisation_id).order("created_at", desc=True).execute()
+    return {"success": True, "teams": rows.data or []}
+
+
+@router.post("/{organisation_id}/teams", status_code=201)
+def create_organisation_team(
+    organisation_id: str,
+    body: TeamCreate,
+    context: PermissionContext = Depends(require_permission("organisations.update")),
+):
+    organisation = _assert_organisation_scope(context, organisation_id)
+    _require_active_organisation(organisation)
+    if body.status not in {"active", "inactive"}:
+        raise HTTPException(400, "A new team must be active or inactive.")
+    ensure_org_capacity(organisation_id, "teams")
+    slug = _normalise_slug(body.slug or body.name)
+    existing = supabase.table("organisation_teams").select("id").eq("organisation_id", organisation_id).eq("slug", slug).limit(1).execute()
+    if existing.data:
+        raise HTTPException(409, "A team with this slug already exists in the organisation.")
+    if body.manager_user_id:
+        manager = supabase.table("organisation_members").select("id").eq("organisation_id", organisation_id).eq("user_id", body.manager_user_id).eq("status", "active").limit(1).execute()
+        if not manager.data:
+            raise HTTPException(400, "The team manager must be an active organisation member.")
+    now = datetime.now(timezone.utc).isoformat()
+    result = supabase.table("organisation_teams").insert({
+        "organisation_id": organisation_id,
+        "name": body.name.strip(),
+        "slug": slug,
+        "description": body.description,
+        "status": body.status,
+        "manager_user_id": body.manager_user_id,
+        "created_by": context.user_id,
+        "created_at": now,
+        "updated_at": now,
+    }).execute()
+    if not result.data:
+        raise HTTPException(500, "Team creation failed.")
+    return {"success": True, "team": result.data[0]}
+
+
+@router.patch("/{organisation_id}/teams/{team_id}")
+def update_organisation_team(
+    organisation_id: str,
+    team_id: str,
+    body: dict,
+    context: PermissionContext = Depends(require_permission("organisations.update")),
+):
+    organisation = _assert_organisation_scope(context, organisation_id)
+    _require_active_organisation(organisation)
+    allowed = {"name", "description", "manager_user_id", "status"}
+    changes = {key: value for key, value in body.items() if key in allowed}
+    if not changes:
+        raise HTTPException(400, "No supported team fields were supplied.")
+    if "status" in changes and changes["status"] not in {"active", "inactive", "archived"}:
+        raise HTTPException(400, "Invalid team status.")
+    if changes.get("manager_user_id"):
+        manager = supabase.table("organisation_members").select("id").eq("organisation_id", organisation_id).eq("user_id", changes["manager_user_id"]).eq("status", "active").limit(1).execute()
+        if not manager.data:
+            raise HTTPException(400, "The team manager must be an active organisation member.")
+    changes["updated_at"] = datetime.now(timezone.utc).isoformat()
+    result = supabase.table("organisation_teams").update(changes).eq("id", team_id).eq("organisation_id", organisation_id).execute()
+    if not result.data:
+        raise HTTPException(404, "Team not found.")
+    return {"success": True, "team": result.data[0]}
+
+
+@router.get("/{organisation_id}/teams/{team_id}/members")
+def list_team_members(
+    organisation_id: str,
+    team_id: str,
+    context: PermissionContext = Depends(require_permission("organisations.view")),
+):
+    _assert_organisation_scope(context, organisation_id)
+    team = supabase.table("organisation_teams").select("id").eq("id", team_id).eq("organisation_id", organisation_id).limit(1).execute()
+    if not team.data:
+        raise HTTPException(404, "Team not found.")
+    rows = supabase.table("organisation_team_members").select("id,team_id,user_id,role,status,joined_at").eq("team_id", team_id).order("joined_at", desc=True).execute()
+    return {"success": True, "members": rows.data or []}
+
+
+@router.post("/{organisation_id}/teams/{team_id}/members", status_code=201)
+def add_team_member(
+    organisation_id: str,
+    team_id: str,
+    body: TeamMemberCreate,
+    context: PermissionContext = Depends(require_permission("organisations.members")),
+):
+    organisation = _assert_organisation_scope(context, organisation_id)
+    _require_active_organisation(organisation)
+    team = supabase.table("organisation_teams").select("id").eq("id", team_id).eq("organisation_id", organisation_id).limit(1).execute()
+    if not team.data:
+        raise HTTPException(404, "Team not found.")
+    if body.role not in {"member", "lead", "manager"}:
+        raise HTTPException(400, "Invalid team role.")
+    member = supabase.table("organisation_members").select("id").eq("organisation_id", organisation_id).eq("user_id", body.user_id).eq("status", "active").limit(1).execute()
+    if not member.data:
+        raise HTTPException(400, "The team member must be an active organisation member.")
+    result = supabase.table("organisation_team_members").insert({
+        "team_id": team_id,
+        "user_id": body.user_id,
+        "role": body.role,
+        "status": "active",
+        "joined_at": datetime.now(timezone.utc).isoformat(),
+    }).execute()
+    if not result.data:
+        raise HTTPException(409, "The member may already be on this team.")
+    return {"success": True, "member": result.data[0]}
+
+
+@router.patch("/{organisation_id}/teams/{team_id}/members/{membership_id}")
+def update_team_member(
+    organisation_id: str,
+    team_id: str,
+    membership_id: str,
+    body: dict,
+    context: PermissionContext = Depends(require_permission("organisations.members")),
+):
+    _assert_organisation_scope(context, organisation_id)
+    changes = {key: value for key, value in body.items() if key in {"role", "status"}}
+    if not changes:
+        raise HTTPException(400, "No supported team membership fields were supplied.")
+    if "role" in changes and changes["role"] not in {"member", "lead", "manager"}:
+        raise HTTPException(400, "Invalid team role.")
+    if "status" in changes and changes["status"] not in {"active", "inactive"}:
+        raise HTTPException(400, "Invalid team membership status.")
+    team = supabase.table("organisation_teams").select("id").eq("id", team_id).eq("organisation_id", organisation_id).limit(1).execute()
+    if not team.data:
+        raise HTTPException(404, "Team not found.")
+    result = supabase.table("organisation_team_members").update(changes).eq("id", membership_id).eq("team_id", team_id).execute()
+    if not result.data:
+        raise HTTPException(404, "Team membership not found.")
+    return {"success": True, "member": result.data[0]}
 
 
 # ---------------------------------------------------------------------------
