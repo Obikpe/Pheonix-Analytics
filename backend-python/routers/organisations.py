@@ -665,6 +665,35 @@ def update_team_member(
     return {"success": True, "member": result.data[0]}
 
 
+@router.post("/team-workspace/{team_id}/members", status_code=201)
+def add_member_from_team_workspace(team_id: str, body: TeamMemberCreate, user: CurrentUser = Depends(get_current_user)):
+    workspace = get_my_team_workspace(team_id, user)
+    if not workspace.get("can_manage_team"):
+        raise HTTPException(403, "Only team leads, team managers or organisation administrators can manage this team.")
+    organisation_id = str(user.organisation_id)
+    if workspace.get("organisation_role") not in {"owner", "admin"} and body.role != "member":
+        raise HTTPException(403, "Team leads can add members but cannot grant lead or manager roles.")
+    org_member = (supabase.table("organisation_members").select("id").eq("organisation_id", organisation_id).eq("user_id", body.user_id).eq("status", "active").limit(1).execute()).data
+    if not org_member:
+        raise HTTPException(400, "The person must already be an active member of this organisation.")
+    existing = (supabase.table("organisation_team_members").select("id,team_id,user_id,role,status,joined_at").eq("team_id", team_id).eq("user_id", body.user_id).limit(1).execute()).data
+    if existing and existing[0].get("status") == "active":
+        return {"success": True, "member": existing[0], "already_member": True}
+    now = datetime.now(timezone.utc).isoformat()
+    if existing:
+        updated = supabase.table("organisation_team_members").update({"role": body.role, "status": "active", "joined_at": now}).eq("id", existing[0]["id"]).execute()
+        row = (updated.data or existing)[0]
+    else:
+        inserted = supabase.table("organisation_team_members").insert({
+            "team_id": team_id, "user_id": body.user_id, "role": body.role,
+            "status": "active", "joined_at": now,
+        }).execute()
+        if not inserted.data:
+            raise HTTPException(500, "Team membership could not be saved.")
+        row = inserted.data[0]
+    return {"success": True, "member": row, "already_member": False}
+
+
 @router.get("/my-teams")
 def list_my_organisation_teams(user: CurrentUser = Depends(get_current_user)):
     organisation_id = user.organisation_id
