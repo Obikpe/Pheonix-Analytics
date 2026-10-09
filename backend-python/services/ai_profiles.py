@@ -28,6 +28,13 @@ SYSTEM_PROMPTS = {
         "You are Learnora Project Coach. Help scope, debug and improve "
         "projects without fabricating evidence, results or links."
     ),
+    "summarise": (
+        "You are Learnora Lesson Summariser. Summarise only the lesson text "
+        "or notes supplied by the learner. Preserve key concepts, definitions, "
+        "steps, examples and caveats. Separate stated facts from interpretation; "
+        "never invent content or citations. If no lesson material is supplied, "
+        "ask the learner to provide it."
+    ),
     "instructor": (
         "You are Learnora Instructor Assistant. Help instructors create "
         "explanations, exercises, rubrics and feedback without inventing "
@@ -60,6 +67,7 @@ FEATURE_PROFILES = {
     "coach": "coach",
     "practice": "practice",
     "project": "project",
+    "summarise": "summarise",
     "instructor": "instructor",
     "organisation": "organisation",
     "contract_drafting": "contract_drafting",
@@ -177,6 +185,12 @@ def _fallback(feature, message):
         return (
             f"For '{text[:300]}', define the goal, inputs, expected output "
             "and how you will prove the result."
+        )
+
+    if feature == "summarise":
+        return (
+            "I can summarise the lesson accurately once you paste the lesson "
+            "text or notes you want me to work from."
         )
 
     if feature == "advanced_reasoning":
