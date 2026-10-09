@@ -665,6 +665,50 @@ def update_team_member(
     return {"success": True, "member": result.data[0]}
 
 
+@router.get("/my-teams")
+def list_my_organisation_teams(user: CurrentUser = Depends(get_current_user)):
+    organisation_id = user.organisation_id
+    if not organisation_id:
+        return {"success": True, "teams": []}
+    memberships = (supabase.table("organisation_team_members").select("team_id,role,status,joined_at").eq("user_id", user.id).eq("status", "active").execute()).data or []
+    team_ids = [str(row["team_id"]) for row in memberships]
+    if not team_ids:
+        return {"success": True, "teams": []}
+    teams = (supabase.table("organisation_teams").select("id,organisation_id,name,slug,description,status,manager_user_id").in_("id", team_ids).eq("organisation_id", str(organisation_id)).eq("status", "active").execute()).data or []
+    membership_map = {str(row["team_id"]): row for row in memberships}
+    return {"success": True, "teams": [{**team, "membership": membership_map.get(str(team["id"]))} for team in teams]}
+
+
+@router.get("/team-workspace/{team_id}")
+def get_my_team_workspace(team_id: str, user: CurrentUser = Depends(get_current_user)):
+    organisation_id = user.organisation_id
+    if not organisation_id:
+        raise HTTPException(403, "You do not have an active organisation membership.")
+    team_result = (supabase.table("organisation_teams").select("id,organisation_id,name,slug,description,status,manager_user_id").eq("id", team_id).eq("organisation_id", str(organisation_id)).eq("status", "active").limit(1).execute())
+    if not team_result.data:
+        raise HTTPException(404, "Team not found.")
+    organisation_membership = (supabase.table("organisation_members").select("id,role,status").eq("organisation_id", str(organisation_id)).eq("user_id", user.id).eq("status", "active").limit(1).execute()).data
+    if not organisation_membership:
+        raise HTTPException(403, "You are not an active member of this organisation.")
+    team_membership = (supabase.table("organisation_team_members").select("id,role,status,joined_at").eq("team_id", team_id).eq("user_id", user.id).eq("status", "active").limit(1).execute()).data
+    organisation_role = organisation_membership[0].get("role")
+    if not team_membership and organisation_role not in {"owner", "admin"}:
+        raise HTTPException(403, "You are not a member of this team.")
+    members = (supabase.table("organisation_team_members").select("id,user_id,role,status,joined_at").eq("team_id", team_id).eq("status", "active").order("joined_at").execute()).data or []
+    user_ids = list({str(row["user_id"]) for row in members})
+    users = (supabase.table("users").select("id,name,email").in_("id", user_ids).execute()).data or [] if user_ids else []
+    user_map = {str(row["id"]): row for row in users}
+    enriched_members = [{**row, "user": user_map.get(str(row["user_id"]))} for row in members]
+    return {
+        "success": True,
+        "team": team_result.data[0],
+        "organisation_role": organisation_role,
+        "team_membership": team_membership[0] if team_membership else None,
+        "can_manage_team": bool(team_membership and team_membership[0].get("role") in {"lead", "manager"}) or organisation_role in {"owner", "admin"},
+        "members": enriched_members,
+    }
+
+
 # ---------------------------------------------------------------------------
 # LIST ORGANISATIONS
 # ---------------------------------------------------------------------------
