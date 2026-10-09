@@ -28,6 +28,11 @@ class DiscussionStatusUpdate(BaseModel):
     status: str
 
 
+def _ensure_community_user(user: CurrentUser):
+    if user.role not in {"normal", "witstart"}:
+        raise HTTPException(403, "This account cannot access the learner community.")
+
+
 def _has_course_enrolment(user_id: str, course_id: str) -> bool:
     rows = (supabase.table("learnora_enrolments").select("id")
         .eq("user_id", user_id).eq("course_id", course_id)
@@ -73,8 +78,7 @@ def list_discussions(
     organisation_id: Optional[str] = None,
     user: CurrentUser = Depends(get_current_user),
 ):
-    if user.role not in {"normal", "witstart"}:
-        raise HTTPException(403, "This account cannot access the learner community.")
+    _ensure_community_user(user)
     query = supabase.table("learnora_discussions").select(
         "id,user_id,course_id,lesson_id,organisation_id,title,body,category,status,created_at,updated_at"
     ).neq("status", "hidden").order("created_at", desc=True).limit(100)
@@ -103,8 +107,7 @@ def list_discussions(
 
 @router.post("/discussions", status_code=201)
 def create_discussion(body: DiscussionCreate, user: CurrentUser = Depends(get_current_user)):
-    if user.role not in {"normal", "witstart"}:
-        raise HTTPException(403, "This account cannot create learner discussions.")
+    _ensure_community_user(user)
     if body.category not in {"question", "discussion"}:
         raise HTTPException(400, "Category must be question or discussion.")
     if body.course_id and not _has_course_enrolment(str(user.id), body.course_id):
@@ -134,6 +137,7 @@ def create_discussion(body: DiscussionCreate, user: CurrentUser = Depends(get_cu
 
 @router.get("/discussions/{discussion_id}")
 def get_discussion(discussion_id: str, user: CurrentUser = Depends(get_current_user)):
+    _ensure_community_user(user)
     discussion = _get_discussion(discussion_id)
     if not _can_access(user, discussion):
         raise HTTPException(403, "You do not have access to this discussion.")
@@ -168,6 +172,7 @@ def create_discussion_reply(discussion_id: str, body: ReplyCreate, user: Current
 
 @router.patch("/discussions/{discussion_id}")
 def update_discussion_status(discussion_id: str, body: DiscussionStatusUpdate, user: CurrentUser = Depends(get_current_user)):
+    _ensure_community_user(user)
     discussion = _get_discussion(discussion_id)
     if str(discussion["user_id"]) != str(user.id):
         raise HTTPException(403, "Only the discussion author can change its status.")
@@ -181,6 +186,7 @@ def update_discussion_status(discussion_id: str, body: DiscussionStatusUpdate, u
 
 @router.post("/discussions/{discussion_id}/replies/{reply_id}/answer")
 def mark_discussion_answer(discussion_id: str, reply_id: str, user: CurrentUser = Depends(get_current_user)):
+    _ensure_community_user(user)
     discussion = _get_discussion(discussion_id)
     if str(discussion["user_id"]) != str(user.id):
         raise HTTPException(403, "Only the discussion author can mark an answer.")
