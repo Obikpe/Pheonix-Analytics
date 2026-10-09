@@ -23,7 +23,7 @@ const descriptions:any={
 };
 export default function Page({params}:{params:{section:string}}){
  const [u,setU]=useState<any>(null),[data,setData]=useState<any>(null),[err,setErr]=useState(""),[loading,setLoading]=useState(true);
- useEffect(()=>{currentUser().then(setU).catch(()=>location.href="/login")},[]);
+ useEffect(()=>{currentUser().then(me=>{if(me.role==="organisation_prospect"){location.href="/organisation-portal";return;}if(me.organisation_id&&["owner","admin"].includes(me.organisation_role)){location.href="/dashboard/organisation";return;}setU(me);}).catch(()=>location.href="/login")},[]);
  useEffect(()=>{
   if(!u)return;
   let cancelled=false;
