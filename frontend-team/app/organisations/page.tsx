@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ArrowRight, Building2, CheckCircle2, Clock3, FileCheck2, FileText, RefreshCw, Send, ShieldCheck, Users } from "lucide-react";
+import { ArrowRight, Building2, CheckCircle2, Clock3, FileText, RefreshCw, Send, ShieldCheck, Users } from "lucide-react";
 import { teamMe } from "../../lib/api";
 import { organisations, organisationMembers, memberSummary, organisationCapacity, organisationContract, contractPreparation, contractRules, organisationRequests, saveContractPreparation, generateContractDraft, sendOrganisationContract, approveOrganisationContract, activateOrganisationContract } from "../../lib/operations";
 import Shell from "../../components/Shell";
