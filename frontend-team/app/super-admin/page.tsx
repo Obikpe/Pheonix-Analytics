@@ -162,7 +162,7 @@ export default function SuperAdminDashboard() {
   const [structure, setStructure] = useState<AnyRow | null>(null);
   const [modal, setModal] = useState<string | null>(null);
 
-  const [orgForm, setOrgForm] = useState({ name: '', slug: '', description: '', type: 'academy', template: 'academy' });
+  const [orgForm, setOrgForm] = useState({ name: '', slug: '', description: '', type: 'academy', template: 'academy', logo_url: '', brand_primary: '#d7ad35', brand_secondary: '#f2d477', modules: [] as string[], public_directory: false });
   const [staffForm, setStaffForm] = useState({ name: '', email: '', password: '', job_title: '', role_slug: 'support' });
   const [deptForm, setDeptForm] = useState({ name: '', slug: '', description: '' });
   const [teamForm, setTeamForm] = useState({ name: '', slug: '', description: '', department_id: '' });
@@ -237,7 +237,16 @@ export default function SuperAdminDashboard() {
 
   async function createOrganisation(e: FormEvent) {
     e.preventDefault();
-    await mutate('/api/internal/operations/organisations', { method: 'POST', body: JSON.stringify({ ...orgForm, organisation_type: orgForm.type, slug: slugify(orgForm.slug || orgForm.name) }) }, 'Organisation created.');
+    const { type, modules, public_directory, ...fields } = orgForm;
+    await mutate('/api/internal/operations/organisations', {
+      method: 'POST',
+      body: JSON.stringify({
+        ...fields,
+        organisation_type: type,
+        slug: slugify(orgForm.slug || orgForm.name),
+        settings: { enabled_modules: modules, public_directory },
+      }),
+    }, 'Organisation workspace created from the selected template.');
   }
 
   async function createStaff(e: FormEvent) {
@@ -318,10 +327,12 @@ export default function SuperAdminDashboard() {
   }, [section]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function logout() {
+    sessionStorage.removeItem('learnora_team_token');
+    sessionStorage.removeItem('learnora_team_last_activity');
     localStorage.removeItem('learnora_internal_token');
     localStorage.removeItem('phx_token');
     localStorage.removeItem('phx_admin_user');
-    window.location.href = '/';
+    window.location.href = '/login';
   }
 
   const aiProfiles = rows(ai, 'profiles');
@@ -440,7 +451,17 @@ export default function SuperAdminDashboard() {
         </main>
       </div>
 
-      {modal === 'org' && <Modal title="Create organisation" onClose={() => setModal(null)}><form onSubmit={createOrganisation} className="space-y-4"><Input label="Organisation name" value={orgForm.name} onChange={v=>setOrgForm(x=>({...x,name:v}))} placeholder="WitStart Academy"/><Input label="Slug" value={orgForm.slug} onChange={v=>setOrgForm(x=>({...x,slug:v}))} placeholder="witstart"/><Input label="Description" value={orgForm.description} onChange={v=>setOrgForm(x=>({...x,description:v}))}/><div className="grid gap-4 md:grid-cols-2"><Select label="Organisation type" value={orgForm.type} onChange={v=>setOrgForm(x=>({...x,type:v}))}><option value="academy">Academy</option><option value="business">Business</option><option value="enterprise">Enterprise</option></Select><Select label="Template" value={orgForm.template} onChange={v=>setOrgForm(x=>({...x,template:v}))}><option value="academy">Academy</option><option value="corporate">Corporate</option><option value="community">Community</option></Select></div><Button type="submit"><Plus size={15}/> Create</Button></form></Modal>}
+      {modal === 'org' && <Modal title="Create organisation workspace" onClose={() => setModal(null)}><form onSubmit={createOrganisation} className="space-y-5">
+        <div className="rounded-xl border border-[#d7ad35]/20 bg-[#d7ad35]/[.04] p-4"><p className="text-sm font-semibold">Reusable workspace builder</p><p className="mt-1 text-xs leading-5 text-white/45">Choose a template and configuration. This creates an organisation record with settings; it does not bypass contract approval or automatically grant learner access.</p></div>
+        <div className="grid gap-4 md:grid-cols-2"><Input label="Organisation name" value={orgForm.name} onChange={v=>setOrgForm(x=>({...x,name:v}))} placeholder="WitStart Academy"/><Input label="Slug" value={orgForm.slug} onChange={v=>setOrgForm(x=>({...x,slug:v}))} placeholder="witstart"/></div>
+        <Input label="Description" value={orgForm.description} onChange={v=>setOrgForm(x=>({...x,description:v}))} placeholder="What this workspace is for"/>
+        <div className="grid gap-4 md:grid-cols-2"><Select label="Organisation model" value={orgForm.type} onChange={v=>setOrgForm(x=>({...x,type:v}))}><option value="academy">Academy</option><option value="school">School</option><option value="business">Business</option><option value="enterprise">Enterprise</option><option value="nonprofit">Non-profit</option><option value="team">Team / department</option></Select><Select label="Workspace template" value={orgForm.template} onChange={v=>setOrgForm(x=>({...x,template:v}))}><option value="academy">Academy</option><option value="corporate">Corporate</option><option value="community">Community</option><option value="school">School</option><option value="custom">Custom</option></Select></div>
+        <Input label="Logo URL (optional)" value={orgForm.logo_url} onChange={v=>setOrgForm(x=>({...x,logo_url:v}))} placeholder="https://…"/>
+        <div className="grid gap-4 md:grid-cols-2"><Input label="Primary brand colour" value={orgForm.brand_primary} onChange={v=>setOrgForm(x=>({...x,brand_primary:v}))} placeholder="#d7ad35"/><Input label="Secondary brand colour" value={orgForm.brand_secondary} onChange={v=>setOrgForm(x=>({...x,brand_secondary:v}))} placeholder="#f2d477"/></div>
+        <fieldset><legend className="mb-3 text-xs font-medium text-white/55">Modules to enable</legend><div className="grid gap-2 sm:grid-cols-2">{["courses","cohorts","teams","tutors","assessments","projects","skills_passport","portfolio","community","ai_tutor","analytics"].map(m=><label key={m} className="flex items-center gap-3 rounded-xl border border-white/10 bg-black/20 px-3 py-2.5 text-xs text-white/65"><input type="checkbox" checked={orgForm.modules.includes(m)} onChange={e=>setOrgForm(x=>({...x,modules:e.target.checked?[...x.modules,m]:x.modules.filter(v=>v!==m)}))} className="accent-[#d7ad35]"/>{m.replaceAll("_"," ")}</label>)}</div></fieldset>
+        <label className="flex items-start gap-3 rounded-xl border border-white/10 bg-black/20 p-3 text-xs leading-5 text-white/60"><input type="checkbox" checked={orgForm.public_directory} onChange={e=>setOrgForm(x=>({...x,public_directory:e.target.checked}))} className="mt-1 accent-[#d7ad35]"/><span>Allow this organisation to appear in the public Learnora directory. This is opt-in and can be changed later.</span></label>
+        <Button type="submit"><Plus size={15}/> Create workspace</Button>
+      </form></Modal>}
 
       {modal === 'staff' && <Modal title="Create internal staff account" onClose={() => setModal(null)}><form onSubmit={createStaff} className="space-y-4"><div className="grid gap-4 md:grid-cols-2"><Input label="Name" value={staffForm.name} onChange={v=>setStaffForm(x=>({...x,name:v}))}/><Input label="Email" value={staffForm.email} onChange={v=>setStaffForm(x=>({...x,email:v}))} type="email"/><Input label="Password" value={staffForm.password} onChange={v=>setStaffForm(x=>({...x,password:v}))} type="password"/><Input label="Job title" value={staffForm.job_title} onChange={v=>setStaffForm(x=>({...x,job_title:v}))}/></div><Input label="Role slug" value={staffForm.role_slug} onChange={v=>setStaffForm(x=>({...x,role_slug:v}))} placeholder="support / product / engineering / super_admin"/><Button type="submit"><Plus size={15}/> Create staff</Button></form></Modal>}
 
