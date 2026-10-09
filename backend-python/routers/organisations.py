@@ -445,6 +445,66 @@ def update_cohort_member(
     return {"success": True, "member": result.data[0]}
 
 
+@router.get("/{organisation_id}/assigned-courses")
+def list_organisation_assigned_courses(organisation_id: str, context: PermissionContext = Depends(require_permission("organisations.view"))):
+    _assert_organisation_scope(context, organisation_id)
+    access_rows = (supabase.table("course_access").select("id,course_id,access_type,status,assigned_by,assigned_at").eq("organisation_id", organisation_id).eq("status", "active").order("assigned_at", desc=True).execute()).data or []
+    course_ids = list({str(row["course_id"]) for row in access_rows})
+    course_map = {}
+    if course_ids:
+        course_rows = (supabase.table("learnora_courses").select("id,title,slug,ownership,status").in_("id", course_ids).execute()).data or []
+        course_map = {str(row["id"]): row for row in course_rows}
+    return {"success": True, "courses": [{**row, "course": course_map.get(str(row["course_id"]))} for row in access_rows]}
+
+
+@router.post("/{organisation_id}/assigned-courses", status_code=201)
+def assign_course_to_organisation(organisation_id: str, body: dict, context: PermissionContext = Depends(require_permission("organisations.update"))):
+    organisation = _assert_organisation_scope(context, organisation_id)
+    _require_active_organisation(organisation)
+    course_id = str(body.get("course_id") or "")
+    if not course_id:
+        raise HTTPException(400, "course_id is required.")
+    course_rows = (supabase.table("learnora_courses").select("id,title,status,ownership,organisation_id").eq("id", course_id).limit(1).execute()).data
+    if not course_rows or course_rows[0].get("status") != "published":
+        raise HTTPException(404, "Only published courses can be assigned.")
+    course = course_rows[0]
+    if course.get("ownership") == "organisation" and str(course.get("organisation_id")) != str(organisation_id):
+        raise HTTPException(403, "An organisation cannot assign another organisation's private course.")
+    if course.get("ownership") not in {"learnora", "creator", "organisation"}:
+        raise HTTPException(403, "This course cannot be assigned through an organisation workspace.")
+    access = (supabase.table("course_access").select("id,status").eq("organisation_id", organisation_id).eq("course_id", course_id).limit(1).execute()).data
+    now = datetime.now(timezone.utc).isoformat()
+    if not access or access[0].get("status") != "active":
+        ensure_org_capacity(organisation_id, "courses")
+        if access:
+            access_result = supabase.table("course_access").update({"status": "active", "access_type": "assigned", "assigned_by": context.user_id, "assigned_at": now}).eq("id", access[0]["id"]).execute()
+            access_row = (access_result.data or access)[0]
+        else:
+            access_result = supabase.table("course_access").insert({
+                "course_id": course_id, "organisation_id": organisation_id, "access_type": "assigned",
+                "status": "active", "assigned_by": context.user_id, "assigned_at": now,
+            }).execute()
+            if not access_result.data:
+                raise HTTPException(500, "Course access could not be created.")
+            access_row = access_result.data[0]
+    else:
+        access_row = access[0]
+
+    learners = (supabase.table("organisation_members").select("user_id").eq("organisation_id", organisation_id).eq("role", "learner").eq("status", "active").execute()).data or []
+    created = 0
+    for learner in learners:
+        existing_enrolment = (supabase.table("learnora_enrolments").select("id").eq("user_id", learner["user_id"]).eq("course_id", course_id).in_("status", ["active", "completed"]).limit(1).execute()).data
+        if existing_enrolment:
+            continue
+        enrolment = supabase.table("learnora_enrolments").insert({
+            "user_id": learner["user_id"], "course_id": course_id, "organisation_id": organisation_id,
+            "status": "active", "enrolled_at": now, "source_type": "organisation_assignment",
+        }).execute()
+        if enrolment.data:
+            created += 1
+    return {"success": True, "course_access": access_row, "enrolments_created": created}
+
+
 @router.get("/{organisation_id}/available-courses")
 def list_organisation_available_courses(organisation_id: str, context: PermissionContext = Depends(require_permission("organisations.view"))):
     _assert_organisation_scope(context, organisation_id)
