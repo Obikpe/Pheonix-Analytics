@@ -4,7 +4,7 @@ import Hero from "../components/public/Hero";
 import Journey from "../components/public/Journey";
 import AudienceCards from "../components/public/AudienceCards";
 import { IMAGES } from "../lib/constants";
-import { ArrowDownRight, ArrowRight, Compass, FileCheck2, FolderKanban, GraduationCap, Network, Sparkles } from "lucide-react";
+import { ArrowDownRight, ArrowRight, Compass, FileCheck2, GraduationCap, Network, Sparkles } from "lucide-react";
 
 const stages = [
   { n: "01", title: "Learn with intention", text: "Follow structured learning that helps you understand the ideas, not simply move through a list of lessons." },
