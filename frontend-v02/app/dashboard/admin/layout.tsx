@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation";
 
-export default function AdminRouteRedirect({ children }: { children: React.ReactNode }) {
+export default function AdminRouteRedirect() {
   redirect("https://teamslearnora.vercel.app/login");
-  return children;
 }
