@@ -85,14 +85,23 @@ def count_org(org_id: str, key: str):
         )
         return len(result.data or [])
     if key == "courses":
-        result = (
+        owned = (
             supabase.table("learnora_courses")
             .select("id")
             .eq("organisation_id", org_id)
             .neq("status", "archived")
             .execute()
-        )
-        return len(result.data or [])
+        ).data or []
+        assigned = (
+            supabase.table("course_access")
+            .select("course_id")
+            .eq("organisation_id", org_id)
+            .eq("status", "active")
+            .execute()
+        ).data or []
+        course_ids = {str(row["id"]) for row in owned}
+        course_ids.update(str(row["course_id"]) for row in assigned)
+        return len(course_ids)
     return 0
 
 
