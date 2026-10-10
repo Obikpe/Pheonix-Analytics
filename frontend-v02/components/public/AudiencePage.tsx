@@ -35,7 +35,7 @@ export default function AudiencePage({type}:{type:"learner"|"instructor"|"organi
     <section className="site-section">
       <div className="mx-auto max-w-[82rem] px-5 lg:px-8">
         <div className="grid gap-6 lg:grid-cols-[.75fr_1.25fr] lg:items-end"><div><p className="section-kicker">How the journey works</p><h2 className="mt-4 max-w-xl font-display text-4xl leading-tight sm:text-5xl">A practical rhythm, not a race to the end.</h2></div><p className="max-w-xl text-sm leading-7 text-slate-400 lg:justify-self-end">Each stage has a purpose. Learnora is designed to connect the material, the work people do with it and the feedback that helps them move forward.</p></div>
-        <div className="mt-10 grid gap-0 border-y border-white/[.12] md:grid-cols-2 xl:grid-cols-4">{d.steps.map((s:string[],i:number)=><article key={s[0]} className="border-b border-white/[.1] py-6 md:px-5 md:even:border-l xl:border-b-0 xl:first:pl-0 xl:last:pr-0 xl:not(:first-child){ }"><span className="text-xs tabular-nums text-[var(--gold-light)]">0{i+1}</span><h3 className="mt-5 font-display text-2xl">{s[0]}</h3><p className="mt-3 text-sm leading-7 text-slate-400">{s[1]}</p></article>)}</div>
+        <div className="mt-10 grid gap-0 border-y border-white/[.12] md:grid-cols-2 xl:grid-cols-4">{d.steps.map((s:string[],i:number)=><article key={s[0]} className="border-b border-white/[.1] py-6 md:px-5 md:even:border-l xl:border-b-0 xl:odd:border-r xl:first:pl-0 xl:last:pr-0"><span className="text-xs tabular-nums text-[var(--gold-light)]">0{i+1}</span><h3 className="mt-5 font-display text-2xl">{s[0]}</h3><p className="mt-3 text-sm leading-7 text-slate-400">{s[1]}</p></article>)}</div>
       </div>
     </section>
 
