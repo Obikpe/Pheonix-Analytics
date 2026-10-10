@@ -10,7 +10,7 @@ import EmptyState from "../../components/feedback/EmptyState";
 
 export default function Page(){
  const [u,setU]=useState<any>(null),[learning,setLearning]=useState<any>(null),[record,setRecord]=useState<any>(null),[teams,setTeams]=useState<any[]>([]),[err,setErr]=useState(""),[loading,setLoading]=useState(true);
- useEffect(()=>{currentUser().then(me=>{if(me.role==="organisation_prospect"){location.href="/organisation-portal";return;}if(me.organisation_id&&["owner","admin"].includes(me.organisation_role)){location.href="/dashboard/organisation";return;}setU(me);}).catch(()=>location.href="/login");Promise.all([progress(),evidence()]).then(([p,e])=>{setLearning(p);setRecord(e)}).catch(e=>setErr(e.message||"Some learning records could not be loaded.")).finally(()=>setLoading(false));request<any>("/organisations/my-teams").then(x=>setTeams(x.teams||[])).catch(()=>setTeams([]));},[]);
+ useEffect(()=>{currentUser().then(me=>{if(me.role==="organisation_prospect"){location.href="/organisation-portal";return;}if(me.role==="witstart"){location.href="/dashboard/witstart";return;}if(me.organisation_id&&["owner","admin"].includes(me.organisation_role)){location.href="/dashboard/organisation";return;}setU(me);}).catch(()=>location.href="/login");Promise.all([progress(),evidence()]).then(([p,e])=>{setLearning(p);setRecord(e)}).catch(e=>setErr(e.message||"Some learning records could not be loaded.")).finally(()=>setLoading(false));request<any>("/organisations/my-teams").then(x=>setTeams(x.teams||[])).catch(()=>setTeams([]));},[]);
  if(!u)return <div className="p-10 text-slate-500">Loading your Learnora workspace…</div>;
  const enrolled=learning?.courses||[];
  const completedLessons=enrolled.reduce((n:number,x:any)=>n+(x.completed_lessons||0),0);
