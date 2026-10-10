@@ -22,6 +22,20 @@ class CreatorCourseIn(BaseModel):
     short_description: str = Field(default="", max_length=500)
     level: str = Field(default="beginner", max_length=50)
 
+class CreatorModuleIn(BaseModel):
+    title: str = Field(..., min_length=2, max_length=200)
+    description: str = Field(default="", max_length=3000)
+    order_index: int = Field(default=0, ge=0)
+
+
+class CreatorLessonIn(BaseModel):
+    title: str = Field(..., min_length=2, max_length=200)
+    content: str = Field(..., min_length=20, max_length=20000)
+    description: str = Field(default="", max_length=3000)
+    lesson_type: str = Field(default="article", max_length=30)
+    duration_minutes: int | None = Field(default=None, ge=0)
+    order_index: int = Field(default=0, ge=0)
+
 
 def _normalise_slug(value: str) -> str:
     return "-".join(value.strip().lower().split())
@@ -159,6 +173,7 @@ def create_course(
             "ownership": "creator",
             "creator_id": creator["id"],
             "created_by": user.id,
+            "settings": {"is_free": True, "access_type": "free"},
         })
         .execute()
     )
@@ -166,6 +181,86 @@ def create_course(
         raise HTTPException(500, "Unable to create creator course.")
 
     return {"success": True, "course": result.data[0]}
+
+
+@router.post("/courses/{course_id}/modules", status_code=201)
+def create_creator_module(course_id: str, body: CreatorModuleIn, user: CurrentUser = Depends(get_current_user)):
+    creator = _get_creator(str(user.id))
+    if not creator or creator.get("status") != "approved":
+        raise HTTPException(403, "Approved creator account required.")
+    course = (supabase.table("learnora_courses").select("id,status").eq("id", course_id).eq("creator_id", creator["id"]).eq("ownership", "creator").limit(1).execute()).data
+    if not course:
+        raise HTTPException(404, "Creator course not found.")
+    if course[0].get("status") != "draft":
+        raise HTTPException(409, "Only draft courses can be edited.")
+    result = supabase.table("course_modules").insert({
+        "course_id": course_id, "title": body.title.strip(),
+        "description": body.description.strip() or None,
+        "order_index": body.order_index, "status": "draft",
+    }).execute()
+    if not result.data:
+        raise HTTPException(500, "Module could not be created.")
+    return {"success": True, "module": result.data[0]}
+
+
+@router.post("/modules/{module_id}/lessons", status_code=201)
+def create_creator_lesson(module_id: str, body: CreatorLessonIn, user: CurrentUser = Depends(get_current_user)):
+    creator = _get_creator(str(user.id))
+    if not creator or creator.get("status") != "approved":
+        raise HTTPException(403, "Approved creator account required.")
+    module = (supabase.table("course_modules").select("id,course_id").eq("id", module_id).limit(1).execute()).data
+    if not module:
+        raise HTTPException(404, "Module not found.")
+    course = (supabase.table("learnora_courses").select("id,status").eq("id", module[0]["course_id"]).eq("creator_id", creator["id"]).eq("ownership", "creator").limit(1).execute()).data
+    if not course:
+        raise HTTPException(404, "Creator course not found.")
+    if course[0].get("status") != "draft":
+        raise HTTPException(409, "Only draft courses can be edited.")
+    if body.lesson_type not in {"article", "text", "practice", "mixed"}:
+        raise HTTPException(400, "Lesson type must be article, text, practice or mixed.")
+    slug = _normalise_slug(body.title)
+    result = supabase.table("learnora_lessons").insert({
+        "module_id": module_id, "title": body.title.strip(), "slug": slug,
+        "description": body.description.strip() or None, "content": body.content.strip(),
+        "lesson_type": body.lesson_type, "duration_minutes": body.duration_minutes,
+        "order_index": body.order_index, "is_preview": False, "status": "draft",
+    }).execute()
+    if not result.data:
+        raise HTTPException(500, "Lesson could not be created.")
+    return {"success": True, "lesson": result.data[0]}
+
+
+@router.post("/courses/{course_id}/publish")
+def publish_creator_course(course_id: str, user: CurrentUser = Depends(get_current_user)):
+    creator = _get_creator(str(user.id))
+    if not creator or creator.get("status") != "approved":
+        raise HTTPException(403, "Approved creator account required.")
+    course = (supabase.table("learnora_courses").select("id,status,settings").eq("id", course_id).eq("creator_id", creator["id"]).eq("ownership", "creator").limit(1).execute()).data
+    if not course:
+        raise HTTPException(404, "Creator course not found.")
+    if course[0].get("status") == "published":
+        return {"success": True, "course": course[0], "already_published": True}
+    modules = (supabase.table("course_modules").select("id,title").eq("course_id", course_id).neq("status", "archived").order("order_index").execute()).data or []
+    if not modules:
+        raise HTTPException(409, "Add at least one module before publishing.")
+    module_ids = [row["id"] for row in modules]
+    lessons = (supabase.table("learnora_lessons").select("id,module_id,title,content,status").in_("module_id", module_ids).neq("status", "archived").order("order_index").execute()).data or []
+    if not lessons:
+        raise HTTPException(409, "Add at least one lesson before publishing.")
+    lesson_counts = {str(module_id): 0 for module_id in module_ids}
+    for lesson in lessons:
+        lesson_counts[str(lesson["module_id"])] = lesson_counts.get(str(lesson["module_id"]), 0) + 1
+        if not str(lesson.get("content") or "").strip():
+            raise HTTPException(409, "Every lesson needs written content before this course can be published.")
+    if any(count == 0 for count in lesson_counts.values()):
+        raise HTTPException(409, "Every module must contain at least one lesson before publishing.")
+    now = datetime.now(timezone.utc).isoformat()
+    supabase.table("course_modules").update({"status": "published", "updated_at": now}).eq("course_id", course_id).neq("status", "archived").execute()
+    supabase.table("learnora_lessons").update({"status": "published", "updated_at": now}).in_("module_id", module_ids).neq("status", "archived").execute()
+    updated = supabase.table("learnora_courses").update({"status": "published", "updated_at": now}).eq("id", course_id).eq("creator_id", creator["id"]).execute()
+    if not updated.data:
+        raise HTTPException(500, "Course could not be published.")
+    return {"success": True, "course": updated.data[0]}
 
 
 @router.get("/earnings")
