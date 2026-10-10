@@ -11,7 +11,6 @@ Important:
 
 from datetime import datetime, timezone
 from typing import Optional
-from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -162,15 +161,6 @@ SAFE_ORGANISATION_COLUMNS = (
 
 
 
-def _actor_user_uuid(context: PermissionContext) -> Optional[str]:
-    """Return a UUID actor for UUID foreign keys; legacy integer admin IDs are not UUIDs."""
-    actor_id = getattr(context.user, "id", None)
-    try:
-        return str(UUID(str(actor_id))) if actor_id is not None else None
-    except (ValueError, TypeError, AttributeError):
-        return None
-
-
 def _normalise_slug(value: str) -> str:
     return (
         value.strip()
@@ -265,7 +255,7 @@ def create_organisation_programme(
         "start_date": body.start_date,
         "end_date": body.end_date,
         "status": body.status,
-        "created_by": _actor_user_uuid(context),
+        "created_by": context.user_id,
         "created_at": now,
         "updated_at": now,
     }).execute()
@@ -493,12 +483,12 @@ def assign_course_to_organisation(organisation_id: str, body: dict, context: Per
     if not access or access[0].get("status") != "active":
         ensure_org_capacity(organisation_id, "courses")
         if access:
-            access_result = supabase.table("course_access").update({"status": "active", "access_type": "assigned", "assigned_by": _actor_user_uuid(context), "assigned_at": now}).eq("id", access[0]["id"]).execute()
+            access_result = supabase.table("course_access").update({"status": "active", "access_type": "assigned", "assigned_by": context.user_id, "assigned_at": now}).eq("id", access[0]["id"]).execute()
             access_row = (access_result.data or access)[0]
         else:
             access_result = supabase.table("course_access").insert({
                 "course_id": course_id, "organisation_id": organisation_id, "access_type": "assigned",
-                "status": "active", "assigned_by": _actor_user_uuid(context), "assigned_at": now,
+                "status": "active", "assigned_by": context.user_id, "assigned_at": now,
             }).execute()
             if not access_result.data:
                 raise HTTPException(500, "Course access could not be created.")
@@ -593,7 +583,7 @@ def assign_course_to_cohort(organisation_id: str, cohort_id: str, body: dict, co
             supabase.table("course_access").insert({
                 "course_id": course_id, "organisation_id": organisation_id,
                 "access_type": "assigned", "status": "active",
-                "assigned_by": _actor_user_uuid(context), "assigned_at": datetime.now(timezone.utc).isoformat(),
+                "assigned_by": context.user_id, "assigned_at": datetime.now(timezone.utc).isoformat(),
             }).execute()
 
     existing = (supabase.table("cohort_course_assignments").select("id,status").eq("cohort_id", cohort_id).eq("course_id", course_id).limit(1).execute()).data
@@ -603,7 +593,7 @@ def assign_course_to_cohort(organisation_id: str, cohort_id: str, body: dict, co
         assignment_row = (updated.data or existing)[0]
     else:
         inserted = supabase.table("cohort_course_assignments").insert({
-            "cohort_id": cohort_id, "course_id": course_id, "assigned_by": _actor_user_uuid(context),
+            "cohort_id": cohort_id, "course_id": course_id, "assigned_by": context.user_id,
             "status": "active", "assigned_at": now, "updated_at": now,
         }).execute()
         if not inserted.data:
@@ -663,7 +653,7 @@ def create_organisation_team(
         "description": body.description,
         "status": body.status,
         "manager_user_id": body.manager_user_id,
-        "created_by": _actor_user_uuid(context),
+        "created_by": context.user_id,
         "created_at": now,
         "updated_at": now,
     }).execute()
