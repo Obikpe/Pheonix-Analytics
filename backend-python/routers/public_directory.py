@@ -154,12 +154,14 @@ def public_tutors():
     )
     tutors = result.data or []
     application_ids = list({str(row["application_id"]) for row in tutors if row.get("application_id")})
-    applications = (
-        supabase.table("learnora_creator_applications")
-        .select("id,application_data")
-        .in_("id", application_ids)
-        .execute()
-    ).data or [] if application_ids else []
+    applications = []
+    if application_ids:
+        applications = (
+            supabase.table("learnora_creator_applications")
+            .select("id,application_data")
+            .in_("id", application_ids)
+            .execute()
+        ).data or []
     application_map = {str(row["id"]): (row.get("application_data") or {}) for row in applications}
     public_tutors = []
     for tutor in tutors:
