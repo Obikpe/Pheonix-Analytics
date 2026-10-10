@@ -1,6 +1,7 @@
 """Learnora creator application, courses and earnings API."""
 
 from datetime import datetime, timezone
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -58,6 +59,33 @@ def apply(
     body: CreatorApplicationIn,
     user: CurrentUser = Depends(get_current_user),
 ):
+    supplied = body.application_data or {}
+    display_name = str(supplied.get("display_name") or "").strip()
+    expertise = str(supplied.get("expertise") or "").strip()
+    bio = str(supplied.get("bio") or "").strip()
+    teaching_experience = str(supplied.get("teaching_experience") or "").strip()
+    portfolio_url = str(supplied.get("portfolio_url") or "").strip()
+    sample_course = str(supplied.get("sample_course") or "").strip()
+    if len(display_name) < 2 or len(display_name) > 120:
+        raise HTTPException(400, "Public name must be between 2 and 120 characters.")
+    if len(expertise) < 2 or len(expertise) > 200:
+        raise HTTPException(400, "Expertise must be between 2 and 200 characters.")
+    if len(bio) < 10 or len(bio) > 4000:
+        raise HTTPException(400, "Bio must be between 10 and 4,000 characters.")
+    if len(teaching_experience) > 3000 or len(sample_course) > 200:
+        raise HTTPException(400, "One or more application fields are too long.")
+    if portfolio_url:
+        parsed = urlparse(portfolio_url)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            raise HTTPException(400, "Portfolio URL must be an HTTP or HTTPS URL.")
+    application_data = {
+        "display_name": display_name,
+        "expertise": expertise,
+        "bio": bio,
+        "teaching_experience": teaching_experience,
+        "portfolio_url": portfolio_url or None,
+        "sample_course": sample_course,
+    }
     existing = (
         supabase
         .table("learnora_creator_applications")
@@ -79,7 +107,7 @@ def apply(
         .table("learnora_creator_applications")
         .insert({
             "user_id": user.id,
-            "application_data": body.application_data,
+            "application_data": application_data,
             "status": "submitted",
         })
         .execute()
