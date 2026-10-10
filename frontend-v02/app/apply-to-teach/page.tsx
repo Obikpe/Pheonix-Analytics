@@ -30,10 +30,10 @@ export default function ApplyToTeach() {
   }
 
   return (
-    <main className="min-h-screen bg-[#07090c] px-5 py-12 text-white">
+    <main className="min-h-screen bg-[var(--bg)] px-5 py-12 text-white">
       <div className="mx-auto max-w-3xl">
         <a href="/"><Logo /></a>
-        <div className="mt-12 rounded-[2rem] border border-white/[.08] bg-[#0e1319] p-7 sm:p-10">
+        <div className="mt-12 border border-white/[.12] bg-[#11171e] p-7 sm:p-10">
           <BookOpenCheck className="gold" size={26} />
           <p className="mt-5 text-xs font-bold uppercase tracking-[.2em] gold">Creator application</p>
           <h1 className="mt-3 font-display text-4xl sm:text-5xl">Teach what you know. Help people put it to work.</h1>
@@ -53,7 +53,7 @@ export default function ApplyToTeach() {
               <div className="sm:col-span-2"><Field label="Teaching or mentoring experience"><textarea rows={3} maxLength={3000} value={form.teaching_experience} onChange={(e) => setForm((old: any) => ({ ...old, teaching_experience: e.target.value }))} className={inputClass} /></Field></div>
               <Field label="Portfolio or professional profile (optional)"><input type="url" value={form.portfolio_url} onChange={(e) => setForm((old: any) => ({ ...old, portfolio_url: e.target.value }))} className={inputClass} placeholder="https://…" /></Field>
               <Field label="Sample course idea"><input value={form.sample_course} onChange={(e) => setForm((old: any) => ({ ...old, sample_course: e.target.value }))} className={inputClass} placeholder="What would you teach?" /></Field>
-              <div className="sm:col-span-2"><button disabled={busy} className="rounded-xl bg-[#d7ad35] px-5 py-3.5 text-sm font-bold text-black disabled:opacity-50">{busy ? "Submitting…" : "Submit creator application"}</button><p className="mt-3 text-xs leading-5 text-slate-600">You must be signed in. If you are not signed in, <a href="/login" className="gold">sign in first</a> and return to this page.</p></div>
+              <div className="sm:col-span-2"><button disabled={busy} className="min-h-12 rounded-lg bg-[var(--gold)] px-5 py-3.5 text-sm font-bold text-[#17140d] transition-colors hover:bg-[var(--gold-light)] disabled:opacity-50">{busy ? "Submitting…" : "Submit creator application"}</button><p className="mt-3 text-xs leading-5 text-slate-600">You must be signed in. If you are not signed in, <a href="/login" className="gold">sign in first</a> and return to this page.</p></div>
             </form>
           )}
           {error && <Toast title="Application not submitted" message={error} type="error" onClose={() => setError("")} />}
