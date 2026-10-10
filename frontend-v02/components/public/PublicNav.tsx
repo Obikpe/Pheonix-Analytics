@@ -21,7 +21,7 @@ export default function PublicNav() {
   const close = () => { setOpen(false); setAudienceOpen(false); };
 
   return (
-    <header className="fixed inset-x-0 top-0 z-50 border-b border-white/[.09] bg-[#090b0e]/95 backdrop-blur-xl">
+    <header onKeyDown={e=>{if(e.key==="Escape")close()}} className="fixed inset-x-0 top-0 z-50 border-b border-white/[.09] bg-[#090b0e]/95 backdrop-blur-xl">
       <div className="mx-auto flex h-20 max-w-[82rem] items-center justify-between px-5 lg:px-8">
         <a href="/" aria-label="Learnora ME home" onClick={close} className="shrink-0"><Logo /></a>
 
