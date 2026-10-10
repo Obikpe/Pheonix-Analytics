@@ -15,7 +15,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from .auth import CurrentUser, supabase, log_audit_event
+from .auth import CurrentUser, get_current_user, supabase, log_audit_event
 from .permissions import (
     PermissionContext,
     get_permission_context,
