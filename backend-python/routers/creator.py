@@ -299,6 +299,8 @@ def publish_creator_course(course_id: str, user: CurrentUser = Depends(get_curre
         raise HTTPException(404, "Creator course not found.")
     if course[0].get("status") == "published":
         return {"success": True, "course": course[0], "already_published": True}
+    if course[0].get("status") != "draft":
+        raise HTTPException(409, "Only draft courses can be published.")
     modules = (supabase.table("course_modules").select("id,title").eq("course_id", course_id).neq("status", "archived").order("order_index").execute()).data or []
     if not modules:
         raise HTTPException(409, "Add at least one module before publishing.")
