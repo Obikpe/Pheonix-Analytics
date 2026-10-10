@@ -1,16 +1,39 @@
 "use client";
-import {useEffect,useState} from "react";
-import {teamMe,staff,departments,teams} from "../../lib/api";
+
+import { useEffect,useMemo,useState } from "react";
+import { Search, ArrowUpRight, Users, Network, UserRoundCog, Building2, BookOpen, Layers3, ShieldCheck, Activity, Settings, CircleDollarSign, LineChart, Bell } from "lucide-react";
+import { teamMe,staff,departments,teams } from "../../lib/api";
 import Shell from "../../components/Shell";
 import EmptyState from "../../components/EmptyState";
 import OrganisationWorkspace from "../../components/OrganisationWorkspace";
+
 const loaders:any={staff,departments,teams};
-export default function Section({params}:{params:{section:string}}){
- const [u,setU]=useState<any>();const [d,setD]=useState<any>(null);
- useEffect(()=>{teamMe().then(setU).catch(()=>location.href="/login")},[]);
- useEffect(()=>{if(u&&loaders[params.section])loaders[params.section]().then(setD).catch(()=>setD({}))},[u,params.section]);
- if(params.section==="organisations")return <OrganisationWorkspace/>;
- if(!u)return <div className="p-10">Loading secure workspace…</div>;
- const key=params.section,rows=d?.[key]||[];
- return <Shell roles={u.roles||[]} active={key}><h1 className="text-4xl font-semibold capitalize">{key.replaceAll("-"," ")}</h1><p className="mt-2 text-slate-500">Live records available to your internal role.</p><div className="mt-8">{loaders[key]?rows.length?<div className="overflow-hidden rounded-2xl border border-white/[.07] bg-[#0e1319]"><div className="divide-y divide-white/[.05]">{rows.map((r:any,i:number)=><div key={String(r.id??i)} className="grid gap-2 p-5 md:grid-cols-4"><span className="font-medium text-slate-200">{r.name||r.email||r.slug||"Record"}</span><span className="text-sm text-slate-500">{r.description||r.job_title||r.status||"—"}</span><span className="text-sm text-slate-500">{r.role||r.team_role||""}</span><span className="text-sm text-slate-600">{r.created_at||r.joined_at||""}</span></div>)}</div></div>:<EmptyState/>:<EmptyState/>}</div></Shell>
+const config:any={
+  staff:{title:"People",eyebrow:"Workspace directory",description:"Review internal staff records and role assignments.",icon:Users,search:"Search names, email addresses or roles"},
+  departments:{title:"Departments",eyebrow:"Organisation structure",description:"Browse the departments returned by the live internal directory.",icon:Network,search:"Search department names or descriptions"},
+  teams:{title:"Teams",eyebrow:"Collaboration structure",description:"Review internal teams and their current records.",icon:UserRoundCog,search:"Search teams or descriptions"},
+  commerce:{title:"Commerce",eyebrow:"Commercial operations",description:"Use the connected organisation and creator workspaces to review contracts, applications and payout operations.",icon:CircleDollarSign,links:[["Organisations","/organisations"],["Creators & payouts","/creators"]]},
+  analytics:{title:"Analytics",eyebrow:"Platform insight",description:"Explore the live operational views currently available to your role.",icon:LineChart,links:[["Course library","/courses"],["Organisations","/organisations"],["Creator operations","/creators"],["AI operations","/ai-operations"]]},
+  activity:{title:"Activity",eyebrow:"Operational history",description:"The activity feed will show verified audit events when its live data source is connected.",icon:Activity},
+  security:{title:"Security",eyebrow:"Access and safeguards",description:"Security reporting should be based on live access, audit and policy records. Use the available access-management views below.",icon:ShieldCheck,links:[["People and roles","/staff"],["Teams","/teams"],["AI operations","/ai-operations"]]},
+  settings:{title:"Settings",eyebrow:"Workspace configuration",description:"Platform-wide settings will appear here when the corresponding configuration service is connected.",icon:Settings}
+};
+
+export default function Section({params}:{params:{section:string}}) {
+  const [user,setUser]=useState<any>(null),[data,setData]=useState<any>(null),[query,setQuery]=useState(""),[loading,setLoading]=useState(true),[error,setError]=useState("");
+  const key=params.section,meta=config[key]||{title:key.replaceAll("-"," ").replace(/\b\w/g,(x:string)=>x.toUpperCase()),eyebrow:"Internal workspace",description:"This view is not yet connected to a live data source.",icon:Layers3};
+  const loader=loaders[key];
+  useEffect(()=>{let active=true;teamMe().then(me=>{if(active)setUser(me)}).catch(()=>{location.href="/login"});return()=>{active=false}},[]);
+  useEffect(()=>{let active=true;if(!user||!loader){setLoading(false);return()=>{active=false}}setLoading(true);loader().then((d:any)=>{if(active)setData(d)}).catch((e:any)=>{if(active)setError(e.message||"Records could not be loaded.")}).finally(()=>{if(active)setLoading(false)});return()=>{active=false}},[user,key]);
+  const rows=useMemo(()=>{const source=data?.[key]||[];const q=query.trim().toLowerCase();return source.filter((r:any)=>[r.name,r.email,r.slug,r.description,r.job_title,r.role,r.team_role,r.status].filter(Boolean).join(" ").toLowerCase().includes(q))},[data,key,query]);
+  if(key==="organisations")return <OrganisationWorkspace/>;
+  if(!user)return <div className="grid min-h-screen place-items-center bg-[var(--bg)] text-sm text-slate-500">Loading secure workspace…</div>;
+  const Icon=meta.icon;
+  return <Shell roles={user.roles||[]} active={key}>
+    <section className="border-b border-white/[.1] pb-7"><p className="section-kicker">{meta.eyebrow}</p><div className="mt-3 flex flex-wrap items-end justify-between gap-5"><div><h1 className="font-display text-4xl tracking-tight sm:text-5xl">{meta.title}</h1><p className="mt-3 max-w-2xl text-sm leading-7 text-slate-400">{meta.description}</p></div><span className="grid size-12 place-items-center border border-white/[.12] bg-[#11171e] text-[var(--gold2)]"><Icon size={21} strokeWidth={1.7}/></span></div></section>
+    {loader?<><section className="mt-6 grid gap-3 sm:grid-cols-2"><div className="border border-white/[.1] bg-[#11171e] p-4"><p className="text-xs text-slate-500">Records returned</p><p className="mt-2 text-3xl font-semibold tabular-nums">{loading?"—":(data?.[key]||[]).length}</p></div><div className="border border-white/[.1] bg-[#11171e] p-4"><p className="text-xs text-slate-500">Matching records</p><p className="mt-2 text-3xl font-semibold tabular-nums">{loading?"—":rows.length}</p></div></section>
+      <section className="mt-6"><label className="flex min-h-12 items-center gap-3 border border-white/[.12] bg-[#11171e] px-4 focus-within:border-[var(--gold)]"><Search size={16} className="text-slate-500"/><input value={query} onChange={e=>setQuery(e.target.value)} aria-label={meta.search} placeholder={meta.search} className="w-full bg-transparent text-sm outline-none placeholder:text-slate-600"/></label></section>
+      {error?<div role="alert" className="mt-5 border border-red-300/20 bg-red-300/[.04] p-4 text-sm text-red-200">{error}</div>:loading?<div className="mt-5 h-44 animate-pulse border border-white/[.08] bg-[#11171e] motion-reduce:animate-none"/>:rows.length?<section className="mt-5 overflow-hidden border border-white/[.1] bg-[#11171e]"><div className="hidden grid-cols-[1.2fr_1.2fr_.8fr_.8fr] gap-4 border-b border-white/[.1] bg-white/[.025] px-5 py-3 text-[9px] font-bold uppercase tracking-[.16em] text-slate-600 md:grid"><span>Record</span><span>Details</span><span>Role / status</span><span>Created / joined</span></div><div className="divide-y divide-white/[.07]">{rows.map((row:any,i:number)=><article key={String(row.id??i)} className="grid gap-3 p-4 sm:p-5 md:grid-cols-[1.2fr_1.2fr_.8fr_.8fr] md:gap-4"><div className="min-w-0"><p className="break-words text-sm font-semibold text-slate-200">{row.name||row.email||row.slug||"Untitled record"}</p>{row.email&&row.name&&<p className="mt-1 break-all text-xs text-slate-500">{row.email}</p>}</div><p className="break-words text-xs leading-6 text-slate-500">{row.description||row.job_title||row.department_name||"—"}</p><div><span className="inline-flex border border-white/[.1] px-2 py-1 text-[10px] text-slate-400">{row.role||row.team_role||row.status||"Record"}</span></div><p className="text-[10px] text-slate-600">{row.created_at||row.joined_at||"—"}</p></article>)}</div></section>:<div className="mt-5"><EmptyState title={query?"No matching records":"No records available"} message={query?"Try a different search term.":"The backend returned no records for this view. No sample records are shown."}/></div>}
+    </>:<section className="mt-7 grid gap-4 lg:grid-cols-[1fr_.8fr]"><div className="border border-white/[.1] bg-[#11171e] p-6 sm:p-8"><div className="grid size-11 place-items-center border border-white/[.1] text-[var(--gold2)]"><Icon size={19}/></div><h2 className="mt-5 font-display text-3xl">Live data first.</h2><p className="mt-3 max-w-xl text-sm leading-7 text-slate-400">This section does not invent metrics or pretend that a disconnected service is healthy. Use the linked workspaces for the operational records currently available.</p></div><div className="divide-y divide-white/[.1] border-y border-white/[.1]">{(meta.links||[]).map((item:string[],i:number)=><a key={item[0]} href={item[1]} className="flex min-h-16 items-center gap-4 py-3 transition-colors hover:text-[var(--gold2)]"><span className="text-xs tabular-nums text-slate-600">0{i+1}</span><span className="flex-1 text-sm font-medium">{item[0]}</span><ArrowUpRight size={15} className="text-slate-600"/></a>)}{!meta.links&&<div className="py-5 text-xs leading-6 text-slate-600">When this service is connected, its controls and verified records will appear here.</div>}</div></section>}
+  </Shell>;
 }
