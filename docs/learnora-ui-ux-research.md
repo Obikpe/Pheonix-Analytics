@@ -1,6 +1,6 @@
 # Learnora ME UI/UX Research and Design Decisions
 
-Research checked: 9 October 2026.
+Research checked: 10 October 2026.
 
 ## Design-reference sources
 
@@ -48,3 +48,11 @@ The customer-facing application (frontend-v02) owns learners, tutors/creators, p
 ## MCP availability checked
 
 The available connected tool inventory for this session includes GitHub, Supabase and Vercel operations. It does not include a connected Figma or Mobbin design MCP. This is an access limitation, not a claim that those servers do not exist. Figma and Mobbin can be connected in a supported design/development client if the user chooses to set them up.
+
+## Additional verification — 10 October 2026
+
+- Figma's official MCP documentation confirms a structured design-to-code path through `get_design_context`, including component, layout and variable context, plus a code-to-canvas path for reviewing live UI as editable Figma layers. Use this for design-system alignment and visual review once a supported Figma MCP client is connected; the MCP output is context for the coding agent, not production-ready code by itself.
+- Mobbin's official site currently advertises MCP access on Pro and Team plans. Use it to research real shipped flows (course discovery, lesson players, settings, tutor onboarding and organisation onboarding) rather than copying isolated screenshots.
+- For Learnora, research should be organised by user journey: public discovery → registration/login → course enrolment → lesson and progress → evidence/portfolio; creator application → approval → course builder → publication; organisation request → contract → activation → cohort/team setup; and internal staff operations. Review loading, empty, error, validation, success and permission-denied states for each flow.
+- Awwwards and Godly remain art-direction references. Use them for typography, layout rhythm, imagery and storytelling, while using real product-flow references for functional interaction patterns.
+- No Figma or Mobbin MCP connection was available during this pass. No external design file was read or edited; implementation stayed grounded in the repository's existing React/Tailwind components and the user-approved dark graphite/gold direction.
