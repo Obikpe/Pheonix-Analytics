@@ -46,7 +46,7 @@ export default function Page({params}:{params:{section:string}}){
  },[u,params.section]);
  if(!u)return <div className="p-10 text-slate-500">Loading your Learnora workspace…</div>;
  const section=params.section;
- const courseRows=(data?.data||data?.courses||[]).map((x:any)=>x.course?{id:x.course.id,title:x.course.title,level:x.course.level,status:x.enrolment?.status,completed_lessons:x.completed_lessons,tracked_lessons:x.tracked_lessons}:x);
+ const courseRows:any[]=(data?.data||data?.courses||[]).map((x:any)=>x.course?{id:x.course.id,title:x.course.title,level:x.course.level,status:x.enrolment?.status,completed_lessons:x.completed_lessons,tracked_lessons:x.tracked_lessons}:x);
  const evidenceRows=data?.evidence||[];
  const skills=data?.skills||[];
  const certs=data?.certificates||[];
