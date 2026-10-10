@@ -161,23 +161,27 @@ def list_creator_courses(user: CurrentUser = Depends(get_current_user)):
     )
     courses = result.data or []
     course_ids = [row["id"] for row in courses]
-    modules = (
-        supabase.table("course_modules")
-        .select("id,course_id,title,description,order_index,status")
-        .in_("course_id", course_ids)
-        .neq("status", "archived")
-        .order("order_index")
-        .execute()
-    ).data or [] if course_ids else []
+    modules = []
+    if course_ids:
+        modules = (
+            supabase.table("course_modules")
+            .select("id,course_id,title,description,order_index,status")
+            .in_("course_id", course_ids)
+            .neq("status", "archived")
+            .order("order_index")
+            .execute()
+        ).data or []
     module_ids = [row["id"] for row in modules]
-    lessons = (
-        supabase.table("learnora_lessons")
-        .select("id,module_id,title,description,content,lesson_type,duration_minutes,order_index,status")
-        .in_("module_id", module_ids)
-        .neq("status", "archived")
-        .order("order_index")
-        .execute()
-    ).data or [] if module_ids else []
+    lessons = []
+    if module_ids:
+        lessons = (
+            supabase.table("learnora_lessons")
+            .select("id,module_id,title,description,content,lesson_type,duration_minutes,order_index,status")
+            .in_("module_id", module_ids)
+            .neq("status", "archived")
+            .order("order_index")
+            .execute()
+        ).data or []
     lessons_by_module = {}
     for lesson in lessons:
         lessons_by_module.setdefault(str(lesson["module_id"]), []).append(lesson)
