@@ -3493,7 +3493,23 @@ def me(
         get_current_user
     ),
 ):
+    memberships = []
+    if user.account_type != "admin":
+        try:
+            memberships = (
+                supabase.table("organisation_members")
+                .select("organisation_id,role,status")
+                .eq("user_id", user.id)
+                .eq("status", "active")
+                .execute()
+            ).data or []
+        except Exception as exc:
+            print("Current-user organisation membership lookup failed:", exc)
+            memberships = []
 
+    # A single default organisation is safe to infer. If the user belongs to
+    # multiple organisations, return the memberships but do not silently pick one.
+    single_membership = memberships[0] if len(memberships) == 1 else None
     return {
         "status": "success",
         "id": user.id,
@@ -3507,6 +3523,9 @@ def me(
         "course_access": user.course_access,
         "trial_ends_at": user.trial_ends_at,
         "expires_at": user.expires_at,
+        "organisation_id": single_membership.get("organisation_id") if single_membership else None,
+        "organisation_role": single_membership.get("role") if single_membership else None,
+        "organisation_memberships": memberships,
         "allowed": allowed_for(
             user.role,
             user.account_type,
