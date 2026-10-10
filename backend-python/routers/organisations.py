@@ -815,7 +815,13 @@ def list_my_organisation_teams(user: CurrentUser = Depends(get_current_user)):
     organisation_ids = list({str(row["organisation_id"]) for row in organisation_memberships if row.get("organisation_id")})
     if not organisation_ids:
         return {"success": True, "teams": []}
-    organisation_roles = {str(row["organisation_id"]): row.get("role") for row in organisation_memberships}
+    active_organisations = (
+        supabase.table("organisations").select("id").in_("id", organisation_ids).eq("is_active", True).execute()
+    ).data or []
+    organisation_ids = [str(row["id"]) for row in active_organisations]
+    if not organisation_ids:
+        return {"success": True, "teams": []}
+    organisation_roles = {str(row["organisation_id"]): row.get("role") for row in organisation_memberships if str(row.get("organisation_id")) in organisation_ids}
     team_memberships = (
         supabase.table("organisation_team_members")
         .select("team_id,role,status,joined_at")
@@ -855,6 +861,11 @@ def get_my_team_workspace(team_id: str, user: CurrentUser = Depends(get_current_
         raise HTTPException(404, "Team not found.")
     team = team_result.data[0]
     organisation_id = str(team["organisation_id"])
+    organisation = (
+        supabase.table("organisations").select("id,is_active").eq("id", organisation_id).limit(1).execute()
+    ).data
+    if not organisation or not organisation[0].get("is_active"):
+        raise HTTPException(403, "This organisation workspace is inactive.")
     organisation_membership = (
         supabase.table("organisation_members")
         .select("id,role,status")
