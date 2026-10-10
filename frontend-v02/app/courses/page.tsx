@@ -7,25 +7,6 @@ import PublicFooter from "../../components/public/PublicFooter";
 import EmptyState from "../../components/feedback/EmptyState";
 import { courses } from "../../lib/api";
 
-const catalogueArt = [
-  "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=1000&q=82",
-  "https://images.unsplash.com/photo-1519389950473-47ba0277781c?auto=format&fit=crop&w=1000&q=82",
-  "https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?auto=format&fit=crop&w=1000&q=82",
-  "https://images.unsplash.com/photo-1507842217343-583bb7270b66?auto=format&fit=crop&w=1000&q=82",
-  "https://images.unsplash.com/photo-1524178232363-1fb2b075b655?auto=format&fit=crop&w=1000&q=82",
-  "https://images.unsplash.com/photo-1521737711867-e3b97375f902?auto=format&fit=crop&w=1000&q=82",
-  "https://images.unsplash.com/photo-1516321497487-e288fb19713f?auto=format&fit=crop&w=1000&q=82",
-  "https://images.unsplash.com/photo-1531482615713-2afd69097998?auto=format&fit=crop&w=1000&q=82",
-  "https://images.unsplash.com/photo-1556761175-b413da4baf72?auto=format&fit=crop&w=1000&q=82",
-  "https://images.unsplash.com/photo-1509062522246-3755977927d7?auto=format&fit=crop&w=1000&q=82",
-  "https://images.unsplash.com/photo-1523240795612-9a054b0db644?auto=format&fit=crop&w=1000&q=82",
-  "https://images.unsplash.com/photo-1529156069898-49953e39b3ac?auto=format&fit=crop&w=1000&q=82",
-  "https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?auto=format&fit=crop&w=1000&q=82",
-  "https://images.unsplash.com/photo-1522202176988-66273c2fd55f?auto=format&fit=crop&w=1000&q=82",
-  "https://images.unsplash.com/photo-1523580494863-6f3031224c94?auto=format&fit=crop&w=1000&q=82",
-  "https://images.unsplash.com/photo-1529390079861-591de354faf5?auto=format&fit=crop&w=1000&q=82",
-];
-
 export default function Courses() {
   const [items, setItems] = useState<any[]>([]);
   const [error, setError] = useState("");
@@ -94,9 +75,8 @@ export default function Courses() {
         : error ? <div className="border border-white/10 bg-[#10151b] p-8 sm:p-10"><EmptyState title="Courses unavailable" message={error}/><button onClick={loadCourses} className="mt-4 border border-white/15 px-4 py-2.5 text-sm font-semibold hover:border-[#d7ad35]/50">Try again</button></div>
         : filtered.length ? <div className="grid gap-px border border-white/10 bg-white/10 sm:grid-cols-2 lg:grid-cols-3">
           {filtered.map((course, i) => {
-            const preferred = typeof course.thumbnail_url === "string" && course.thumbnail_url.trim() && !usedImages.has(course.thumbnail_url.trim()) ? course.thumbnail_url.trim() : "";
-            const fallback = catalogueArt.find(url => !usedImages.has(url)) || "";
-            const image = preferred || fallback;
+            const candidate = typeof course.thumbnail_url === "string" ? course.thumbnail_url.trim() : "";
+            const image = candidate && !usedImages.has(candidate) ? candidate : "";
             if (image) usedImages.add(image);
             return <a key={course.id} href={"/courses/" + course.id} className="group min-w-0 bg-[#0b0f14] transition-colors hover:bg-[#10151b]">
               <div className="relative h-52 overflow-hidden bg-[#151c24]">
