@@ -263,9 +263,9 @@ export default function OrganisationWorkspace() {
   const entitlements = Array.isArray(capacity?.entitlements) ? capacity.entitlements : Array.isArray(capacity?.capacity) ? capacity.capacity : [];
 
   return (
-    <div className="min-h-screen bg-[#07090c] text-white">
+    <div className="min-h-screen bg-[var(--bg)] text-white">
       <header className="border-b border-white/[.07] bg-[#080b0f]">
-        <div className="mx-auto flex min-h-20 max-w-7xl flex-wrap items-center justify-between gap-4 px-5 py-3 lg:px-8">
+        <div className="mx-auto flex min-h-20 max-w-[82rem] flex-wrap items-center justify-between gap-4 px-5 py-3 lg:px-8">
           <a href="/"><Logo /></a>
           <nav aria-label="Organisation workspace" className="flex flex-wrap items-center gap-4 text-xs text-slate-400">
             <a href="#overview" className="hover:text-white">Overview</a>
@@ -279,7 +279,7 @@ export default function OrganisationWorkspace() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-7xl px-5 py-10 lg:px-8">
+      <main className="mx-auto max-w-[82rem] px-5 py-10 lg:px-8">
         <div id="overview" className="flex flex-wrap items-start justify-between gap-5">
           <div>
             <p className="text-xs font-bold uppercase tracking-[.2em] gold">Organisation workspace</p>
@@ -304,7 +304,7 @@ export default function OrganisationWorkspace() {
             </div>
 
             <div className="mt-6 grid gap-5 xl:grid-cols-[1.2fr_.8fr]">
-              <section id="people" className="rounded-2xl border border-white/[.08] bg-[#0e1319] p-5 sm:p-6">
+              <section id="people" className="border border-white/[.12] bg-[#11171e] p-5 sm:p-6">
                 <div className="flex items-center justify-between gap-3">
                   <div><h2 className="text-lg font-semibold">People and membership</h2><p className="mt-1 text-xs text-slate-500">Memberships currently returned for your organisation.</p></div>
                   <Users className="gold" size={20} />
@@ -337,24 +337,24 @@ export default function OrganisationWorkspace() {
               </section>
 
               <div className="space-y-5">
-                <section id="configuration" className="rounded-2xl border border-white/[.08] bg-[#0e1319] p-5 sm:p-6">
+                <section id="configuration" className="border border-white/[.12] bg-[#11171e] p-5 sm:p-6">
                   <div className="flex items-center gap-3"><Building2 className="gold" size={20} /><h2 className="font-semibold">Workspace configuration</h2></div>
                   <p className="mt-4 text-sm leading-6 text-slate-400">{org.description || "No workspace description has been set."}</p>
                   <div className="mt-5 grid grid-cols-2 gap-3 text-xs"><div className="rounded-xl bg-black/20 p-3"><p className="text-slate-500">Model</p><p className="mt-1 font-medium">{org.organisation_type || "—"}</p></div><div className="rounded-xl bg-black/20 p-3"><p className="text-slate-500">Template</p><p className="mt-1 font-medium">{org.template || "—"}</p></div></div>
                   <div className="mt-5"><p className="text-xs text-slate-500">Enabled modules</p><div className="mt-2 flex flex-wrap gap-2">{modules.length ? modules.map((m: string) => <span key={m} className="rounded-full border border-white/10 px-3 py-1.5 text-xs text-slate-300">{m.replaceAll("_", " ")}</span>) : <span className="text-xs text-slate-600">No module configuration recorded.</span>}</div></div>
                 </section>
 
-                <section id="contract" className="rounded-2xl border border-white/[.08] bg-[#0e1319] p-5 sm:p-6">
+                <section id="contract" className="border border-white/[.12] bg-[#11171e] p-5 sm:p-6">
                   <div className="flex items-center gap-3"><FileText className="gold" size={20} /><h2 className="font-semibold">Contract and access</h2></div>
                   {org.settings?.pilot_mode ? <p className="mt-4 text-sm leading-6 text-emerald-200/80">This is the Learnora-approved free pilot workspace. Contract entitlements are exempted under the pilot configuration.</p> : contract ? <><p className="mt-4 text-sm text-slate-300">Contract {contract.contract_number || "—"}</p><p className="mt-2 text-sm text-slate-500">Status: {contract.status}</p><p className="mt-2 text-sm text-slate-500">Term: {contract.start_date || "—"} to {contract.end_date || "—"}</p></> : <p className="mt-4 text-sm leading-6 text-slate-500">No active contract was returned. Contact Learnora if your workspace should have an active contract.</p>}
                   <div className="mt-5 border-t border-white/[.06] pt-4"><p className="text-xs text-slate-500">Contract entitlements</p>{entitlements.length ? <div className="mt-3 space-y-2">{entitlements.map((e: any) => <div key={e.id || e.entitlement_key} className="flex items-center justify-between gap-3 text-xs"><span className="text-slate-400">{e.entitlement_key?.replaceAll("_", " ") || e.key}</span><span className="text-slate-300">{e.enabled === false ? "Disabled" : e.limit_value ?? "Enabled"}</span></div>)}</div> : <p className="mt-2 text-xs text-slate-600">No active entitlement records returned.</p>}</div>
                 </section>
 
-                <section className="rounded-2xl border border-white/[.08] bg-[#0e1319] p-5"><h2 className="font-semibold">Continue learning</h2><p className="mt-2 text-sm leading-6 text-slate-500">Browse published Learnora courses. Course assignment and programme management controls appear only where backend operations are available.</p><a href="/courses" className="mt-4 inline-flex items-center gap-2 text-sm font-semibold gold">Browse courses <ArrowRight size={15} /></a></section>
+                <section className="border border-white/[.12] bg-[#11171e] p-5"><h2 className="font-semibold">Continue learning</h2><p className="mt-2 text-sm leading-6 text-slate-500">Browse published Learnora courses. Course assignment and programme management controls appear only where backend operations are available.</p><a href="/courses" className="mt-4 inline-flex items-center gap-2 text-sm font-semibold gold">Browse courses <ArrowRight size={15} /></a></section>
               </div>
             </div>
 
-            <section id="structure" className="mt-8 rounded-2xl border border-white/[.08] bg-[#0e1319] p-5 sm:p-6">
+            <section id="structure" className="mt-8 border border-white/[.12] bg-[#11171e] p-5 sm:p-6">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div><p className="text-xs font-bold uppercase tracking-[.18em] gold">Organisation structure</p><h2 className="mt-2 text-2xl font-semibold">Programmes, cohorts and teams</h2><p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">Programmes group learning initiatives, cohorts group learners in a defined period, and teams organise people around work. Contract entitlements are enforced by the backend.</p></div>
                 <div className="rounded-xl border border-white/[.06] bg-black/20 p-3 text-xs text-slate-500">Use an existing member's user ID when assigning them to a cohort or team.</div>
