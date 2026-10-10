@@ -15,7 +15,7 @@ const all: any[] = [
   ["commerce","Commerce",CircleDollarSign],
   ["creators","Creators",UserCog],
   ["analytics","Analytics",LineChart],
-  ["ai","AI operations",BrainCircuit],
+  ["ai-operations","AI operations",BrainCircuit],
   ["activity","Activity",Activity],
   ["security","Security",ShieldCheck],
   ["notifications","Notifications",Bell],
