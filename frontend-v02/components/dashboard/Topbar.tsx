@@ -1,1 +1,10 @@
-import{Bell,Search}from"lucide-react";export default function Topbar({admin=false}:{admin?:boolean}){return <header className="sticky top-0 z-30 flex h-20 items-center justify-between border-b border-white/[.07] bg-[#07090c]/85 px-5 backdrop-blur-xl lg:px-8"><div className="text-sm text-slate-500">{admin?"Learnora administration":"Learnora"}</div><div className="flex items-center gap-2"><button className="hidden rounded-xl border border-white/[.07] px-3 py-2 text-slate-500 md:flex"><Search size={16} className="mr-2"/>Search</button><a href="/dashboard/notifications" className="grid h-10 w-10 place-items-center rounded-xl border border-white/[.07]"><Bell size={17}/></a></div></header>}
+import { Bell, Search } from "lucide-react";
+export default function Topbar({admin=false}:{admin?:boolean}) {
+  return <header className="sticky top-16 z-30 flex h-16 items-center justify-between border-b border-white/[.08] bg-[#090b0e]/95 px-5 backdrop-blur-xl lg:top-0 lg:h-20 lg:px-8">
+    <div className="min-w-0 truncate text-sm text-slate-500">{admin?"Learnora administration":"Your learning workspace"}</div>
+    <div className="ml-4 flex shrink-0 items-center gap-2">
+      <button type="button" aria-label="Search is not available in this section" title="Search" className="hidden min-h-10 items-center rounded-lg border border-white/[.1] px-3 text-sm text-slate-500 transition-colors hover:border-white/[.2] md:flex"><Search size={15} className="mr-2"/>Search</button>
+      <a href="/dashboard/notifications" aria-label="Notifications" className="grid size-10 place-items-center rounded-lg border border-white/[.1] text-slate-400 transition-colors hover:border-white/[.2] hover:text-white"><Bell size={17}/></a>
+    </div>
+  </header>;
+}
