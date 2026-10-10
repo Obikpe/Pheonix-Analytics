@@ -79,8 +79,18 @@ def apply(
 @router.get("/me")
 def me(user: CurrentUser = Depends(get_current_user)):
     creator = _get_creator(str(user.id))
+    applications = (
+        supabase
+        .table("learnora_creator_applications")
+        .select("id,status,application_data,created_at,reviewed_at")
+        .eq("user_id", user.id)
+        .order("created_at", desc=True)
+        .limit(1)
+        .execute()
+    )
+    application = applications.data[0] if applications.data else None
     if not creator:
-        return {"success": True, "creator": None, "sales": []}
+        return {"success": True, "creator": None, "application": application, "sales": []}
 
     sales = (
         supabase
@@ -90,7 +100,24 @@ def me(user: CurrentUser = Depends(get_current_user)):
         .order("created_at", desc=True)
         .execute()
     )
-    return {"success": True, "creator": creator, "sales": sales.data or []}
+    return {"success": True, "creator": creator, "application": application, "sales": sales.data or []}
+
+
+@router.get("/courses")
+def list_creator_courses(user: CurrentUser = Depends(get_current_user)):
+    creator = _get_creator(str(user.id))
+    if not creator or creator.get("status") not in {"approved", "active"}:
+        return {"success": True, "creator": creator, "courses": []}
+    result = (
+        supabase
+        .table("learnora_courses")
+        .select("id,title,slug,short_description,description,level,status,ownership,thumbnail_url,estimated_hours,created_at,updated_at")
+        .eq("creator_id", creator["id"])
+        .eq("ownership", "creator")
+        .order("created_at", desc=True)
+        .execute()
+    )
+    return {"success": True, "courses": result.data or []}
 
 
 @router.post("/courses", status_code=201)
@@ -207,12 +234,15 @@ def review_application(
             .execute()
         )
 
+        application_data = row.get("application_data") or {}
         payload = {
             "user_id": row["user_id"],
             "status": "approved",
             "approved_by": context.user_id,
             "approved_at": now,
             "application_id": application_id,
+            "display_name": str(application_data.get("display_name") or "").strip() or None,
+            "bio": str(application_data.get("bio") or "").strip() or None,
         }
 
         if existing.data:
