@@ -48,7 +48,7 @@ export default function CreatorStudio() {
 
   useEffect(() => { void load(); }, []);
   const selectedCourse = useMemo(() => courses.find(course => String(course.id) === String(selectedId)), [courses, selectedId]);
-  useEffect(() => { if (selectedCourse) setEditCourseForm({ title: selectedCourse.title || "", slug: selectedCourse.slug || "", short_description: selectedCourse.short_description || "", description: selectedCourse.description || "", level: selectedCourse.level || "beginner" }); }, [selectedCourse?.id]);
+  useEffect(() => { if (selectedCourse) setEditCourseForm({ title: selectedCourse.title || "", slug: selectedCourse.slug || "", short_description: selectedCourse.short_description || "", description: selectedCourse.description || "", level: selectedCourse.level || "beginner" }); }, [selectedCourse]);
   const isApproved = Boolean(workspace?.creator && workspace.creator.status === "approved");
   const application = workspace?.application;
 
