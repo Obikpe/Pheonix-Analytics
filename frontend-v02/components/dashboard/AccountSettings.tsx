@@ -1,6 +1,7 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { useState } from "react";
+import type { FormEvent } from "react";
 import { CheckCircle2, KeyRound, ShieldCheck, UserRound } from "lucide-react";
 import { request } from "../../lib/api/client";
 
