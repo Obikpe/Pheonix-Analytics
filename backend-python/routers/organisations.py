@@ -814,7 +814,7 @@ def get_my_team_workspace(team_id: str, user: CurrentUser = Depends(get_current_
         raise HTTPException(403, "You are not a member of this team.")
     members = (supabase.table("organisation_team_members").select("id,user_id,role,status,joined_at").eq("team_id", team_id).eq("status", "active").order("joined_at").execute()).data or []
     user_ids = list({str(row["user_id"]) for row in members})
-    users = (supabase.table("users").select("id,name,email").in_("id", user_ids).execute()).data or [] if user_ids else []
+    users = (supabase.table("users").select("id,name").in_("id", user_ids).execute()).data or [] if user_ids else []
     user_map = {str(row["id"]): row for row in users}
     enriched_members = [{**row, "user": user_map.get(str(row["user_id"]))} for row in members]
     return {
