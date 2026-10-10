@@ -779,7 +779,7 @@ def add_member_from_team_workspace(team_id: str, body: TeamMemberCreate, user: C
     workspace = get_my_team_workspace(team_id, user)
     if not workspace.get("can_manage_team"):
         raise HTTPException(403, "Only team leads, team managers or organisation administrators can manage this team.")
-    organisation_id = str(user.organisation_id)
+    organisation_id = str(workspace["team"]["organisation_id"])
     if workspace.get("organisation_role") not in {"owner", "admin"} and body.role != "member":
         raise HTTPException(403, "Team leads can add members but cannot grant lead or manager roles.")
     org_member = (supabase.table("organisation_members").select("id").eq("organisation_id", organisation_id).eq("user_id", body.user_id).eq("status", "active").limit(1).execute()).data
@@ -805,30 +805,76 @@ def add_member_from_team_workspace(team_id: str, body: TeamMemberCreate, user: C
 
 @router.get("/my-teams")
 def list_my_organisation_teams(user: CurrentUser = Depends(get_current_user)):
-    organisation_id = user.organisation_id
-    if not organisation_id:
+    organisation_memberships = (
+        supabase.table("organisation_members")
+        .select("organisation_id,role")
+        .eq("user_id", user.id)
+        .eq("status", "active")
+        .execute()
+    ).data or []
+    organisation_ids = list({str(row["organisation_id"]) for row in organisation_memberships if row.get("organisation_id")})
+    if not organisation_ids:
         return {"success": True, "teams": []}
-    memberships = (supabase.table("organisation_team_members").select("team_id,role,status,joined_at").eq("user_id", user.id).eq("status", "active").execute()).data or []
-    team_ids = [str(row["team_id"]) for row in memberships]
-    if not team_ids:
-        return {"success": True, "teams": []}
-    teams = (supabase.table("organisation_teams").select("id,organisation_id,name,slug,description,status,manager_user_id").in_("id", team_ids).eq("organisation_id", str(organisation_id)).eq("status", "active").execute()).data or []
-    membership_map = {str(row["team_id"]): row for row in memberships}
-    return {"success": True, "teams": [{**team, "membership": membership_map.get(str(team["id"]))} for team in teams]}
+    organisation_roles = {str(row["organisation_id"]): row.get("role") for row in organisation_memberships}
+    team_memberships = (
+        supabase.table("organisation_team_members")
+        .select("team_id,role,status,joined_at")
+        .eq("user_id", user.id)
+        .eq("status", "active")
+        .execute()
+    ).data or []
+    membership_map = {str(row["team_id"]): row for row in team_memberships}
+    teams = (
+        supabase.table("organisation_teams")
+        .select("id,organisation_id,name,slug,description,status,manager_user_id")
+        .in_("organisation_id", organisation_ids)
+        .eq("status", "active")
+        .order("name")
+        .execute()
+    ).data or []
+    visible = []
+    for team in teams:
+        role = organisation_roles.get(str(team["organisation_id"]))
+        membership = membership_map.get(str(team["id"]))
+        if membership or role in {"owner", "admin"}:
+            visible.append({**team, "membership": membership, "organisation_role": role})
+    return {"success": True, "teams": visible}
 
 
 @router.get("/team-workspace/{team_id}")
 def get_my_team_workspace(team_id: str, user: CurrentUser = Depends(get_current_user)):
-    organisation_id = user.organisation_id
-    if not organisation_id:
-        raise HTTPException(403, "You do not have an active organisation membership.")
-    team_result = (supabase.table("organisation_teams").select("id,organisation_id,name,slug,description,status,manager_user_id").eq("id", team_id).eq("organisation_id", str(organisation_id)).eq("status", "active").limit(1).execute())
+    team_result = (
+        supabase.table("organisation_teams")
+        .select("id,organisation_id,name,slug,description,status,manager_user_id")
+        .eq("id", team_id)
+        .eq("status", "active")
+        .limit(1)
+        .execute()
+    )
     if not team_result.data:
         raise HTTPException(404, "Team not found.")
-    organisation_membership = (supabase.table("organisation_members").select("id,role,status").eq("organisation_id", str(organisation_id)).eq("user_id", user.id).eq("status", "active").limit(1).execute()).data
+    team = team_result.data[0]
+    organisation_id = str(team["organisation_id"])
+    organisation_membership = (
+        supabase.table("organisation_members")
+        .select("id,role,status")
+        .eq("organisation_id", organisation_id)
+        .eq("user_id", user.id)
+        .eq("status", "active")
+        .limit(1)
+        .execute()
+    ).data
     if not organisation_membership:
         raise HTTPException(403, "You are not an active member of this organisation.")
-    team_membership = (supabase.table("organisation_team_members").select("id,role,status,joined_at").eq("team_id", team_id).eq("user_id", user.id).eq("status", "active").limit(1).execute()).data
+    team_membership = (
+        supabase.table("organisation_team_members")
+        .select("id,role,status,joined_at")
+        .eq("team_id", team_id)
+        .eq("user_id", user.id)
+        .eq("status", "active")
+        .limit(1)
+        .execute()
+    ).data
     organisation_role = organisation_membership[0].get("role")
     if not team_membership and organisation_role not in {"owner", "admin"}:
         raise HTTPException(403, "You are not a member of this team.")
@@ -839,7 +885,7 @@ def get_my_team_workspace(team_id: str, user: CurrentUser = Depends(get_current_
     enriched_members = [{**row, "user": user_map.get(str(row["user_id"]))} for row in members]
     return {
         "success": True,
-        "team": team_result.data[0],
+        "team": team,
         "organisation_role": organisation_role,
         "team_membership": team_membership[0] if team_membership else None,
         "can_manage_team": bool(team_membership and team_membership[0].get("role") in {"lead", "manager"}) or organisation_role in {"owner", "admin"},
