@@ -39,6 +39,7 @@ export default function CreatorStudio() {
       }
     } catch (e: any) {
       setError(e.message || "Creator workspace could not be loaded.");
+      if (/401|unauthor/i.test(e.message || "")) location.href = "/login";
     } finally {
       setLoading(false);
     }
