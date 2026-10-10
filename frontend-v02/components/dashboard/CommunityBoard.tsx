@@ -28,6 +28,8 @@ type Reply = {
 
 export default function CommunityBoard() {
   const [items, setItems] = useState<Discussion[]>([]);
+  const [courseOptions, setCourseOptions] = useState<any[]>([]);
+  const [courseFilter, setCourseFilter] = useState("");
   const [active, setActive] = useState<Discussion | null>(null);
   const [isAuthor, setIsAuthor] = useState(false);
   const [replies, setReplies] = useState<Reply[]>([]);
@@ -45,16 +47,18 @@ export default function CommunityBoard() {
     setLoading(true);
     setError("");
     try {
-      const result = await request<{ discussions?: Discussion[] }>("/community/discussions");
+      const endpoint = "/community/discussions" + (courseFilter ? "?course_id=" + encodeURIComponent(courseFilter) : "");
+      const result = await request<{ discussions?: Discussion[] }>(endpoint);
       setItems(result.discussions || []);
     } catch (e: any) {
       setError(e.message || "Community discussions could not be loaded.");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [courseFilter]);
 
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => { request<any>("/progress/me").then(r => setCourseOptions((r.courses || []).map((x: any) => x.course).filter((x: any) => x?.id))).catch(() => setCourseOptions([])); }, []);
 
   async function openDiscussion(item: Discussion) {
     setError("");
@@ -77,7 +81,7 @@ export default function CommunityBoard() {
     try {
       const result = await request<{ discussion: Discussion }>("/community/discussions", {
         method: "POST",
-        body: JSON.stringify({ title: title.trim(), body: body.trim(), category }),
+        body: JSON.stringify({ title: title.trim(), body: body.trim(), category, course_id: courseFilter || null }),
       });
       setTitle("");
       setBody("");
@@ -187,7 +191,8 @@ export default function CommunityBoard() {
             <p className="mt-3 text-[11px] leading-5 text-slate-600">Keep personal information private. Posts are visible to authenticated Learnora learners using the community.</p>
           </form>
           <div className="rounded-2xl border border-white/[.08] bg-[#0e1319] p-5 sm:p-6">
-            <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-lg font-semibold">Community conversations</h2><p className="mt-1 text-sm text-slate-500">Questions and ideas shared by Learnora learners.</p></div><button onClick={() => void load()} disabled={loading} aria-label="Refresh discussions" className="rounded-lg border border-white/10 p-2.5 text-slate-400 hover:text-white disabled:opacity-50"><RefreshCw size={15} className={loading ? "animate-spin" : ""}/></button></div>
+            <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-lg font-semibold">Community conversations</h2><p className="mt-1 text-sm text-slate-500">{courseFilter ? "Course-only discussion space." : "Questions and ideas shared across Learnora learners."}</p></div><button onClick={() => void load()} disabled={loading} aria-label="Refresh discussions" className="rounded-lg border border-white/10 p-2.5 text-slate-400 hover:text-white disabled:opacity-50"><RefreshCw size={15} className={loading ? "animate-spin" : ""}/></button></div>
+            <label className="mt-5 block max-w-md text-xs text-slate-400">Discussion space<select value={courseFilter} onChange={e => { setActive(null); setCourseFilter(e.target.value); }} className="mt-2 w-full rounded-xl border border-white/10 bg-[#090c10] p-3 text-sm text-white outline-none focus:border-[#d7ad35]/50"><option value="">All Learnora learners</option>{courseOptions.map((course: any) => <option key={course.id} value={course.id}>{course.title || "Enrolled course"}</option>)}</select></label>
             {loading ? <p className="mt-6 text-sm text-slate-500">Loading discussions…</p> : items.length ? <div className="mt-5 divide-y divide-white/[.06]">{items.map(item => <button key={item.id} onClick={() => void openDiscussion(item)} className="block w-full py-4 text-left first:pt-0 last:pb-0"><div className="flex flex-wrap items-center gap-2"><span className="text-[10px] uppercase tracking-[.14em] gold">{item.category}</span><span className="text-[10px] text-slate-600">{item.status}</span></div><h3 className="mt-2 text-base font-semibold text-white hover:gold">{item.title}</h3><p className="mt-2 line-clamp-2 text-sm leading-6 text-slate-400">{item.body}</p><p className="mt-3 text-xs text-slate-600">{item.author_name || "Learnora member"} · {formatDate(item.created_at)} · {item.reply_count || 0} replies</p></button>)}</div> : <div className="mt-6 rounded-xl border border-dashed border-white/10 p-6 text-center"><MessageCircle className="mx-auto gold" size={22}/><p className="mt-3 font-medium">No conversations yet</p><p className="mt-2 text-sm leading-6 text-slate-500">Be the first to ask a question or share something you have learned.</p></div>}
           </div>
         </div>
