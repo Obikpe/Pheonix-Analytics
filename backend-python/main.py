@@ -46,6 +46,7 @@ origins = [
     "https://www.thepheonixanalytics.com",
     "https://learnora-me.vercel.app",
     "https://teamslearnora.vercel.app",
+    "https://learnora-me-v02.vercel.app",
 ]
 
 internal_frontend = os.getenv("INTERNAL_FRONTEND_URL", "").rstrip("/")
