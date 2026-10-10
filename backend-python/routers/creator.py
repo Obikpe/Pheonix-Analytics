@@ -23,6 +23,13 @@ class CreatorCourseIn(BaseModel):
     short_description: str = Field(default="", max_length=500)
     level: str = Field(default="beginner", max_length=50)
 
+class CreatorCourseUpdate(BaseModel):
+    title: str | None = Field(default=None, min_length=2, max_length=200)
+    slug: str | None = Field(default=None, min_length=2, max_length=160)
+    description: str | None = Field(default=None, max_length=10000)
+    short_description: str | None = Field(default=None, max_length=500)
+    level: str | None = Field(default=None, max_length=50)
+
 class CreatorModuleIn(BaseModel):
     title: str = Field(..., min_length=2, max_length=200)
     description: str = Field(default="", max_length=3000)
@@ -244,6 +251,65 @@ def create_course(
         raise HTTPException(500, "Unable to create creator course.")
 
     return {"success": True, "course": result.data[0]}
+
+
+@router.patch("/courses/{course_id}")
+def update_creator_course(course_id: str, body: CreatorCourseUpdate, user: CurrentUser = Depends(get_current_user)):
+    creator = _get_creator(str(user.id))
+    if not creator or creator.get("status") != "approved":
+        raise HTTPException(403, "Approved creator account required.")
+    course = (
+        supabase.table("learnora_courses")
+        .select("id,status")
+        .eq("id", course_id)
+        .eq("creator_id", creator["id"])
+        .eq("ownership", "creator")
+        .limit(1)
+        .execute()
+    ).data
+    if not course:
+        raise HTTPException(404, "Creator course not found.")
+    if course[0].get("status") != "draft":
+        raise HTTPException(409, "Only draft courses can be edited.")
+    changes = {key: value for key, value in body.model_dump(exclude_unset=True).items() if value is not None}
+    if not changes:
+        raise HTTPException(400, "Supply at least one course field to update.")
+    if "title" in changes:
+        changes["title"] = str(changes["title"]).strip()
+        if len(changes["title"]) < 2:
+            raise HTTPException(400, "Course title must contain at least two characters.")
+    if "slug" in changes:
+        changes["slug"] = _normalise_slug(str(changes["slug"]))
+        if len(changes["slug"]) < 2:
+            raise HTTPException(400, "Course slug must contain at least two characters.")
+        duplicate = (
+            supabase.table("learnora_courses").select("id")
+            .is_("organisation_id", "null")
+            .eq("ownership", "creator")
+            .eq("slug", changes["slug"])
+            .neq("id", course_id)
+            .limit(1)
+            .execute()
+        ).data
+        if duplicate:
+            raise HTTPException(409, "That course slug is already in use.")
+    if "level" in changes:
+        changes["level"] = str(changes["level"]).strip().lower()
+        if changes["level"] not in {"beginner", "intermediate", "advanced", "mixed"}:
+            raise HTTPException(400, "Course level must be beginner, intermediate, advanced or mixed.")
+    for key in ("description", "short_description"):
+        if key in changes:
+            changes[key] = str(changes[key]).strip() or None
+    changes["updated_at"] = datetime.now(timezone.utc).isoformat()
+    updated = (
+        supabase.table("learnora_courses").update(changes)
+        .eq("id", course_id)
+        .eq("creator_id", creator["id"])
+        .execute()
+    )
+    if not updated.data:
+        raise HTTPException(500, "Creator course could not be updated.")
+    return {"success": True, "course": updated.data[0]}
 
 
 @router.post("/courses/{course_id}/modules", status_code=201)
