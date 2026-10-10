@@ -6,6 +6,7 @@ import PublicNav from "../../components/public/PublicNav";
 import PublicFooter from "../../components/public/PublicFooter";
 import EmptyState from "../../components/feedback/EmptyState";
 import { courses } from "../../lib/api";
+import { IMAGES } from "../../lib/constants";
 
 export default function Courses() {
   const [items, setItems] = useState<any[]>([]);
@@ -35,7 +36,7 @@ export default function Courses() {
     return text.includes(query.trim().toLowerCase()) && (level === "all" || c.level === level);
   }), [items, query, level]);
 
-  const usedImages = new Set<string>();
+  const usedImages = new Set<string>(Object.values(IMAGES).map(url => url.split("?")[0]));
 
   return <>
     <PublicNav />
@@ -76,8 +77,9 @@ export default function Courses() {
         : filtered.length ? <div className="grid gap-px border border-white/10 bg-white/10 sm:grid-cols-2 lg:grid-cols-3">
           {filtered.map((course, i) => {
             const candidate = typeof course.thumbnail_url === "string" ? course.thumbnail_url.trim() : "";
-            const image = candidate && !usedImages.has(candidate) ? candidate : "";
-            if (image) usedImages.add(image);
+            const imageKey = candidate ? candidate.split("?")[0] : "";
+            const image = imageKey && !usedImages.has(imageKey) ? candidate : "";
+            if (image) usedImages.add(imageKey);
             return <a key={course.id} href={"/courses/" + course.id} className="group min-w-0 bg-[#0b0f14] transition-colors hover:bg-[#10151b]">
               <div className="relative h-52 overflow-hidden bg-[#151c24]">
                 {image ? <img src={image} alt="" loading="lazy" className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.035]"/> : <div className="flex h-full items-end justify-between p-5"><span className="font-display text-6xl text-white/10">{String(i+1).padStart(2,"0")}</span><span className="text-xs uppercase tracking-[.18em] text-[#f2d477]">Learnora / Course</span></div>}
