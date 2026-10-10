@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import type { ReactNode } from "react";
 import { ArrowRight, Award, BookOpen, CheckCircle2, Compass, LogOut, MessageCircle, Sparkles } from "lucide-react";
 import Logo from "../../../components/brand/Logo";
 import EmptyState from "../../../components/feedback/EmptyState";
@@ -65,5 +66,5 @@ export default function WitStartDashboard() {
     </div>
   </main>;
 }
-function Stat({ icon, label, value }: { icon: React.ReactNode; label: string; value: number }) { return <div className="rounded-2xl border border-white/[.08] bg-[#0e1319] p-5"><div className="flex items-center gap-3 text-slate-500">{icon}<span className="text-xs">{label}</span></div><p className="mt-4 text-3xl font-semibold">{value}</p></div>; }
+function Stat({ icon, label, value }: { icon: ReactNode; label: string; value: number }) { return <div className="rounded-2xl border border-white/[.08] bg-[#0e1319] p-5"><div className="flex items-center gap-3 text-slate-500">{icon}<span className="text-xs">{label}</span></div><p className="mt-4 text-3xl font-semibold">{value}</p></div>; }
 function Action({ href, icon, title, text }: { href: string; icon: React.ReactNode; title: string; text: string }) { return <a href={href} className="group rounded-2xl border border-white/[.08] bg-[#0e1319] p-5 transition hover:border-[#d7ad35]/25"><div className="flex items-center gap-3"><span className="gold">{icon}</span><h3 className="font-semibold">{title}</h3></div><p className="mt-3 text-sm leading-6 text-slate-500">{text}</p><span className="mt-4 inline-flex items-center gap-2 text-xs font-semibold gold">Open <ArrowRight size={13}/></span></a>; }
