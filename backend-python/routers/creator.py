@@ -44,6 +44,13 @@ class CreatorLessonIn(BaseModel):
     duration_minutes: int | None = Field(default=None, ge=0)
     order_index: int = Field(default=0, ge=0)
 
+class CreatorLessonUpdate(BaseModel):
+    title: str | None = Field(default=None, min_length=2, max_length=200)
+    content: str | None = Field(default=None, min_length=20, max_length=20000)
+    description: str | None = Field(default=None, max_length=3000)
+    lesson_type: str | None = Field(default=None, max_length=30)
+    duration_minutes: int | None = Field(default=None, ge=0)
+
 
 def _normalise_slug(value: str) -> str:
     return "-".join(value.strip().lower().split())
@@ -361,6 +368,60 @@ def create_creator_lesson(module_id: str, body: CreatorLessonIn, user: CurrentUs
     if not result.data:
         raise HTTPException(500, "Lesson could not be created.")
     return {"success": True, "lesson": result.data[0]}
+
+
+@router.patch("/lessons/{lesson_id}")
+def update_creator_lesson(lesson_id: str, body: CreatorLessonUpdate, user: CurrentUser = Depends(get_current_user)):
+    creator = _get_creator(str(user.id))
+    if not creator or creator.get("status") != "approved":
+        raise HTTPException(403, "Approved creator account required.")
+    lesson = (
+        supabase.table("learnora_lessons").select("id,module_id")
+        .eq("id", lesson_id).limit(1).execute()
+    ).data
+    if not lesson:
+        raise HTTPException(404, "Lesson not found.")
+    module = (
+        supabase.table("course_modules").select("id,course_id")
+        .eq("id", lesson[0]["module_id"]).limit(1).execute()
+    ).data
+    if not module:
+        raise HTTPException(404, "Module not found.")
+    course = (
+        supabase.table("learnora_courses").select("id,status")
+        .eq("id", module[0]["course_id"])
+        .eq("creator_id", creator["id"])
+        .eq("ownership", "creator")
+        .limit(1)
+        .execute()
+    ).data
+    if not course:
+        raise HTTPException(404, "Creator course not found.")
+    if course[0].get("status") != "draft":
+        raise HTTPException(409, "Only lessons in draft courses can be edited.")
+    changes = {key: value for key, value in body.model_dump(exclude_unset=True).items() if value is not None}
+    if not changes:
+        raise HTTPException(400, "Supply at least one lesson field to update.")
+    if "title" in changes:
+        changes["title"] = str(changes["title"]).strip()
+        if len(changes["title"]) < 2:
+            raise HTTPException(400, "Lesson title must contain at least two characters.")
+    if "content" in changes:
+        changes["content"] = str(changes["content"]).strip()
+        if len(changes["content"]) < 20:
+            raise HTTPException(400, "Lesson content must contain at least 20 characters.")
+    if "lesson_type" in changes and changes["lesson_type"] not in {"article", "text", "practice", "mixed"}:
+        raise HTTPException(400, "Lesson type must be article, text, practice or mixed.")
+    if "description" in changes:
+        changes["description"] = str(changes["description"]).strip() or None
+    changes["updated_at"] = datetime.now(timezone.utc).isoformat()
+    updated = (
+        supabase.table("learnora_lessons").update(changes)
+        .eq("id", lesson_id).execute()
+    )
+    if not updated.data:
+        raise HTTPException(500, "Lesson could not be updated.")
+    return {"success": True, "lesson": updated.data[0]}
 
 
 @router.post("/courses/{course_id}/publish")
