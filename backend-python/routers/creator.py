@@ -120,7 +120,7 @@ def me(user: CurrentUser = Depends(get_current_user)):
 @router.get("/courses")
 def list_creator_courses(user: CurrentUser = Depends(get_current_user)):
     creator = _get_creator(str(user.id))
-    if not creator or creator.get("status") not in {"approved", "active"}:
+    if not creator or creator.get("status") != "approved":
         return {"success": True, "creator": creator, "courses": []}
     result = (
         supabase
