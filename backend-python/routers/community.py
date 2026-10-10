@@ -93,9 +93,20 @@ def list_discussions(
     else:
         query = query.is_("course_id", "null").is_("organisation_id", "null")
     rows = query.execute().data or []
-    # A discussion may have both course and organisation scope on legacy rows.
-    # Never return it unless the viewer has access to every attached scope.
-    rows = [row for row in rows if _can_access(user, row)]
+    # A legacy row can carry both scopes. Filter only those rows that need
+    # a second membership check; ordinary scoped lists avoid N+1 queries.
+    if course_id:
+        rows = [
+            row for row in rows
+            if not row.get("organisation_id")
+            or _has_org_membership(str(user.id), str(row["organisation_id"]))
+        ]
+    elif organisation_id:
+        rows = [
+            row for row in rows
+            if not row.get("course_id")
+            or _has_course_enrolment(str(user.id), str(row["course_id"]))
+        ]
     replies = []
     if rows:
         reply_rows = (supabase.table("learnora_discussion_replies").select("discussion_id")
