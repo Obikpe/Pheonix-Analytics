@@ -58,6 +58,7 @@ export default function CommunityBoard() {
   }, [courseFilter]);
 
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => { const courseId = new URLSearchParams(window.location.search).get("course_id"); if (courseId) setCourseFilter(courseId); }, []);
   useEffect(() => { request<any>("/progress/me").then(r => setCourseOptions((r.courses || []).map((x: any) => x.course).filter((x: any) => x?.id))).catch(() => setCourseOptions([])); }, []);
 
   async function openDiscussion(item: Discussion) {
