@@ -8,7 +8,7 @@ export default function Page() {
     <PublicNav />
     <main className="pt-20">
       <section className="relative overflow-hidden border-b border-white/[.06]">
-        <div className="absolute inset-0 bg-cover bg-center opacity-25" style={{backgroundImage:"linear-gradient(90deg,#07090c,#07090c88),url("+IMAGES.community+")"}}/>
+        <div className="absolute inset-0 bg-cover bg-center opacity-25" style={{backgroundImage:"url("+IMAGES.community+")"}}/>
         <div className="relative mx-auto max-w-7xl px-5 py-24 sm:py-32 lg:px-8">
           <p className="text-xs font-bold uppercase tracking-[.22em] gold">About Learnora ME</p>
           <h1 className="mt-6 max-w-4xl font-display text-5xl leading-[1.02] sm:text-6xl lg:text-7xl">Learning should open a door—not leave you standing at the finish line.</h1>
@@ -43,7 +43,7 @@ export default function Page() {
       </section>
 
       <section className="mx-auto grid max-w-7xl gap-10 px-5 py-20 sm:py-24 lg:grid-cols-2 lg:items-center lg:px-8">
-        <div className="relative min-h-[380px] overflow-hidden rounded-[2rem] border border-white/10"><div className="absolute inset-0 bg-cover bg-center" style={{backgroundImage:"linear-gradient(0deg,#07090c55,#07090c00),url("+IMAGES.projects+")"}}/></div>
+        <div className="relative min-h-[380px] overflow-hidden rounded-[2rem] border border-white/10"><div className="absolute inset-0 bg-cover bg-center opacity-60" style={{backgroundImage:"url("+IMAGES.projects+")"}}/></div>
         <div><p className="text-xs font-bold uppercase tracking-[.22em] gold">Our long-term vision</p><h2 className="mt-5 font-display text-4xl leading-tight sm:text-5xl">A learning record that grows with the person.</h2><p className="mt-6 leading-8 text-slate-400">We want Learnora to become a place where learning is not isolated from doing. A learner could build a body of work over time; an instructor could guide and assess practical progress; an organisation could understand its learning programmes and capability gaps; and evidence could help people explain their strengths with more confidence and context.</p><p className="mt-4 leading-8 text-slate-400">That is a direction, not a claim that every part is already available. We intend to build deliberately, test with real learners and organisations, and be transparent about what works today and what is still developing.</p><a href="/how-it-works" className="mt-8 inline-flex items-center gap-2 text-sm font-semibold gold">Explore how it works <ArrowRight size={16}/></a></div>
       </section>
 
