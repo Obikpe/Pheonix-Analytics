@@ -35,6 +35,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any, Callable, Optional, Sequence
+from uuid import UUID
 
 from fastapi import Depends, Header, HTTPException, status
 
@@ -119,6 +120,19 @@ class PermissionContext:
     # ------------------------------------------------------------------
     # Identity helpers
     # ------------------------------------------------------------------
+
+    @property
+    def user_id(self) -> Optional[str]:
+        """UUID-backed actor ID for audit and ownership foreign keys.
+
+        Legacy admin accounts use integer IDs in the separate admins table.
+        Those IDs must not be written into UUID-backed user foreign keys.
+        """
+        actor_id = getattr(self.user, "id", None)
+        try:
+            return str(UUID(str(actor_id))) if actor_id is not None else None
+        except (ValueError, TypeError, AttributeError):
+            return None
 
     @property
     def is_platform_admin(self) -> bool:
