@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { ArrowRight, Building2, FileText, RefreshCw, Users } from "lucide-react";
-import { currentUser } from "../../../lib/api";
+import { currentUser, clearToken } from "../../../lib/api";
 import { request, setOrganisationContext } from "../../../lib/api/client";
 import Logo from "../../../components/brand/Logo";
 import StatCard from "../../../components/dashboard/StatCard";
@@ -274,7 +274,7 @@ export default function OrganisationWorkspace() {
             <a href="#contract" className="hover:text-white">Contract</a>
             <a href="/courses" className="hover:text-white">Courses</a>
           </nav>
-          <button onClick={() => { localStorage.removeItem("phx_token"); location.href = "/login"; }} className="rounded-xl border border-white/10 px-3 py-2 text-xs text-slate-400 hover:text-white">Sign out</button>
+          <button onClick={() => { clearToken(); location.href = "/login"; }} className="rounded-xl border border-white/10 px-3 py-2 text-xs text-slate-400 hover:text-white">Sign out</button>
         </div>
       </header>
 
