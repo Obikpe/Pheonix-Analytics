@@ -46,7 +46,7 @@ export default function CreatorStudio() {
 
   useEffect(() => { void load(); }, []);
   const selectedCourse = useMemo(() => courses.find(course => String(course.id) === String(selectedId)), [courses, selectedId]);
-  const isApproved = Boolean(workspace?.creator && ["approved", "active"].includes(workspace.creator.status));
+  const isApproved = Boolean(workspace?.creator && workspace.creator.status === "approved");
   const application = workspace?.application;
 
   async function createCourse(event: any) {
