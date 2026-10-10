@@ -1,1 +1,3 @@
-export default function ActionButton({children,...p}:React.ButtonHTMLAttributes<HTMLButtonElement>){return <button {...p} className={"rounded-xl border border-[#d7ad35]/25 bg-[#d7ad35]/10 px-4 py-2.5 text-sm font-medium text-[#f2d477] transition hover:bg-[#d7ad35]/20 disabled:cursor-not-allowed disabled:opacity-50 "+(p.className||"")}>{children}</button>}
+export default function ActionButton({children,...p}:React.ButtonHTMLAttributes<HTMLButtonElement>) {
+  return <button {...p} className={"inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-[var(--gold)]/50 bg-[var(--gold)] px-4 py-2.5 text-sm font-semibold text-[#17140d] transition-colors hover:bg-[var(--gold-light)] disabled:cursor-not-allowed disabled:opacity-45 "+(p.className||"")}>{children}</button>;
+}
