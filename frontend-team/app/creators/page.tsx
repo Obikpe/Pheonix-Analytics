@@ -71,7 +71,7 @@ export default function CreatorsPage() {
       <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
         <div>
           <p className="text-xs uppercase tracking-[0.2em] text-[#d7ad35]">Creator economy</p>
-          <h1 className="mt-2 text-4xl font-semibold">Creators</h1>
+          <h1 className="mt-3 font-display text-4xl tracking-tight sm:text-5xl">Creators</h1>
           <p className="mt-2 max-w-2xl text-slate-500">
             Review creator applications and monitor payout operations from live platform records.
           </p>
@@ -90,7 +90,7 @@ export default function CreatorsPage() {
         <Metric label="Payouts awaiting processing" value={requested} />
       </div>
 
-      <section className="mt-8 rounded-2xl border border-white/[.07] bg-[#0e1319]">
+      <section className="mt-8 border border-white/[.1] bg-[#11171e]">
         <div className="border-b border-white/[.06] p-5">
           <h2 className="font-semibold">Creator applications</h2>
           <p className="mt-1 text-sm text-slate-500">Every row below comes from the creator application store.</p>
@@ -119,7 +119,7 @@ export default function CreatorsPage() {
       </section>
 
       {selected && (
-        <section className="mt-5 rounded-2xl border border-white/[.07] bg-[#0e1319] p-5">
+        <section className="mt-5 border border-white/[.1] bg-[#0e1319] p-5">
           <div className="flex items-center justify-between gap-4">
             <div>
               <h2 className="font-semibold">Application detail</h2>
