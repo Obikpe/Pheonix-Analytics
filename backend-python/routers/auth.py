@@ -3512,15 +3512,15 @@ def me(
         try:
             organisation_rows = (
                 supabase.table("organisations")
-                .select("id,name,slug")
+                .select("id,name,slug,is_active")
                 .in_("id", organisation_ids)
                 .execute()
             ).data or []
-            organisation_map = {str(row["id"]): row for row in organisation_rows}
+            organisation_map = {str(row["id"]): row for row in organisation_rows if row.get("is_active")}
             memberships = [
-                {**row, "organisation_name": (organisation_map.get(str(row.get("organisation_id"))) or {}).get("name"),
-                 "organisation_slug": (organisation_map.get(str(row.get("organisation_id"))) or {}).get("slug")}
-                for row in memberships
+                {**row, "organisation_name": organisation_map[str(row["organisation_id"])].get("name"),
+                 "organisation_slug": organisation_map[str(row["organisation_id"])].get("slug")}
+                for row in memberships if str(row.get("organisation_id")) in organisation_map
             ]
         except Exception as exc:
             print("Current-user organisation details lookup failed:", exc)
