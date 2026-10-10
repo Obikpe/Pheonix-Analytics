@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { ArrowRight, Building2, FileText, RefreshCw, Users } from "lucide-react";
 import { currentUser } from "../../../lib/api";
-import { request } from "../../../lib/api/client";
+import { request, setOrganisationContext } from "../../../lib/api/client";
 import Logo from "../../../components/brand/Logo";
 import StatCard from "../../../components/dashboard/StatCard";
 import EmptyState from "../../../components/feedback/EmptyState";
@@ -37,18 +37,36 @@ export default function OrganisationWorkspace() {
   const [memberId, setMemberId] = useState("");
   const [role, setRole] = useState("learner");
   const [busy, setBusy] = useState(false);
+  const [needsOrgSelection, setNeedsOrgSelection] = useState(false);
+  const [orgChoices, setOrgChoices] = useState<any[]>([]);
 
   async function load() {
     setLoading(true);
     setError("");
     try {
       const me = await currentUser();
-      setUser(me);
-      if (!me.organisation_id || !["owner", "admin"].includes(me.organisation_role)) {
+      const memberships = me.organisation_memberships || [];
+      const privileged = memberships.filter((membership: any) => ["owner", "admin"].includes(membership.role));
+      const savedId = typeof window !== "undefined" ? localStorage.getItem("learnora_organisation_id") : null;
+      const selected = (me.organisation_id ? memberships.find((membership: any) => String(membership.organisation_id) === String(me.organisation_id)) : null)
+        || (savedId ? memberships.find((membership: any) => String(membership.organisation_id) === String(savedId) && ["owner", "admin"].includes(membership.role)) : null)
+        || (privileged.length === 1 ? privileged[0] : null);
+      setOrgChoices(privileged);
+      if (!selected && privileged.length > 1) {
+        setUser(me);
+        setNeedsOrgSelection(true);
+        return;
+      }
+      if (!selected || !["owner", "admin"].includes(selected.role)) {
         location.href = "/dashboard";
         return;
       }
-      const id = encodeURIComponent(me.organisation_id);
+      setOrganisationContext(String(selected.organisation_id));
+      me.organisation_id = selected.organisation_id;
+      me.organisation_role = selected.role;
+      setUser(me);
+      setNeedsOrgSelection(false);
+      const id = encodeURIComponent(selected.organisation_id);
       const [orgResult, memberResult, summaryResult, contractResult, capacityResult, programmeResult, cohortResult, teamResult, cohortCourseResult, publicCourseResult, assignedCourseResult] = await Promise.all([
         request<any>("/organisations/" + id),
         request<any>("/organisations/" + id + "/members"),
@@ -225,6 +243,19 @@ export default function OrganisationWorkspace() {
       setNotice("Member added to team.");
       await load();
     } catch (e: any) { setError(e.message || "Member could not be added to the team."); }
+  }
+
+  if (needsOrgSelection && !loading) {
+    return <main className="min-h-screen bg-[#080b0f] px-5 py-12 text-white">
+      <section className="mx-auto max-w-3xl rounded-3xl border border-white/[.08] bg-[#0e1319] p-6 sm:p-9">
+        <Building2 className="gold" size={25}/>
+        <p className="mt-5 text-xs font-bold uppercase tracking-[.2em] gold">Organisation workspace</p>
+        <h1 className="mt-3 font-display text-4xl">Choose your workspace</h1>
+        <p className="mt-3 text-sm leading-7 text-slate-400">Your account can administer more than one organisation. Choose which organisation you want to manage for this session.</p>
+        <div className="mt-6 grid gap-3">{orgChoices.map((choice: any) => <button key={choice.organisation_id} onClick={() => { setOrganisationContext(String(choice.organisation_id)); setNeedsOrgSelection(false); void load(); }} className="flex items-center justify-between gap-4 rounded-xl border border-white/10 p-4 text-left transition hover:border-[#d7ad35]/30 hover:bg-[#d7ad35]/[.03]"><div><p className="font-semibold">{choice.organisation_name || "Organisation workspace"}</p><p className="mt-1 text-xs text-slate-500">{choice.organisation_slug || choice.organisation_id}</p></div><span className="rounded-full border border-white/10 px-3 py-1 text-xs capitalize text-slate-400">{choice.role}</span></button>)}</div>
+        <button onClick={() => { location.href = "/dashboard"; }} className="mt-6 text-sm text-slate-500 hover:text-white">Return to learner dashboard</button>
+      </section>
+    </main>;
   }
 
   const modules = Array.isArray(org?.settings?.enabled_modules) ? org.settings.enabled_modules : [];
