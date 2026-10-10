@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ArrowRight, BookOpen, CheckCircle2, CircleDollarSign, Plus, Send, Sparkles } from "lucide-react";
+import { ArrowRight, BookOpen, CircleDollarSign, Plus, Send, Sparkles } from "lucide-react";
 import Shell from "../../../components/dashboard/Shell";
 import SectionHeader from "../../../components/dashboard/SectionHeader";
 import EmptyState from "../../../components/feedback/EmptyState";
