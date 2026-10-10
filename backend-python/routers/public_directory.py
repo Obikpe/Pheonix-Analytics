@@ -5,6 +5,7 @@ in through settings.public_directory=true; active status alone is not consent
 to be discoverable.
 """
 from fastapi import APIRouter, HTTPException
+from urllib.parse import urlparse
 
 from .auth import supabase
 
@@ -145,13 +146,38 @@ def public_tutors():
     result = (
         supabase
         .table("learnora_creator_accounts")
-        .select("id,display_name,bio,created_at")
+        .select("id,display_name,bio,created_at,application_id")
         .eq("status", "approved")
         .order("display_name")
         .limit(100)
         .execute()
     )
-    return {"success": True, "tutors": result.data or []}
+    tutors = result.data or []
+    application_ids = list({str(row["application_id"]) for row in tutors if row.get("application_id")})
+    applications = (
+        supabase.table("learnora_creator_applications")
+        .select("id,application_data")
+        .in_("id", application_ids)
+        .execute()
+    ).data or [] if application_ids else []
+    application_map = {str(row["id"]): (row.get("application_data") or {}) for row in applications}
+    public_tutors = []
+    for tutor in tutors:
+        application = application_map.get(str(tutor.get("application_id")), {})
+        portfolio_url = str(application.get("portfolio_url") or "").strip()
+        parsed = urlparse(portfolio_url) if portfolio_url else None
+        if not parsed or parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            portfolio_url = None
+        public_tutors.append({
+            "id": tutor.get("id"),
+            "display_name": tutor.get("display_name"),
+            "bio": tutor.get("bio"),
+            "expertise": str(application.get("expertise") or "").strip()[:200] or None,
+            "portfolio_url": portfolio_url,
+            "sample_course": str(application.get("sample_course") or "").strip()[:200] or None,
+            "created_at": tutor.get("created_at"),
+        })
+    return {"success": True, "tutors": public_tutors}
 
 
 @router.get("/organisations")
