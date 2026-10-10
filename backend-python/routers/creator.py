@@ -451,9 +451,15 @@ def publish_creator_course(course_id: str, user: CurrentUser = Depends(get_curre
     if any(count == 0 for count in lesson_counts.values()):
         raise HTTPException(409, "Every module must contain at least one lesson before publishing.")
     now = datetime.now(timezone.utc).isoformat()
+    total_minutes = sum(int(lesson.get("duration_minutes") or 0) for lesson in lessons)
+    course_updates = {
+        "status": "published",
+        "updated_at": now,
+        "estimated_hours": round(total_minutes / 60, 1) if total_minutes > 0 else None,
+    }
     supabase.table("course_modules").update({"status": "published", "updated_at": now}).eq("course_id", course_id).neq("status", "archived").execute()
     supabase.table("learnora_lessons").update({"status": "published", "updated_at": now}).in_("module_id", module_ids).neq("status", "archived").execute()
-    updated = supabase.table("learnora_courses").update({"status": "published", "updated_at": now}).eq("id", course_id).eq("creator_id", creator["id"]).execute()
+    updated = supabase.table("learnora_courses").update(course_updates).eq("id", course_id).eq("creator_id", creator["id"]).execute()
     if not updated.data:
         raise HTTPException(500, "Course could not be published.")
     return {"success": True, "course": updated.data[0]}
