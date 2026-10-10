@@ -252,10 +252,12 @@ def create_creator_module(course_id: str, body: CreatorModuleIn, user: CurrentUs
         raise HTTPException(404, "Creator course not found.")
     if course[0].get("status") != "draft":
         raise HTTPException(409, "Only draft courses can be edited.")
+    previous_modules = (supabase.table("course_modules").select("order_index").eq("course_id", course_id).order("order_index", desc=True).limit(1).execute()).data or []
+    next_order = int(previous_modules[0].get("order_index") or 0) + 1 if previous_modules else 0
     result = supabase.table("course_modules").insert({
         "course_id": course_id, "title": body.title.strip(),
         "description": body.description.strip() or None,
-        "order_index": body.order_index, "status": "draft",
+        "order_index": next_order, "status": "draft",
     }).execute()
     if not result.data:
         raise HTTPException(500, "Module could not be created.")
@@ -278,11 +280,13 @@ def create_creator_lesson(module_id: str, body: CreatorLessonIn, user: CurrentUs
     if body.lesson_type not in {"article", "text", "practice", "mixed"}:
         raise HTTPException(400, "Lesson type must be article, text, practice or mixed.")
     slug = _normalise_slug(body.title)
+    previous_lessons = (supabase.table("learnora_lessons").select("order_index").eq("module_id", module_id).order("order_index", desc=True).limit(1).execute()).data or []
+    next_order = int(previous_lessons[0].get("order_index") or 0) + 1 if previous_lessons else 0
     result = supabase.table("learnora_lessons").insert({
         "module_id": module_id, "title": body.title.strip(), "slug": slug,
         "description": body.description.strip() or None, "content": body.content.strip(),
         "lesson_type": body.lesson_type, "duration_minutes": body.duration_minutes,
-        "order_index": body.order_index, "is_preview": False, "status": "draft",
+        "order_index": next_order, "is_preview": False, "status": "draft",
     }).execute()
     if not result.data:
         raise HTTPException(500, "Lesson could not be created.")
