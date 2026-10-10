@@ -5,7 +5,7 @@ const data:any={
   learner:{
     eyebrow:"For learners",title:"Learn something useful. Build something real. Keep proof of your progress.",
     intro:"Learnora is being built for people who want to move beyond watching lessons. Learn concepts, practise them, create work and gradually build a clearer picture of what you can do.",
-    image:IMAGES.learners,cta:"Explore courses",href:"/courses",
+    image:IMAGES.learnerPage,cta:"Explore courses",href:"/courses",
     promise:"A learning journey you can return to, reflect on and build on.",
     steps:[["Learn","Follow lessons with clear objectives and examples."],["Practise","Use exercises and feedback to work through the hard parts."],["Build","Apply your knowledge to projects and practical challenges."],["Show your work","Collect evidence, feedback and projects in a portfolio."]],
     notes:["Progress that helps you decide what to do next","Practice and project work connected to learning","A Skills Passport designed to distinguish claimed skills from reviewed evidence","An AI tutor and coach where access is available"]
@@ -13,7 +13,7 @@ const data:any={
   instructor:{
     eyebrow:"For instructors",title:"Turn what you know into learning people can use.",
     intro:"Learnora aims to support instructors and creators as they turn expertise into structured, practical learning. The goal is not only to publish content, but to help learners apply it and receive useful feedback.",
-    image:IMAGES.instructors,cta:"Browse instructors",href:"/tutors",secondaryCta:"Apply to teach",secondaryHref:"/apply-to-teach",
+    image:IMAGES.instructorPage,cta:"Browse instructors",href:"/tutors",secondaryCta:"Apply to teach",secondaryHref:"/apply-to-teach",
     promise:"A creator experience that connects teaching, practice and learner progress.",
     steps:[["Structure","Organise your expertise into clear learning outcomes."],["Teach","Create learning material and activities that invite application."],["Review","Use criteria, rubrics and feedback to support improvement."],["Grow","Understand engagement and build your teaching practice."]],
     notes:["Course and learning-product creation as creator access is enabled","Learner progress and submission review","AI support for explanations, activities and rubric drafts","Creator earnings and commerce features as they become available"]
@@ -21,7 +21,7 @@ const data:any={
   organisation:{
     eyebrow:"For organisations",title:"Build the capabilities your people and work need next.",
     intro:"Every organisation has its own shape. Learnora is being designed to support schools, academies, teams and businesses with learning programmes that reflect their people, priorities and operating model.",
-    image:IMAGES.organisations,cta:"Start an organisation enquiry",href:"/get-started",
+    image:IMAGES.organisationPage,cta:"Start an organisation enquiry",href:"/get-started",
     promise:"Learning programmes that connect people, practice and evidence—not just attendance.",
     steps:[["Shape the workspace","Choose an organisational model and configure the relevant modules."],["Organise learning","Set up programmes, cohorts, teams and course access as needed."],["Support people","Give admins, tutors, team leads and learners scoped workspaces."],["Understand outcomes","Review participation, assessments, practical work and skill evidence."]],
     notes:["Flexible structure: not every organisation needs the same hierarchy","Organisation-owned learning alongside Learnora courses","Role-scoped administration for teams, tutors and learners","Capacity and access governed by the agreed contract"]
