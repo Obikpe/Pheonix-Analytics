@@ -48,9 +48,10 @@ export default function OrganisationWorkspace() {
       const memberships = me.organisation_memberships || [];
       const privileged = memberships.filter((membership: any) => ["owner", "admin"].includes(membership.role));
       const savedId = typeof window !== "undefined" ? localStorage.getItem("learnora_organisation_id") : null;
-      const selected = (me.organisation_id ? memberships.find((membership: any) => String(membership.organisation_id) === String(me.organisation_id)) : null)
+      const forceChoose = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("choose") === "1";
+      const selected = forceChoose ? null : ((me.organisation_id ? memberships.find((membership: any) => String(membership.organisation_id) === String(me.organisation_id)) : null)
         || (savedId ? memberships.find((membership: any) => String(membership.organisation_id) === String(savedId) && ["owner", "admin"].includes(membership.role)) : null)
-        || (privileged.length === 1 ? privileged[0] : null);
+        || (privileged.length === 1 ? privileged[0] : null));
       setOrgChoices(privileged);
       if (!selected && privileged.length > 1) {
         setUser(me);
@@ -252,7 +253,7 @@ export default function OrganisationWorkspace() {
         <p className="mt-5 text-xs font-bold uppercase tracking-[.2em] gold">Organisation workspace</p>
         <h1 className="mt-3 font-display text-4xl">Choose your workspace</h1>
         <p className="mt-3 text-sm leading-7 text-slate-400">Your account can administer more than one organisation. Choose which organisation you want to manage for this session.</p>
-        <div className="mt-6 grid gap-3">{orgChoices.map((choice: any) => <button key={choice.organisation_id} onClick={() => { setOrganisationContext(String(choice.organisation_id)); setNeedsOrgSelection(false); void load(); }} className="flex items-center justify-between gap-4 rounded-xl border border-white/10 p-4 text-left transition hover:border-[#d7ad35]/30 hover:bg-[#d7ad35]/[.03]"><div><p className="font-semibold">{choice.organisation_name || "Organisation workspace"}</p><p className="mt-1 text-xs text-slate-500">{choice.organisation_slug || choice.organisation_id}</p></div><span className="rounded-full border border-white/10 px-3 py-1 text-xs capitalize text-slate-400">{choice.role}</span></button>)}</div>
+        <div className="mt-6 grid gap-3">{orgChoices.map((choice: any) => <button key={choice.organisation_id} onClick={() => { history.replaceState(null, "", location.pathname); setOrganisationContext(String(choice.organisation_id)); setNeedsOrgSelection(false); void load(); }} className="flex items-center justify-between gap-4 rounded-xl border border-white/10 p-4 text-left transition hover:border-[#d7ad35]/30 hover:bg-[#d7ad35]/[.03]"><div><p className="font-semibold">{choice.organisation_name || "Organisation workspace"}</p><p className="mt-1 text-xs text-slate-500">{choice.organisation_slug || choice.organisation_id}</p></div><span className="rounded-full border border-white/10 px-3 py-1 text-xs capitalize text-slate-400">{choice.role}</span></button>)}</div>
         <button onClick={() => { location.href = "/dashboard"; }} className="mt-6 text-sm text-slate-500 hover:text-white">Return to learner dashboard</button>
       </section>
     </main>;
@@ -285,7 +286,7 @@ export default function OrganisationWorkspace() {
             <h1 className="mt-3 font-display text-4xl sm:text-5xl">{org?.name || "Your organisation"}</h1>
             <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-400">Manage the people and learning access attached to your organisation. Available controls depend on your role and approved contract entitlements.</p>
           </div>
-          <button onClick={() => void load()} className="inline-flex items-center gap-2 rounded-xl border border-white/10 px-4 py-3 text-sm text-slate-300"><RefreshCw size={15} /> Refresh</button>
+          <div className="flex flex-wrap gap-2">{orgChoices.length > 1 && <button onClick={() => { history.replaceState(null, "", "/dashboard/organisation?choose=1"); setNeedsOrgSelection(true); }} className="rounded-xl border border-white/10 px-4 py-3 text-sm text-slate-300">Switch workspace</button>}<button onClick={() => void load()} className="inline-flex items-center gap-2 rounded-xl border border-white/10 px-4 py-3 text-sm text-slate-300"><RefreshCw size={15} /> Refresh</button></div>
         </div>
 
         {error && <div role="alert" className="mt-6 rounded-xl border border-red-400/20 bg-red-400/[.05] p-4 text-sm text-red-200">{error}</div>}
