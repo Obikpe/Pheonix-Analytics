@@ -49,6 +49,7 @@ ALLOWED = {
     "coach",
     "practice",
     "project",
+    "summarise",
     "instructor",
     "organisation",
 }

@@ -162,7 +162,7 @@ export default function SuperAdminDashboard() {
   const [structure, setStructure] = useState<AnyRow | null>(null);
   const [modal, setModal] = useState<string | null>(null);
 
-  const [orgForm, setOrgForm] = useState({ name: '', slug: '', description: '', type: 'academy', template: 'academy' });
+  const [orgForm, setOrgForm] = useState({ name: '', slug: '', description: '', type: 'academy', template: 'academy', logo_url: '', brand_primary: '#d7ad35', brand_secondary: '#f2d477', modules: [] as string[], public_directory: false, request_id: '' });
   const [staffForm, setStaffForm] = useState({ name: '', email: '', password: '', job_title: '', role_slug: 'support' });
   const [deptForm, setDeptForm] = useState({ name: '', slug: '', description: '' });
   const [teamForm, setTeamForm] = useState({ name: '', slug: '', description: '', department_id: '' });
@@ -235,9 +235,60 @@ export default function SuperAdminDashboard() {
     }
   }
 
+  function openOrganisationBuilder(requestRow?: AnyRow) {
+    if (requestRow) {
+      const type = String(requestRow.organisation_type || 'academy').toLowerCase();
+      setOrgForm(x => ({
+        ...x,
+        name: String(requestRow.organisation_name || x.name),
+        slug: slugify(String(requestRow.organisation_name || x.name)),
+        description: String(requestRow.notes || x.description),
+        type: ['academy','school','business','enterprise','nonprofit','team'].includes(type) ? type : 'academy',
+        request_id: String(requestRow.id || ''),
+      }));
+    } else {
+      setOrgForm(x => ({ ...x, request_id: '' }));
+      if (ops.requests.length === 0) void loadOperations();
+    }
+    setModal('org');
+  }
+
+  async function updateRequestStatus(id: string, status: string) {
+    await mutate(`/api/internal/operations/organisation-requests/${encodeURIComponent(id)}`, {
+      method: 'PATCH', body: JSON.stringify({ status }),
+    }, `Request moved to ${status.replaceAll('_',' ')}.`, () => { void loadOperations(); });
+  }
+
+  async function sendContract(organisationId: string) {
+    await mutate(`/api/internal/operations/organisations/${encodeURIComponent(organisationId)}/contract-send`, {
+      method: 'POST',
+    }, 'Contract sent to the prospect portal.', () => { void loadOperations(); });
+  }
+
+  async function approveContract(contractId: string) {
+    await mutate(`/api/internal/operations/contracts/${encodeURIComponent(contractId)}/approve`, {
+      method: 'POST',
+    }, 'Signed contract approved. Activation is still a separate step.', () => { void loadOperations(); });
+  }
+
+  async function activateContract(contractId: string) {
+    await mutate(`/api/internal/operations/contracts/${encodeURIComponent(contractId)}/activate`, {
+      method: 'POST',
+    }, 'Contract activated and organisation workspace enabled.', () => { void loadOperations(); });
+  }
+
   async function createOrganisation(e: FormEvent) {
     e.preventDefault();
-    await mutate('/api/internal/operations/organisations', { method: 'POST', body: JSON.stringify({ ...orgForm, organisation_type: orgForm.type, slug: slugify(orgForm.slug || orgForm.name) }) }, 'Organisation created.');
+    const { type, modules, public_directory, ...fields } = orgForm;
+    await mutate('/api/internal/operations/organisations', {
+      method: 'POST',
+      body: JSON.stringify({
+        ...fields,
+        organisation_type: type,
+        slug: slugify(orgForm.slug || orgForm.name),
+        settings: { enabled_modules: modules, public_directory },
+      }),
+    }, 'Inactive organisation workspace created and linked to the request.', () => { void loadOperations(); });
   }
 
   async function createStaff(e: FormEvent) {
@@ -309,7 +360,18 @@ export default function SuperAdminDashboard() {
         api('/api/internal/operations/creators/applications'),
         api('/api/internal/operations/creators/payouts'),
       ]);
-      setOps({ requests: rows(r, 'requests'), applications: rows(a, 'applications'), payouts: rows(p, 'payouts') });
+      const requestRows = rows(r, 'requests');
+      const enrichedRequests = await Promise.all(requestRows.map(async requestRow => {
+        if (!requestRow.organisation_id) return requestRow;
+        try {
+          const prep = await api<AnyRow>(`/api/internal/operations/organisations/${encodeURIComponent(String(requestRow.organisation_id))}/contract-preparation`);
+          const versions = rows(prep, 'versions');
+          return { ...requestRow, contract: (prep as AnyRow).contract || null, contract_versions: versions, latest_contract_version: versions[0] || null };
+        } catch {
+          return requestRow;
+        }
+      }));
+      setOps({ requests: enrichedRequests, applications: rows(a, 'applications'), payouts: rows(p, 'payouts') });
     } catch (e) { setError(e instanceof Error ? e.message : 'Unable to load operations.'); }
   }
 
@@ -318,10 +380,12 @@ export default function SuperAdminDashboard() {
   }, [section]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function logout() {
+    sessionStorage.removeItem('learnora_team_token');
+    sessionStorage.removeItem('learnora_team_last_activity');
     localStorage.removeItem('learnora_internal_token');
     localStorage.removeItem('phx_token');
     localStorage.removeItem('phx_admin_user');
-    window.location.href = '/';
+    window.location.href = '/login';
   }
 
   const aiProfiles = rows(ai, 'profiles');
@@ -380,7 +444,7 @@ export default function SuperAdminDashboard() {
               <Overview organisations={organisations} staff={staff} teams={teams} courses={courses} aiSummary={aiSummary} onNavigate={setSection} />
             ) : section === 'organisations' ? (
               <section>
-                <SectionHead title="Organisations" description="Create and manage the organisations that run on Learnora ME." action={<Button onClick={() => setModal('org')}><Plus size={16}/> New organisation</Button>} />
+                <SectionHead title="Organisations" description="Create inactive customer workspaces from approved request records, with reusable templates, branding and module configuration." action={<Button onClick={() => openOrganisationBuilder()}><Plus size={16}/> Build workspace</Button>} />
                 <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{organisations.map(o => <Card key={String(o.id)} className="p-5"><div className="flex items-start justify-between"><div><h3 className="font-semibold">{str(o,'name')}</h3><p className="mt-1 text-xs text-white/35">{str(o,'slug')}</p></div><span className={`rounded-full px-2 py-1 text-[10px] ${o.is_active === false ? 'bg-red-500/10 text-red-200' : 'bg-emerald-500/10 text-emerald-200'}`}>{o.is_active === false ? 'Inactive' : 'Active'}</span></div><div className="mt-5 grid grid-cols-2 gap-3 text-xs"><div className="rounded-xl bg-white/[.03] p-3"><span className="text-white/35">Type</span><p className="mt-1">{str(o,'organisation_type')}</p></div><div className="rounded-xl bg-white/[.03] p-3"><span className="text-white/35">Template</span><p className="mt-1">{str(o,'template')}</p></div></div><p className="mt-4 text-xs text-white/35">Created {fmtDate(o.created_at)}</p></Card>)}</div>
                 {organisations.length === 0 && <Empty title="No organisations yet" text="Create the first organisation instead of using hard-coded WitStart logic." />}
               </section>
@@ -423,7 +487,25 @@ export default function SuperAdminDashboard() {
             ) : section === 'operations' ? (
               <section>
                 <SectionHead title="Commercial & Operations" description="Run organisation intake, creator workflows and commercial operations from one internal workspace." action={<Button variant="ghost" onClick={() => void loadOperations()}><RefreshCw size={15}/> Refresh</Button>} />
-                <div className="grid gap-5 lg:grid-cols-3"><ListCard title="Organisation requests" items={ops.requests} primary={['name','email','status']}/><ListCard title="Creator applications" items={ops.applications} primary={['name','email','status']}/><ListCard title="Payouts" items={ops.payouts} primary={['amount','status','created_at']}/></div>
+                <div className="grid gap-5 xl:grid-cols-[1.35fr_.8fr_.8fr]">
+                  <Card className="p-5"><div className="flex items-center justify-between gap-3"><div><h3 className="font-semibold">Organisation onboarding</h3><p className="mt-1 text-xs leading-5 text-white/40">Request → discussion → workspace setup → contract → signature → approval → activation.</p></div><span className="rounded-full bg-[#d7ad35]/10 px-2 py-1 text-xs text-[#f2d477]">{ops.requests.length} requests</span></div>
+                    <div className="mt-5 space-y-3">{ops.requests.map(r=>{const contract=(r.contract||{}) as AnyRow;const version=(r.latest_contract_version||{}) as AnyRow;const qa=(version.qa_result||{}) as AnyRow;const status=String(r.status||'submitted');return <article key={String(r.id)} className="rounded-xl border border-white/10 bg-black/20 p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><h4 className="font-medium">{str(r,'organisation_name')}</h4><p className="mt-1 text-xs text-white/45">{str(r,'contact_name')} · {str(r,'email')}</p><p className="mt-2 text-xs text-white/35">{str(r,'organisation_type','organisation')} · {str(r,'expected_learners','learner count not provided')} learners expected</p></div><span className="rounded-full border border-white/10 px-2.5 py-1 text-[10px] uppercase tracking-[.12em] text-white/55">{status.replaceAll('_',' ')}</span></div>
+                      {r.organisation_id&&<div className="mt-3 flex flex-wrap gap-2 text-[11px] text-white/45"><span>Workspace linked</span><span>·</span><span>Contract: {str(contract,'status','not prepared')}</span>{version.version_number&&<><span>·</span><span>Draft v{String(version.version_number)} / QA {str(qa,'status','not run')}</span></>}</div>}
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        {status==='submitted'&&<Button variant="ghost" onClick={()=>void updateRequestStatus(String(r.id),'under_review')}>Start review</Button>}
+                        {['under_review','submitted'].includes(status)&&<Button variant="ghost" onClick={()=>void updateRequestStatus(String(r.id),'discussion')}>Discussion started</Button>}
+                        {['under_review','discussion','contract_preparation'].includes(status)&&!r.organisation_id&&<Button onClick={()=>openOrganisationBuilder(r)}><Plus size={14}/> Build workspace</Button>}
+                        {r.organisation_id&&<Button variant="ghost" onClick={()=>{window.location.href='/organisations'}}>Manage workspace</Button>}
+                        {r.organisation_id&&contract.status==='draft'&&version.draft_content&&qa.status==='pass'&&<Button onClick={()=>void sendContract(String(r.organisation_id))}>Send contract</Button>}
+                        {r.organisation_id&&contract.status==='signed'&&!contract.approved_at&&<Button onClick={()=>void approveContract(String(contract.id))}>Approve signed contract</Button>}
+                        {r.organisation_id&&contract.status==='signed'&&contract.approved_at&&<Button onClick={()=>void activateContract(String(contract.id))}>Activate workspace</Button>}
+                        {!['active','declined','closed'].includes(status)&&<Button variant="danger" onClick={()=>void updateRequestStatus(String(r.id),'declined')}>Decline</Button>}
+                      </div>
+                    </article>})}
+                    {ops.requests.length===0&&<Empty title="No organisation requests" text="New enquiries will appear here. No sample requests are inserted."/>}
+                  </div></Card>
+                  <div className="space-y-5"><ListCard title="Creator applications" items={ops.applications} primary={['name','email','status']}/><ListCard title="Payouts" items={ops.payouts} primary={['amount','status','created_at']}/></div>
+                </div>
               </section>
             ) : section === 'security' ? (
               <section>
@@ -440,7 +522,18 @@ export default function SuperAdminDashboard() {
         </main>
       </div>
 
-      {modal === 'org' && <Modal title="Create organisation" onClose={() => setModal(null)}><form onSubmit={createOrganisation} className="space-y-4"><Input label="Organisation name" value={orgForm.name} onChange={v=>setOrgForm(x=>({...x,name:v}))} placeholder="WitStart Academy"/><Input label="Slug" value={orgForm.slug} onChange={v=>setOrgForm(x=>({...x,slug:v}))} placeholder="witstart"/><Input label="Description" value={orgForm.description} onChange={v=>setOrgForm(x=>({...x,description:v}))}/><div className="grid gap-4 md:grid-cols-2"><Select label="Organisation type" value={orgForm.type} onChange={v=>setOrgForm(x=>({...x,type:v}))}><option value="academy">Academy</option><option value="business">Business</option><option value="enterprise">Enterprise</option></Select><Select label="Template" value={orgForm.template} onChange={v=>setOrgForm(x=>({...x,template:v}))}><option value="academy">Academy</option><option value="corporate">Corporate</option><option value="community">Community</option></Select></div><Button type="submit"><Plus size={15}/> Create</Button></form></Modal>}
+      {modal === 'org' && <Modal title="Create organisation workspace" onClose={() => setModal(null)}><form onSubmit={createOrganisation} className="space-y-5">
+        <div className="rounded-xl border border-[#d7ad35]/20 bg-[#d7ad35]/[.04] p-4"><p className="text-sm font-semibold">Reusable workspace builder</p><p className="mt-1 text-xs leading-5 text-white/45">Choose a template and configuration. This creates an organisation record with settings; it does not bypass contract approval or automatically grant learner access.</p></div>
+        <Select label="Organisation request to provision" value={orgForm.request_id} onChange={v=>{const selected=ops.requests.find(r=>String(r.id)===v);setOrgForm(x=>({...x,request_id:v,...(selected?{name:String(selected.organisation_name||x.name),slug:slugify(String(selected.organisation_name||x.name)),description:String(selected.notes||x.description)}:{})}));}}><option value="">Choose an onboarding request…</option>{ops.requests.filter(r=>!r.organisation_id&&!['declined','closed','active'].includes(String(r.status))).map(r=><option key={String(r.id)} value={String(r.id)}>{str(r,'organisation_name')} — {str(r,'status')}</option>)}</Select>
+        <div className="grid gap-4 md:grid-cols-2"><Input label="Organisation name" value={orgForm.name} onChange={v=>setOrgForm(x=>({...x,name:v}))} placeholder="WitStart Academy"/><Input label="Slug" value={orgForm.slug} onChange={v=>setOrgForm(x=>({...x,slug:v}))} placeholder="witstart"/></div>
+        <Input label="Description" value={orgForm.description} onChange={v=>setOrgForm(x=>({...x,description:v}))} placeholder="What this workspace is for"/>
+        <div className="grid gap-4 md:grid-cols-2"><Select label="Organisation model" value={orgForm.type} onChange={v=>setOrgForm(x=>({...x,type:v}))}><option value="academy">Academy</option><option value="school">School</option><option value="business">Business</option><option value="enterprise">Enterprise</option><option value="nonprofit">Non-profit</option><option value="team">Team / department</option></Select><Select label="Workspace template" value={orgForm.template} onChange={v=>setOrgForm(x=>({...x,template:v}))}><option value="academy">Academy</option><option value="corporate">Corporate</option><option value="community">Community</option><option value="school">School</option><option value="custom">Custom</option></Select></div>
+        <Input label="Logo URL (optional)" value={orgForm.logo_url} onChange={v=>setOrgForm(x=>({...x,logo_url:v}))} placeholder="https://…"/>
+        <div className="grid gap-4 md:grid-cols-2"><Input label="Primary brand colour" value={orgForm.brand_primary} onChange={v=>setOrgForm(x=>({...x,brand_primary:v}))} placeholder="#d7ad35"/><Input label="Secondary brand colour" value={orgForm.brand_secondary} onChange={v=>setOrgForm(x=>({...x,brand_secondary:v}))} placeholder="#f2d477"/></div>
+        <fieldset><legend className="mb-3 text-xs font-medium text-white/55">Modules to enable</legend><div className="grid gap-2 sm:grid-cols-2">{["courses","cohorts","teams","tutors","assessments","projects","skills_passport","portfolio","community","ai_tutor","analytics"].map(m=><label key={m} className="flex items-center gap-3 rounded-xl border border-white/10 bg-black/20 px-3 py-2.5 text-xs text-white/65"><input type="checkbox" checked={orgForm.modules.includes(m)} onChange={e=>setOrgForm(x=>({...x,modules:e.target.checked?[...x.modules,m]:x.modules.filter(v=>v!==m)}))} className="accent-[#d7ad35]"/>{m.replaceAll("_"," ")}</label>)}</div></fieldset>
+        <label className="flex items-start gap-3 rounded-xl border border-white/10 bg-black/20 p-3 text-xs leading-5 text-white/60"><input type="checkbox" checked={orgForm.public_directory} onChange={e=>setOrgForm(x=>({...x,public_directory:e.target.checked}))} className="mt-1 accent-[#d7ad35]"/><span>Allow this organisation to appear in the public Learnora directory. This is opt-in and can be changed later.</span></label>
+        <Button type="submit" disabled={!orgForm.request_id}><Plus size={15}/> Create inactive workspace</Button>
+      </form></Modal>}
 
       {modal === 'staff' && <Modal title="Create internal staff account" onClose={() => setModal(null)}><form onSubmit={createStaff} className="space-y-4"><div className="grid gap-4 md:grid-cols-2"><Input label="Name" value={staffForm.name} onChange={v=>setStaffForm(x=>({...x,name:v}))}/><Input label="Email" value={staffForm.email} onChange={v=>setStaffForm(x=>({...x,email:v}))} type="email"/><Input label="Password" value={staffForm.password} onChange={v=>setStaffForm(x=>({...x,password:v}))} type="password"/><Input label="Job title" value={staffForm.job_title} onChange={v=>setStaffForm(x=>({...x,job_title:v}))}/></div><Input label="Role slug" value={staffForm.role_slug} onChange={v=>setStaffForm(x=>({...x,role_slug:v}))} placeholder="support / product / engineering / super_admin"/><Button type="submit"><Plus size={15}/> Create staff</Button></form></Modal>}
 

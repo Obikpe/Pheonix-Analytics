@@ -6,7 +6,7 @@ the internal frontend can authenticate with the internal staff token only.
 from fastapi import APIRouter, Depends, HTTPException
 from datetime import datetime, timezone
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Any, Optional
 from .internal_auth import InternalStaffContext, require_internal_permission
 from .auth import supabase
 from services.contract_ai import generate_contract_draft
@@ -20,7 +20,7 @@ def _staff(permission: str):
 @router.get("/organisations")
 def organisations(staff: InternalStaffContext = _staff("organisations.view")):
     result = supabase.table("organisations").select(
-        "id,name,slug,organisation_type,template,is_active,created_at,updated_at"
+        "id,name,slug,organisation_type,template,description,logo_url,brand_primary,brand_secondary,settings,is_active,created_at,updated_at"
     ).order("created_at", desc=True).execute()
     return {"success": True, "organisations": result.data or []}
 
@@ -40,6 +40,8 @@ class OrganisationCreate(BaseModel):
     logo_url: Optional[str] = Field(None, max_length=1000)
     brand_primary: Optional[str] = Field(None, max_length=50)
     brand_secondary: Optional[str] = Field(None, max_length=50)
+    settings: dict[str, Any] = Field(default_factory=dict)
+    request_id: Optional[str] = None
 
 class OrganisationUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=2, max_length=150)
@@ -50,6 +52,7 @@ class OrganisationUpdate(BaseModel):
     logo_url: Optional[str] = Field(None, max_length=1000)
     brand_primary: Optional[str] = Field(None, max_length=50)
     brand_secondary: Optional[str] = Field(None, max_length=50)
+    settings: Optional[dict[str, Any]] = None
     is_active: Optional[bool] = None
 
 @router.post("/organisations")
@@ -58,9 +61,33 @@ def create_organisation(payload: OrganisationCreate, staff: InternalStaffContext
     slug = payload.slug.strip().lower().replace(" ", "-")
     if supabase.table("organisations").select("id").eq("slug", slug).limit(1).execute().data:
         raise HTTPException(status_code=400, detail="An organisation with this slug already exists.")
-    row = supabase.table("organisations").insert({"name": name, "slug": slug, "organisation_type": payload.organisation_type.strip().lower(), "template": payload.template.strip().lower(), "description": payload.description.strip() if payload.description else None, "logo_url": payload.logo_url.strip() if payload.logo_url else None, "brand_primary": payload.brand_primary.strip() if payload.brand_primary else None, "brand_secondary": payload.brand_secondary.strip() if payload.brand_secondary else None, "is_active": True}).execute()
-    if not row.data: raise HTTPException(status_code=500, detail="Organisation creation failed.")
-    return {"success": True, "organisation": row.data[0]}
+    request_row = None
+    if payload.request_id:
+        request_result = supabase.table("learnora_organisation_requests").select("id,status,organisation_id").eq("id", payload.request_id).limit(1).execute()
+        if not request_result.data:
+            raise HTTPException(status_code=404, detail="Organisation request not found.")
+        request_row = request_result.data[0]
+        if request_row.get("organisation_id"):
+            raise HTTPException(status_code=409, detail="This request is already linked to an organisation workspace.")
+        if request_row.get("status") in {"declined", "closed", "active"}:
+            raise HTTPException(status_code=409, detail="This request is closed or already active.")
+
+    row = supabase.table("organisations").insert({"name": name, "slug": slug, "organisation_type": payload.organisation_type.strip().lower(), "template": payload.template.strip().lower(), "description": payload.description.strip() if payload.description else None, "logo_url": payload.logo_url.strip() if payload.logo_url else None, "brand_primary": payload.brand_primary.strip() if payload.brand_primary else None, "brand_secondary": payload.brand_secondary.strip() if payload.brand_secondary else None, "settings": payload.settings, "is_active": False}).execute()
+    if not row.data:
+        raise HTTPException(status_code=500, detail="Organisation workspace creation failed.")
+    organisation = row.data[0]
+
+    if request_row:
+        linked = supabase.table("learnora_organisation_requests").update({
+            "organisation_id": organisation["id"],
+            "status": "contract_preparation",
+            "reviewed_at": datetime.now(timezone.utc).isoformat(),
+        }).eq("id", payload.request_id).is_("organisation_id", "null").execute()
+        if not linked.data:
+            supabase.table("organisations").delete().eq("id", organisation["id"]).execute()
+            raise HTTPException(status_code=409, detail="The request could not be linked; no workspace was retained.")
+
+    return {"success": True, "organisation": organisation, "request": linked.data[0] if request_row else None}
 
 @router.patch("/organisations/{organisation_id}")
 def update_organisation(organisation_id: str, payload: OrganisationUpdate, staff: InternalStaffContext = Depends(require_internal_permission("organisations.update"))):
@@ -199,7 +226,7 @@ class ContractPreparationIn(BaseModel):
 def save_contract_preparation(organisation_id: str, payload: ContractPreparationIn, staff: InternalStaffContext = _staff("organisations.update")):
     organisation = supabase.table("organisations").select("id,is_active").eq("id", organisation_id).limit(1).execute()
     if not organisation.data: raise HTTPException(404, "Organisation not found.")
-    if not organisation.data[0].get("is_active"): raise HTTPException(409, "Cannot prepare a contract for an inactive organisation.")
+    # The workspace remains inactive until the signed contract is approved and activated.
     request = supabase.table("learnora_organisation_requests").select("id").eq("organisation_id", organisation_id).order("created_at", desc=True).limit(1).execute()
     request_id = request.data[0]["id"] if request.data else None
     existing = supabase.table("learnora_contracts").select("*").eq("organisation_id", organisation_id).eq("status", "draft").order("created_at", desc=True).limit(1).execute()
@@ -263,6 +290,165 @@ async def generate_contract_draft_endpoint(organisation_id: str, staff: Internal
     saved = supabase.table("learnora_contract_versions").insert({"contract_id": row["id"], "version_number": next_version, "terms": version.data[0].get("terms"), "draft_content": result["content"], "qa_result": qa, "review_status": review_status}).execute()
     if not saved.data: raise HTTPException(500, "Unable to save generated contract draft.")
     return {"success": True, "contract": row, "version": saved.data[0], "qa": qa, "provider": result["provider"], "model": result["model"]}
+@router.post("/organisations/{organisation_id}/contract-send")
+def send_organisation_contract(
+    organisation_id: str,
+    staff: InternalStaffContext = _staff("organisations.update"),
+):
+    contract_result = (
+        supabase.table("learnora_contracts")
+        .select("*")
+        .eq("organisation_id", organisation_id)
+        .eq("status", "draft")
+        .order("created_at", desc=True)
+        .limit(1)
+        .execute()
+    )
+    if not contract_result.data:
+        raise HTTPException(404, "No draft contract is available to send.")
+    contract = contract_result.data[0]
+    if not contract.get("request_id"):
+        raise HTTPException(409, "The contract must be linked to an organisation request.")
+    version_result = (
+        supabase.table("learnora_contract_versions")
+        .select("*")
+        .eq("contract_id", contract["id"])
+        .order("version_number", desc=True)
+        .limit(1)
+        .execute()
+    )
+    if not version_result.data or not version_result.data[0].get("draft_content"):
+        raise HTTPException(409, "Generate a contract draft before sending it.")
+    version = version_result.data[0]
+    qa = version.get("qa_result") or {}
+    if qa.get("status") != "pass":
+        raise HTTPException(409, "The contract quality check has not passed. Review and correct the draft before sending.")
+    now = datetime.now(timezone.utc).isoformat()
+    approved_version = (
+        supabase.table("learnora_contract_versions")
+        .update({"review_status": "approved"})
+        .eq("id", version["id"])
+        .execute()
+    )
+    if not approved_version.data:
+        raise HTTPException(500, "Unable to record internal contract review.")
+    updated = (
+        supabase.table("learnora_contracts")
+        .update({"status": "sent", "sent_at": now})
+        .eq("id", contract["id"])
+        .eq("status", "draft")
+        .execute()
+    )
+    if not updated.data:
+        raise HTTPException(409, "Contract state changed; it was not sent.")
+    supabase.table("learnora_organisation_requests").update({
+        "status": "contract_sent",
+    }).eq("id", contract["request_id"]).execute()
+    try:
+        supabase.table("learnora_audit_events").insert({
+            "actor_user_id": staff.user_id,
+            "actor_staff_id": staff.staff_id,
+            "action": "organisation_contract_sent",
+            "resource_type": "contract",
+            "resource_id": contract["id"],
+            "organisation_id": organisation_id,
+            "success": True,
+            "metadata": {"request_id": contract["request_id"], "version_id": version["id"]},
+        }).execute()
+    except Exception:
+        pass
+    return {"success": True, "contract": updated.data[0], "version": approved_version.data[0]}
+
+
+@router.post("/contracts/{contract_id}/approve")
+def approve_signed_contract(
+    contract_id: str,
+    staff: InternalStaffContext = _staff("organisations.update"),
+):
+    if not ({"super_admin", "platform_admin"} & set(staff.roles)):
+        raise HTTPException(403, "Only a Learnora platform administrator can approve a signed contract.")
+    result = supabase.table("learnora_contracts").select("*").eq("id", contract_id).limit(1).execute()
+    if not result.data:
+        raise HTTPException(404, "Contract not found.")
+    contract = result.data[0]
+    if contract.get("status") != "signed":
+        raise HTTPException(409, "Only a signed contract can be approved.")
+    if contract.get("approved_at"):
+        raise HTTPException(409, "This contract has already been approved.")
+    now = datetime.now(timezone.utc).isoformat()
+    updated = supabase.table("learnora_contracts").update({"approved_at": now}).eq("id", contract_id).eq("status", "signed").is_("approved_at", "null").execute()
+    if not updated.data:
+        raise HTTPException(409, "Contract state changed; approval was not applied.")
+    try:
+        supabase.table("learnora_audit_events").insert({
+            "actor_user_id": staff.user_id,
+            "actor_staff_id": staff.staff_id,
+            "action": "organisation_contract_approved",
+            "resource_type": "contract",
+            "resource_id": contract_id,
+            "organisation_id": contract["organisation_id"],
+            "success": True,
+        }).execute()
+    except Exception:
+        pass
+    return {"success": True, "contract": updated.data[0]}
+
+
+@router.post("/contracts/{contract_id}/activate")
+def activate_approved_contract(
+    contract_id: str,
+    staff: InternalStaffContext = _staff("organisations.update"),
+):
+    if not ({"super_admin", "platform_admin"} & set(staff.roles)):
+        raise HTTPException(403, "Only a Learnora platform administrator can activate a contract.")
+    result = supabase.table("learnora_contracts").select("*").eq("id", contract_id).limit(1).execute()
+    if not result.data:
+        raise HTTPException(404, "Contract not found.")
+    contract = result.data[0]
+    if contract.get("status") != "signed" or not contract.get("approved_at"):
+        raise HTTPException(409, "A signed contract must be explicitly approved before activation.")
+    now = datetime.now(timezone.utc).isoformat()
+    updated = supabase.table("learnora_contracts").update({"status": "active"}).eq("id", contract_id).eq("status", "signed").eq("approved_at", contract["approved_at"]).execute()
+    if not updated.data:
+        raise HTTPException(409, "Contract state changed; activation was not applied.")
+
+    organisation_id = str(contract["organisation_id"])
+    supabase.table("organisations").update({"is_active": True}).eq("id", organisation_id).execute()
+    if contract.get("request_id"):
+        request_row = supabase.table("learnora_organisation_requests").select("id,portal_user_id").eq("id", contract["request_id"]).limit(1).execute()
+        if request_row.data:
+            portal_user_id = request_row.data[0].get("portal_user_id")
+            supabase.table("learnora_organisation_requests").update({"status": "active"}).eq("id", contract["request_id"]).execute()
+            if portal_user_id:
+                membership = supabase.table("organisation_members").select("id").eq("organisation_id", organisation_id).eq("user_id", portal_user_id).limit(1).execute()
+                membership_payload = {"organisation_id": organisation_id, "user_id": portal_user_id, "role": "owner", "status": "active", "joined_at": now}
+                if membership.data:
+                    supabase.table("organisation_members").update({"role": "owner", "status": "active"}).eq("id", membership.data[0]["id"]).execute()
+                else:
+                    supabase.table("organisation_members").insert(membership_payload).execute()
+                supabase.table("users").update({"role": "normal"}).eq("id", portal_user_id).eq("role", "organisation_prospect").execute()
+
+    supabase.table("learnora_organisation_lifecycle").upsert({
+        "organisation_id": organisation_id,
+        "status": "active",
+        "changed_by": staff.user_id,
+        "updated_at": now,
+    }).execute()
+    try:
+        supabase.table("learnora_audit_events").insert({
+            "actor_user_id": staff.user_id,
+            "actor_staff_id": staff.staff_id,
+            "action": "organisation_contract_activated",
+            "resource_type": "contract",
+            "resource_id": contract_id,
+            "organisation_id": organisation_id,
+            "success": True,
+        }).execute()
+    except Exception:
+        pass
+    return {"success": True, "contract": updated.data[0], "organisation_id": organisation_id}
+
+
 @router.get("/creators/applications")
 def creator_applications(staff: InternalStaffContext = _staff("users.view")):
     result = supabase.table("learnora_creator_applications").select("*").order("created_at", desc=True).execute()
@@ -375,15 +561,13 @@ def update_organisation_request(
     payload: OrganisationRequestStatus,
     staff: InternalStaffContext = _staff("organisations.update"),
 ):
+    # Contract-sent, signed, pending-approval and active are advanced only
+    # by the dedicated contract lifecycle endpoints.
     allowed = {
         "submitted",
         "under_review",
         "discussion",
         "contract_preparation",
-        "contract_sent",
-        "signed",
-        "pending_approval",
-        "active",
         "declined",
         "closed",
     }

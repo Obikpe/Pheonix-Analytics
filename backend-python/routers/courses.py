@@ -35,13 +35,14 @@ Examples:
 No course duplication is required.
 """
 
+from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from .auth import supabase
+from .auth import CurrentUser, get_current_user, supabase
 from services.capacity import ensure_org_capacity
 from services.audit import audit
 
@@ -599,6 +600,81 @@ def get_course(
 # ============================================================
 # CREATE COURSE
 # ============================================================
+
+@router.post("/{course_id}/enrol", status_code=201)
+def self_enrol_in_free_course(
+    course_id: str,
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Allow a learner to enrol only in a published Learnora course explicitly marked free."""
+    if user.role not in {"normal", "witstart"}:
+        raise HTTPException(403, "This account type cannot self-enrol in learner courses.")
+
+    course_result = (
+        supabase.table("learnora_courses")
+        .select("id,title,status,ownership,organisation_id,creator_id,settings")
+        .eq("id", course_id)
+        .limit(1)
+        .execute()
+    )
+    if not course_result.data:
+        raise HTTPException(404, "Course not found.")
+    course = course_result.data[0]
+    if course.get("status") != "published":
+        raise HTTPException(409, "Only published courses can be enrolled in.")
+    if course.get("ownership") == "organisation":
+        raise HTTPException(403, "Organisation courses must be assigned through their authorised workspace.")
+    if course.get("ownership") not in {"learnora", "creator"}:
+        raise HTTPException(403, "This course cannot be self-enrolled.")
+    if course.get("ownership") == "creator":
+        creator = (
+            supabase.table("learnora_creator_accounts")
+            .select("id,status")
+            .eq("id", course.get("creator_id"))
+            .limit(1)
+            .execute()
+        ).data
+        if not creator or creator[0].get("status") not in {"approved", "active"}:
+            raise HTTPException(403, "This creator is not approved for course distribution.")
+    settings = course.get("settings") or {}
+    is_free = (
+        settings.get("is_free") is True
+        or settings.get("access_type") == "free"
+        or settings.get("price") == 0
+    )
+    if not is_free:
+        raise HTTPException(409, "This course does not have an explicit free-access policy. Contact Learnora for access.")
+
+    existing = (
+        supabase.table("learnora_enrolments")
+        .select("id,status,enrolled_at,completed_at")
+        .eq("user_id", user.id)
+        .eq("course_id", course_id)
+        .in_("status", ["active", "completed"])
+        .order("enrolled_at", desc=True)
+        .limit(1)
+        .execute()
+    )
+    if existing.data:
+        return {"success": True, "already_enrolled": True, "enrolment": existing.data[0]}
+
+    now = datetime.now(timezone.utc).isoformat()
+    inserted = (
+        supabase.table("learnora_enrolments")
+        .insert({
+            "user_id": user.id,
+            "course_id": course_id,
+            "organisation_id": None,
+            "status": "active",
+            "enrolled_at": now,
+            "source_type": "self_enrolment",
+        })
+        .execute()
+    )
+    if not inserted.data:
+        raise HTTPException(500, "Unable to create course enrolment.")
+    return {"success": True, "already_enrolled": False, "enrolment": inserted.data[0]}
+
 
 @router.post("")
 def create_course(

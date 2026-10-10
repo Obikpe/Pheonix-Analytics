@@ -5,6 +5,7 @@ All writes are scoped to the authenticated learner and an actual enrolment.
 """
 
 from datetime import datetime, timezone
+from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -21,6 +22,19 @@ class LessonProgressIn(BaseModel):
     progress_percent: int = Field(default=0, ge=0, le=100)
     completed: bool = False
     last_position_seconds: int = Field(default=0, ge=0)
+
+
+class LessonNoteIn(BaseModel):
+    content: str = Field(default="", max_length=20000)
+
+
+class QuizAttemptIn(BaseModel):
+    answers: dict[str, Any] = Field(default_factory=dict)
+
+
+class AssignmentSubmissionIn(BaseModel):
+    submission_text: str = Field(default="", max_length=20000)
+    file_url: Optional[str] = Field(default=None, max_length=2000)
 
 
 def _course_for_lesson(lesson_id: str):
@@ -144,6 +158,186 @@ def _course_summary(user_id: str, course_id: str):
             for module in modules
         ],
     }
+
+
+@router.get("/lessons/{lesson_id}/notes")
+def get_lesson_note(lesson_id: str, user: CurrentUser = Depends(get_current_user)):
+    course_id = _course_for_lesson(lesson_id)
+    if not _enrolment(str(user.id), course_id):
+        raise HTTPException(403, "You are not enrolled in this course.")
+    result = supabase.table("learner_lesson_notes").select(
+        "id,content,created_at,updated_at"
+    ).eq("user_id", user.id).eq("lesson_id", lesson_id).limit(1).execute()
+    return {"success": True, "note": result.data[0] if result.data else None}
+
+
+@router.put("/lessons/{lesson_id}/notes")
+def save_lesson_note(lesson_id: str, body: LessonNoteIn, user: CurrentUser = Depends(get_current_user)):
+    course_id = _course_for_lesson(lesson_id)
+    if not _enrolment(str(user.id), course_id):
+        raise HTTPException(403, "You are not enrolled in this course.")
+    now = datetime.now(timezone.utc).isoformat()
+    result = supabase.table("learner_lesson_notes").upsert({
+        "user_id": user.id,
+        "course_id": course_id,
+        "lesson_id": lesson_id,
+        "content": body.content,
+        "updated_at": now,
+    }, on_conflict="user_id,lesson_id").execute()
+    if not result.data:
+        raise HTTPException(500, "Unable to save lesson note.")
+    return {"success": True, "note": result.data[0]}
+
+
+@router.get("/courses/{course_id}/activities")
+def course_activities(course_id: str, user: CurrentUser = Depends(get_current_user)):
+    if not _enrolment(str(user.id), course_id):
+        raise HTTPException(403, "You are not enrolled in this course.")
+    quizzes = (supabase.table("quizzes")
+        .select("id,lesson_id,title,description,passing_score,max_attempts")
+        .eq("course_id", course_id).eq("is_published", True)
+        .order("created_at").execute()).data or []
+    assignments = (supabase.table("assignments")
+        .select("id,lesson_id,title,description,instructions,due_date,max_score")
+        .eq("course_id", course_id).eq("is_published", True)
+        .order("created_at").execute()).data or []
+    projects = (supabase.table("projects")
+        .select("id,course_id,title,description,instructions,skills")
+        .eq("course_id", course_id).eq("is_published", True)
+        .order("created_at").execute()).data or []
+    return {"success": True, "quizzes": quizzes, "assignments": assignments, "projects": projects}
+
+
+@router.get("/quizzes/{quiz_id}")
+def get_quiz(quiz_id: str, user: CurrentUser = Depends(get_current_user)):
+    result = (supabase.table("quizzes")
+        .select("id,lesson_id,course_id,title,description,passing_score,max_attempts,is_published")
+        .eq("id", quiz_id).eq("is_published", True).limit(1).execute())
+    if not result.data:
+        raise HTTPException(404, "Published quiz not found.")
+    quiz = result.data[0]
+    if not _enrolment(str(user.id), str(quiz["course_id"])):
+        raise HTTPException(403, "You are not enrolled in this course.")
+    questions = (supabase.table("quiz_questions")
+        .select("id,question,question_type,options,points,order_index")
+        .eq("quiz_id", quiz_id).order("order_index").execute()).data or []
+    attempts = (supabase.table("quiz_attempts")
+        .select("id,score,passed,submitted_at")
+        .eq("quiz_id", quiz_id).eq("user_id", user.id)
+        .order("submitted_at", desc=True).execute()).data or []
+    return {"success": True, "quiz": quiz, "questions": questions, "attempts": attempts}
+
+
+@router.post("/quizzes/{quiz_id}/attempts", status_code=201)
+def submit_quiz_attempt(quiz_id: str, body: QuizAttemptIn, user: CurrentUser = Depends(get_current_user)):
+    result = (supabase.table("quizzes")
+        .select("id,course_id,title,passing_score,max_attempts,is_published")
+        .eq("id", quiz_id).eq("is_published", True).limit(1).execute())
+    if not result.data:
+        raise HTTPException(404, "Published quiz not found.")
+    quiz = result.data[0]
+    if not _enrolment(str(user.id), str(quiz["course_id"])):
+        raise HTTPException(403, "You are not enrolled in this course.")
+    previous = (supabase.table("quiz_attempts")
+        .select("id,score,passed,submitted_at")
+        .eq("quiz_id", quiz_id).eq("user_id", user.id)
+        .order("submitted_at", desc=True).execute()).data or []
+    max_attempts = quiz.get("max_attempts")
+    if max_attempts is not None and len(previous) >= int(max_attempts):
+        raise HTTPException(409, "You have reached the maximum number of attempts for this quiz.")
+    questions = (supabase.table("quiz_questions")
+        .select("id,question,question_type,correct_answer,explanation,points,order_index")
+        .eq("quiz_id", quiz_id).order("order_index").execute()).data or []
+    if not questions:
+        raise HTTPException(409, "This quiz has no published questions.")
+    supported = {"multiple_choice", "single_choice", "mcq", "true_false", "boolean"}
+    if any(str(q.get("question_type") or "").lower() not in supported for q in questions):
+        raise HTTPException(409, "This quiz includes question types that require instructor grading and cannot be auto-scored yet.")
+    def normalise(value):
+        if isinstance(value, dict):
+            value = value.get("value", value.get("answer", value.get("label", "")))
+        if isinstance(value, list):
+            return {str(item).strip().casefold() for item in value}
+        return str(value).strip().casefold()
+    total_points = sum(float(q.get("points") or 1) for q in questions)
+    earned = 0.0
+    review = []
+    for question in questions:
+        answer = body.answers.get(str(question["id"]))
+        expected = question.get("correct_answer")
+        correct = normalise(answer) == normalise(expected)
+        points = float(question.get("points") or 1)
+        if correct:
+            earned += points
+        review.append({
+            "question_id": question["id"],
+            "correct": correct,
+            "correct_answer": expected,
+            "explanation": question.get("explanation"),
+            "points_earned": points if correct else 0,
+            "points_possible": points,
+        })
+    score = round((earned / total_points) * 100, 2) if total_points else 0
+    passed = score >= float(quiz.get("passing_score") or 70)
+    now = datetime.now(timezone.utc).isoformat()
+    inserted = (supabase.table("quiz_attempts").insert({
+        "quiz_id": quiz_id,
+        "user_id": user.id,
+        "score": score,
+        "passed": passed,
+        "answers": body.answers,
+        "started_at": now,
+        "submitted_at": now,
+    }).execute())
+    if not inserted.data:
+        raise HTTPException(500, "Unable to save quiz attempt.")
+    return {"success": True, "attempt": inserted.data[0], "review": review, "passing_score": quiz.get("passing_score") or 70}
+
+
+@router.get("/assignments/{assignment_id}")
+def get_assignment(assignment_id: str, user: CurrentUser = Depends(get_current_user)):
+    result = (supabase.table("assignments")
+        .select("id,lesson_id,course_id,title,description,instructions,due_date,max_score,is_published")
+        .eq("id", assignment_id).eq("is_published", True).limit(1).execute())
+    if not result.data:
+        raise HTTPException(404, "Published assignment not found.")
+    assignment = result.data[0]
+    if not _enrolment(str(user.id), str(assignment["course_id"])):
+        raise HTTPException(403, "You are not enrolled in this course.")
+    submissions = (supabase.table("assignment_submissions")
+        .select("id,submission_text,file_url,status,score,feedback,submitted_at,graded_at")
+        .eq("assignment_id", assignment_id).eq("user_id", user.id)
+        .order("submitted_at", desc=True).limit(10).execute()).data or []
+    return {"success": True, "assignment": assignment, "submissions": submissions}
+
+
+@router.post("/assignments/{assignment_id}/submissions", status_code=201)
+def submit_assignment(assignment_id: str, body: AssignmentSubmissionIn, user: CurrentUser = Depends(get_current_user)):
+    result = (supabase.table("assignments")
+        .select("id,course_id,is_published")
+        .eq("id", assignment_id).eq("is_published", True).limit(1).execute())
+    if not result.data:
+        raise HTTPException(404, "Published assignment not found.")
+    assignment = result.data[0]
+    if not _enrolment(str(user.id), str(assignment["course_id"])):
+        raise HTTPException(403, "You are not enrolled in this course.")
+    file_url = body.file_url.strip() if body.file_url else None
+    if file_url and not file_url.startswith("https://"):
+        raise HTTPException(400, "Submission links must use HTTPS.")
+    if not body.submission_text.strip() and not file_url:
+        raise HTTPException(400, "Add a written response or an HTTPS link before submitting.")
+    now = datetime.now(timezone.utc).isoformat()
+    inserted = (supabase.table("assignment_submissions").insert({
+        "assignment_id": assignment_id,
+        "user_id": user.id,
+        "submission_text": body.submission_text,
+        "file_url": file_url,
+        "status": "submitted",
+        "submitted_at": now,
+    }).execute())
+    if not inserted.data:
+        raise HTTPException(500, "Unable to save assignment submission.")
+    return {"success": True, "submission": inserted.data[0]}
 
 
 @router.get("/me")

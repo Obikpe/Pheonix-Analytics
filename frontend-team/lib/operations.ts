@@ -22,3 +22,7 @@ export const updateOrganisation=(id:string,payload:any)=>request<any>("/operatio
 export const reviewCreatorApplication=(id:string,status:"approved"|"declined")=>request<any>("/operations/creators/applications/"+encodeURIComponent(id),{method:"PATCH",body:JSON.stringify({status})});
 
 export const updateOrganisationRequest=(id:string,status:string)=>request<any>("/operations/organisation-requests/"+encodeURIComponent(id),{method:"PATCH",body:JSON.stringify({status})});
+
+export const sendOrganisationContract=(id:string)=>request<any>("/operations/organisations/"+encodeURIComponent(id)+"/contract-send",{method:"POST"});
+export const approveOrganisationContract=(id:string)=>request<any>("/operations/contracts/"+encodeURIComponent(id)+"/approve",{method:"POST"});
+export const activateOrganisationContract=(id:string)=>request<any>("/operations/contracts/"+encodeURIComponent(id)+"/activate",{method:"POST"});

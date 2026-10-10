@@ -93,12 +93,70 @@ def my_evidence(
         .execute()
     )
 
+    skill_rows = skills.data or []
+    evidence_rows = evidence.data or []
+    certificate_rows = certificates.data or []
+    skill_ids = list({
+        str(row["skill_id"])
+        for row in [*skill_rows, *evidence_rows]
+        if row.get("skill_id")
+    })
+    skill_map = {}
+    if skill_ids:
+        definitions = (
+            supabase.table("skills")
+            .select("id,name,category,description")
+            .in_("id", skill_ids)
+            .execute()
+        ).data or []
+        skill_map = {str(row["id"]): row for row in definitions}
+
+    course_ids = list({
+        str(row["course_id"])
+        for row in certificate_rows
+        if row.get("course_id")
+    })
+    course_map = {}
+    if course_ids:
+        course_rows = (
+            supabase.table("learnora_courses")
+            .select("id,title")
+            .in_("id", course_ids)
+            .execute()
+        ).data or []
+        course_map = {str(row["id"]): row for row in course_rows}
+
+    enriched_skills = [
+        {
+            **row,
+            "skill": skill_map.get(str(row.get("skill_id"))),
+            "skill_name": (skill_map.get(str(row.get("skill_id"))) or {}).get("name"),
+        }
+        for row in skill_rows
+    ]
+    enriched_evidence = [
+        {
+            **row,
+            "skill": skill_map.get(str(row.get("skill_id"))),
+            "skill_name": (skill_map.get(str(row.get("skill_id"))) or {}).get("name"),
+            "verification_state": "not_verified",
+        }
+        for row in evidence_rows
+    ]
+    enriched_certificates = [
+        {
+            **row,
+            "course_title": (course_map.get(str(row.get("course_id"))) or {}).get("title"),
+        }
+        for row in certificate_rows
+    ]
+
     return {
         "success": True,
-        "skills": skills.data or [],
-        "evidence": evidence.data or [],
+        "skills": enriched_skills,
+        "evidence": enriched_evidence,
         "badges": badges.data or [],
-        "certificates": certificates.data or [],
+        "certificates": enriched_certificates,
     }
 
 
@@ -158,6 +216,59 @@ def add_evidence(
     return {
         "success": True,
         "evidence": result.data[0],
+    }
+
+
+@router.get("/projects/me")
+def my_project_submissions(
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Return only the authenticated learner's own project submissions."""
+    submissions = (
+        supabase
+        .table("project_submissions")
+        .select(
+            "id,project_id,title,description,repository_url,live_url,"
+            "submission_url,status,feedback,score,submitted_at,reviewed_at"
+        )
+        .eq("user_id", user.id)
+        .order("submitted_at", desc=True)
+        .execute()
+    ).data or []
+
+    project_ids = list({
+        str(row["project_id"])
+        for row in submissions
+        if row.get("project_id")
+    })
+    project_map = {}
+    if project_ids:
+        projects = (
+            supabase
+            .table("projects")
+            .select("id,title,description,skills")
+            .in_("id", project_ids)
+            .execute()
+        ).data or []
+        project_map = {
+            str(row["id"]): row
+            for row in projects
+        }
+
+    return {
+        "success": True,
+        "submissions": [
+            {
+                **row,
+                "project": project_map.get(str(row.get("project_id"))),
+                "review_state": (
+                    "reviewed"
+                    if row.get("reviewed_at")
+                    else "awaiting_review"
+                ),
+            }
+            for row in submissions
+        ],
     }
 
 
