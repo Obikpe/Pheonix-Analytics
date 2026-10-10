@@ -175,6 +175,8 @@ def create_course(
     slug = _normalise_slug(body.slug)
     if not slug:
         raise HTTPException(400, "Course slug is required.")
+    if body.level.strip().lower() not in {"beginner", "intermediate", "advanced", "mixed"}:
+        raise HTTPException(400, "Course level must be beginner, intermediate, advanced or mixed.")
 
     existing = (
         supabase
