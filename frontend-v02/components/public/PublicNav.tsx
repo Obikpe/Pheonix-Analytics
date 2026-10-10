@@ -30,7 +30,7 @@ export default function PublicNav() {
             <button type="button" onClick={() => setAudienceOpen(v => !v)} aria-expanded={audienceOpen} aria-haspopup="true" className="inline-flex min-h-11 items-center gap-2 rounded-lg px-2 text-sm text-slate-300 transition-colors hover:text-white focus-visible:outline-offset-2">
               Who it’s for <ChevronDown size={14} className={audienceOpen ? "rotate-180 transition-transform" : "transition-transform"}/>
             </button>
-            <div className={`absolute left-0 top-full w-[340px] pt-2 ${audienceOpen ? "visible opacity-100" : "invisible opacity-0 group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100"} transition-opacity duration-150`}>
+            <div className={`absolute left-0 top-full w-[340px] pt-2 ${audienceOpen ? "visible opacity-100" : "invisible opacity-0"} transition-opacity duration-150`}>
               <div className="border border-white/[.12] bg-[#11171e] p-2 shadow-2xl shadow-black/40">
                 {audiences.map((item, i) => <a key={item.href} href={item.href} onClick={close} className="group/item flex items-start justify-between gap-4 border-b border-white/[.06] p-4 last:border-0 hover:bg-white/[.035]">
                   <span><span className="block text-sm font-semibold text-slate-100">{item.title}</span><span className="mt-1 block text-xs leading-5 text-slate-500">{item.detail}</span></span>
