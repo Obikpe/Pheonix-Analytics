@@ -7,12 +7,14 @@ export default function Page() {
   return <>
     <PublicNav />
     <main className="pt-20">
-      <section className="relative overflow-hidden border-b border-white/[.06]">
-        <div className="absolute inset-0 bg-cover bg-center opacity-25" style={{backgroundImage:"url("+IMAGES.aboutHero+")"}}/>
-        <div className="relative mx-auto max-w-7xl px-5 py-24 sm:py-32 lg:px-8">
-          <p className="text-xs font-bold uppercase tracking-[.22em] gold">About Learnora ME</p>
-          <h1 className="mt-6 max-w-4xl font-display text-5xl leading-[1.02] sm:text-6xl lg:text-7xl">Learning should open a door—not leave you standing at the finish line.</h1>
-          <p className="mt-8 max-w-2xl text-lg leading-8 text-slate-300">Learnora is being built around a simple belief: learning becomes more useful when people can practise what they learn, build something with it, show what they have demonstrated and keep growing from there.</p>
+      <section className="border-b border-white/[.1]">
+        <div className="mx-auto grid max-w-[82rem] gap-10 px-5 py-14 sm:py-20 lg:grid-cols-[1.05fr_.95fr] lg:items-center lg:gap-16 lg:px-8 lg:py-24">
+          <div><p className="inline-flex items-center gap-3 text-[10px] font-bold uppercase tracking-[.2em] text-[var(--gold-light)]"><span className="h-px w-7 bg-[var(--gold)]"/>About Learnora ME</p>
+            <h1 className="mt-6 max-w-4xl font-display text-5xl leading-[1.02] tracking-[-.05em] sm:text-6xl lg:text-7xl">Learning should open a door—not leave you at the finish line.</h1>
+            <p className="mt-7 max-w-2xl text-base leading-8 text-slate-300 sm:text-lg">Learnora is being built around a simple belief: learning becomes more useful when people can practise what they learn, build something with it, show what they have demonstrated and keep growing from there.</p>
+            <a href="/how-it-works" className="mt-8 inline-flex min-h-11 items-center gap-2 text-sm font-semibold gold hover:underline">See how the journey works <ArrowRight size={16}/></a>
+          </div>
+          <div className="relative"><div className="mb-3 flex items-center justify-between border-b border-white/[.12] pb-3 text-[10px] uppercase tracking-[.18em] text-slate-500"><span>Why we are building</span><span>Learnora / 01</span></div><div className="aspect-[4/3] overflow-hidden border border-white/[.12] bg-[#151c24]"><img src={IMAGES.aboutHero} alt="People learning and connecting around a shared table" fetchPriority="high" className="h-full w-full object-cover"/></div><p className="mt-3 max-w-sm text-xs leading-5 text-slate-600">A connected path between learning, practice and the work people can show.</p></div>
         </div>
       </section>
 
