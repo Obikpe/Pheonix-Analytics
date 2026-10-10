@@ -93,6 +93,9 @@ def list_discussions(
     else:
         query = query.is_("course_id", "null").is_("organisation_id", "null")
     rows = query.execute().data or []
+    # A discussion may have both course and organisation scope on legacy rows.
+    # Never return it unless the viewer has access to every attached scope.
+    rows = [row for row in rows if _can_access(user, row)]
     replies = []
     if rows:
         reply_rows = (supabase.table("learnora_discussion_replies").select("discussion_id")
@@ -110,6 +113,8 @@ def create_discussion(body: DiscussionCreate, user: CurrentUser = Depends(get_cu
     _ensure_community_user(user)
     if body.category not in {"question", "discussion"}:
         raise HTTPException(400, "Category must be question or discussion.")
+    if body.course_id and body.organisation_id:
+        raise HTTPException(400, "Choose either a course discussion or an organisation discussion, not both.")
     if body.course_id and not _has_course_enrolment(str(user.id), body.course_id):
         raise HTTPException(403, "You must be enrolled in this course to post there.")
     if body.organisation_id and not _has_org_membership(str(user.id), body.organisation_id):
@@ -155,6 +160,7 @@ def get_discussion(discussion_id: str, user: CurrentUser = Depends(get_current_u
 
 @router.post("/discussions/{discussion_id}/replies", status_code=201)
 def create_discussion_reply(discussion_id: str, body: ReplyCreate, user: CurrentUser = Depends(get_current_user)):
+    _ensure_community_user(user)
     discussion = _get_discussion(discussion_id)
     if not _can_access(user, discussion):
         raise HTTPException(403, "You do not have access to this discussion.")
