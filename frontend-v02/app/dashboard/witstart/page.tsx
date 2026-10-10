@@ -48,7 +48,6 @@ export default function WitStartDashboard() {
   }, []);
 
   const completed = courses.reduce((total, item) => total + Number(item.completed_lessons || 0), 0);
-  const tracked = courses.reduce((total, item) => total + Number(item.tracked_lessons || 0), 0);
   return <main className="min-h-screen bg-[#080b0f] text-white">
     <header className="border-b border-white/[.07]"><div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-5 py-5 lg:px-8"><a href="/"><Logo/></a><div className="flex items-center gap-4"><div className="hidden text-right sm:block"><p className="text-sm font-semibold">{user?.name || "WitStart learner"}</p><p className="mt-1 text-xs text-slate-500">WitStart Academy learner</p></div><button onClick={() => { clearToken(); location.href = "/login"; }} className="inline-flex items-center gap-2 rounded-xl border border-white/10 px-3 py-2.5 text-xs text-slate-400 hover:text-white"><LogOut size={14}/> Sign out</button></div></div></header>
     <div className="mx-auto max-w-7xl px-5 pb-20 pt-10 lg:px-8 sm:pt-14">
