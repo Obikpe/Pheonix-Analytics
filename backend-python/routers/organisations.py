@@ -717,16 +717,24 @@ def add_team_member(
     member = supabase.table("organisation_members").select("id").eq("organisation_id", organisation_id).eq("user_id", body.user_id).eq("status", "active").limit(1).execute()
     if not member.data:
         raise HTTPException(400, "The team member must be an active organisation member.")
-    result = supabase.table("organisation_team_members").insert({
-        "team_id": team_id,
-        "user_id": body.user_id,
-        "role": body.role,
-        "status": "active",
-        "joined_at": datetime.now(timezone.utc).isoformat(),
-    }).execute()
+    existing = (supabase.table("organisation_team_members")
+        .select("id,team_id,user_id,role,status,joined_at")
+        .eq("team_id", team_id).eq("user_id", body.user_id).limit(1).execute()).data
+    now = datetime.now(timezone.utc).isoformat()
+    if existing and existing[0].get("status") == "active":
+        return {"success": True, "member": existing[0], "already_member": True}
+    if existing:
+        result = supabase.table("organisation_team_members").update({
+            "role": body.role, "status": "active", "joined_at": now,
+        }).eq("id", existing[0]["id"]).execute()
+    else:
+        result = supabase.table("organisation_team_members").insert({
+            "team_id": team_id, "user_id": body.user_id, "role": body.role,
+            "status": "active", "joined_at": now,
+        }).execute()
     if not result.data:
-        raise HTTPException(409, "The member may already be on this team.")
-    return {"success": True, "member": result.data[0]}
+        raise HTTPException(500, "Team membership could not be saved.")
+    return {"success": True, "member": result.data[0], "already_member": False}
 
 
 @router.patch("/{organisation_id}/teams/{team_id}/members/{membership_id}")
