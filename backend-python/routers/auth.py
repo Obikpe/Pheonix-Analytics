@@ -3507,6 +3507,24 @@ def me(
             print("Current-user organisation membership lookup failed:", exc)
             memberships = []
 
+    organisation_ids = list({str(row["organisation_id"]) for row in memberships if row.get("organisation_id")})
+    if organisation_ids:
+        try:
+            organisation_rows = (
+                supabase.table("organisations")
+                .select("id,name,slug")
+                .in_("id", organisation_ids)
+                .execute()
+            ).data or []
+            organisation_map = {str(row["id"]): row for row in organisation_rows}
+            memberships = [
+                {**row, "organisation_name": (organisation_map.get(str(row.get("organisation_id"))) or {}).get("name"),
+                 "organisation_slug": (organisation_map.get(str(row.get("organisation_id"))) or {}).get("slug")}
+                for row in memberships
+            ]
+        except Exception as exc:
+            print("Current-user organisation details lookup failed:", exc)
+
     # A single default organisation is safe to infer. If the user belongs to
     # multiple organisations, return the memberships but do not silently pick one.
     single_membership = memberships[0] if len(memberships) == 1 else None
