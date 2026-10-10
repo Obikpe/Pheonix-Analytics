@@ -6,7 +6,7 @@ import PublicFooter from "../../components/public/PublicFooter";
 import Toast from "../../components/feedback/Toast";
 import { submitOrganisationRequest } from "../../lib/api/public";
 
-const inputClass="mt-2 w-full rounded-xl border border-white/10 bg-[#0b0f14] px-4 py-3 text-sm text-white outline-none transition focus:border-[#d7ad35]/60";
+const inputClass="field mt-2";
 export default function GetStartedPage() {
   const [path,setPath]=useState<"learner"|"instructor"|"organisation"|null>(null);
   const [busy,setBusy]=useState(false);
@@ -42,7 +42,7 @@ export default function GetStartedPage() {
           <div className="sm:col-span-2 rounded-xl border border-white/10 bg-black/10 p-4"><p className="text-sm font-semibold">Create your prospect portal account</p><p className="mt-1 text-xs leading-5 text-slate-500">Use a strong password. Learnora will send an email verification link before allowing portal sign-in.</p><div className="mt-4 grid gap-5 sm:grid-cols-2"><label className="text-sm text-slate-300">Portal password<input type="password" minLength={10} autoComplete="new-password" className={inputClass} value={form.portal_password} onChange={e=>update("portal_password",e.target.value)} required/></label><label className="text-sm text-slate-300">Confirm password<input type="password" minLength={10} autoComplete="new-password" className={inputClass} value={form.confirm_password} onChange={e=>update("confirm_password",e.target.value)} required/></label></div></div>
           <label className="text-sm text-slate-300 sm:col-span-2">What are you trying to achieve?<textarea className={inputClass+" min-h-32 resize-y"} value={form.notes} onChange={e=>update("notes",e.target.value)} placeholder="Learning priorities, teams involved, desired outcomes…" /></label>
         </div>
-        <button disabled={busy} className="mt-7 inline-flex items-center gap-2 rounded-xl bg-[#d7ad35] px-5 py-3.5 font-bold text-black disabled:cursor-not-allowed disabled:opacity-60">{busy?"Submitting…":"Submit enquiry"}<ArrowRight size={16}/></button>
+        <button disabled={busy} className="mt-7 inline-flex items-center gap-2 min-h-12 rounded-lg bg-[var(--gold)] px-5 py-3.5 font-bold text-[#17140d] transition-colors hover:bg-[var(--gold-light)] disabled:cursor-not-allowed disabled:opacity-60">{busy?"Submitting…":"Submit enquiry"}<ArrowRight size={16}/></button>
         <p className="mt-4 text-xs leading-5 text-slate-600">Learnora will review this request before a workspace is provisioned. Contract signing alone does not activate access.</p>
       </form>
     </div>}
