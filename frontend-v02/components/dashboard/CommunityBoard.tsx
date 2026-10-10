@@ -1,7 +1,8 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
-import { ArrowLeft, CheckCircle2, MessageCircle, Plus, RefreshCw, Send, X } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import type { FormEvent } from "react";
+import { ArrowLeft, CheckCircle2, MessageCircle, Plus, RefreshCw, Send } from "lucide-react";
 import { request } from "../../lib/api/client";
 
 type Discussion = {
@@ -28,6 +29,7 @@ type Reply = {
 export default function CommunityBoard() {
   const [items, setItems] = useState<Discussion[]>([]);
   const [active, setActive] = useState<Discussion | null>(null);
+  const [isAuthor, setIsAuthor] = useState(false);
   const [replies, setReplies] = useState<Reply[]>([]);
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
@@ -58,8 +60,9 @@ export default function CommunityBoard() {
     setError("");
     setNotice("");
     try {
-      const result = await request<{ discussion: Discussion; replies: Reply[] }>("/community/discussions/" + encodeURIComponent(item.id));
+      const result = await request<{ discussion: Discussion; replies: Reply[]; is_author?: boolean }>("/community/discussions/" + encodeURIComponent(item.id));
       setActive(result.discussion);
+      setIsAuthor(Boolean(result.is_author));
       setReplies(result.replies || []);
     } catch (e: any) {
       setError(e.message || "This discussion could not be opened.");
@@ -83,6 +86,7 @@ export default function CommunityBoard() {
       await load();
       if (result.discussion) {
         setActive(result.discussion);
+        setIsAuthor(true);
         setReplies([]);
       }
     } catch (e: any) {
@@ -166,11 +170,11 @@ export default function CommunityBoard() {
             {replies.length ? <div className="mt-4 space-y-3">{replies.map(reply => <article key={reply.id} className="rounded-xl border border-white/[.07] p-4">
               <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-sm font-semibold">{reply.author_name || "Learnora member"}</p><div className="flex items-center gap-2">{reply.is_answer && <span className="inline-flex items-center gap-1 rounded-full bg-emerald-300/[.08] px-2.5 py-1 text-[10px] text-emerald-200"><CheckCircle2 size={12}/> Accepted answer</span>}<time className="text-xs text-slate-600">{formatDate(reply.created_at)}</time></div></div>
               <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-7 text-slate-300">{reply.body}</p>
-              {active.status === "open" && !reply.is_answer && <button onClick={() => void markAnswer(reply.id)} className="mt-3 text-xs font-semibold text-slate-500 hover:gold">Mark as accepted answer</button>}
+              {isAuthor && active.status === "open" && !reply.is_answer && <button onClick={() => void markAnswer(reply.id)} className="mt-3 text-xs font-semibold text-slate-500 hover:gold">Mark as accepted answer</button>}
             </article>)}</div> : <p className="mt-3 rounded-xl border border-dashed border-white/10 p-5 text-sm text-slate-500">No replies yet. Share a useful explanation, question or next step.</p>}
           </div>
           {active.status === "open" ? <form onSubmit={sendReply} className="mt-6"><label className="block text-xs text-slate-400">Your reply<textarea required minLength={1} maxLength={5000} rows={4} value={replyBody} onChange={e => setReplyBody(e.target.value)} className="mt-2 w-full rounded-xl border border-white/10 bg-[#090c10] p-4 text-sm leading-6 outline-none focus:border-[#d7ad35]/50" placeholder="Be constructive. Explain your reasoning and share practical context." /></label><button disabled={sending || !replyBody.trim()} className="mt-3 inline-flex items-center gap-2 rounded-xl bg-[#d7ad35] px-4 py-3 text-sm font-bold text-black disabled:opacity-50"><Send size={14}/>{sending ? "Sending…" : "Post reply"}</button></form> : <p className="mt-6 rounded-xl bg-white/[.03] p-4 text-sm text-slate-500">This discussion is closed to new replies.</p>}
-          <div className="mt-5 border-t border-white/[.07] pt-4"><button onClick={() => void updateStatus(active.status === "open" ? "closed" : "open")} className="text-xs text-slate-500 hover:text-white">{active.status === "open" ? "Close discussion" : "Reopen discussion"}</button><p className="mt-2 text-[11px] leading-5 text-slate-600">Only the discussion author can change its status or mark an accepted answer. The server verifies ownership.</p></div>
+          {isAuthor && <div className="mt-5 border-t border-white/[.07] pt-4"><button onClick={() => void updateStatus(active.status === "open" ? "closed" : "open")} className="text-xs text-slate-500 hover:text-white">{active.status === "open" ? "Close discussion" : "Reopen discussion"}</button><p className="mt-2 text-[11px] leading-5 text-slate-600">Only you, as the discussion author, can change its status or mark an accepted answer.</p></div>}
         </article>
       ) : (
         <div className="grid gap-6 xl:grid-cols-[.8fr_1.2fr]">
