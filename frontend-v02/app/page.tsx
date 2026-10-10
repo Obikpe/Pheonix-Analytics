@@ -37,7 +37,7 @@ export default function Home() {
     <section className="py-24 sm:py-28">
       <div className="mx-auto grid max-w-7xl gap-12 px-5 lg:grid-cols-[.9fr_1.1fr] lg:items-center lg:px-8">
         <div className="relative min-h-[420px] overflow-hidden rounded-[2rem] border border-white/10">
-          <div className="absolute inset-0 bg-cover bg-center" style={{backgroundImage:"linear-gradient(180deg,#07090c12,#07090c99),url("+IMAGES.portfolio+")"}} />
+          <div className="absolute inset-0 bg-cover bg-center opacity-55" style={{backgroundImage:"url("+IMAGES.portfolio+")"}} />
           <div className="absolute bottom-5 left-5 right-5 rounded-2xl border border-white/10 bg-[#090c10]/85 p-5 backdrop-blur-md sm:bottom-7 sm:left-7 sm:right-7">
             <div className="flex items-center gap-3"><FileCheck2 className="gold" size={20}/><div><p className="font-semibold">A record of demonstrated work</p><p className="mt-1 text-sm text-slate-400">Projects · Feedback · Skills · Evidence</p></div></div>
           </div>
@@ -67,7 +67,7 @@ export default function Home() {
             {icon:Compass,title:"For instructors",body:"Create practical learning, support learners, review work and grow your teaching practice.",href:"/for-instructors",image:IMAGES.instructors},
             {icon:Network,title:"For organisations",body:"Shape learning around your people, programmes, teams and agreed outcomes.",href:"/for-organisations",image:IMAGES.organisations},
           ].map(({icon:Icon,title,body,href,image})=><a key={title} href={href} className="group overflow-hidden rounded-[1.7rem] border border-white/[.08] bg-[#0e1319] transition hover:-translate-y-1 hover:border-[#d7ad35]/30">
-            <div className="h-48 bg-cover bg-center transition duration-700 group-hover:scale-[1.02]" style={{backgroundImage:"linear-gradient(0deg,#0e1319,transparent 80%),url("+image+")"}}/>
+            <div className="h-48 overflow-hidden bg-[#151c24]"><img src={image} alt="" loading="lazy" className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.035]"/>/>
             <div className="px-6 pb-6"><Icon className="gold" size={22}/><h3 className="mt-4 text-xl font-semibold">{title}</h3><p className="mt-3 text-sm leading-6 text-slate-400">{body}</p><span className="mt-6 inline-flex items-center gap-2 text-sm font-semibold gold">Explore this path <ArrowRight size={15}/></span></div>
           </a>)}
         </div>
@@ -96,7 +96,7 @@ export default function Home() {
       <div className="mx-auto max-w-7xl overflow-hidden rounded-[2rem] border border-[#d7ad35]/20 bg-[#10151b]">
         <div className="grid lg:grid-cols-[1fr_.8fr]">
           <div className="p-8 sm:p-12 lg:p-16"><p className="text-xs font-bold uppercase tracking-[.22em] gold">Start where you are</p><h2 className="mt-5 max-w-2xl font-display text-4xl leading-tight sm:text-5xl">Your next step does not have to be your whole future.</h2><p className="mt-5 max-w-xl leading-7 text-slate-400">Explore a course, bring your teaching experience, or tell us what your organisation is trying to build. Learnora is a work in progress, and we will be clear about what is available as it grows.</p><a href="/get-started" className="mt-8 inline-flex items-center gap-2 rounded-xl bg-[#d7ad35] px-5 py-3.5 font-bold text-black">Find your starting point <ArrowRight size={16}/></a></div>
-          <div className="relative min-h-[280px] lg:min-h-full"><div className="absolute inset-0 bg-cover bg-center" style={{backgroundImage:"linear-gradient(90deg,#10151b22,#10151b66),url("+IMAGES.community+")"}}/><div className="absolute bottom-6 left-6 flex items-center gap-2 rounded-full border border-white/15 bg-black/45 px-4 py-2 text-xs text-slate-200 backdrop-blur"><Sparkles size={14} className="gold"/> A place to keep growing <ArrowDownRight size={14}/></div></div>
+          <div className="relative min-h-[280px] lg:min-h-full"><div className="absolute inset-0 bg-cover bg-center" style={{backgroundImage:"linear-gradient(90deg,#10151b22,#10151b66),url("+IMAGES.studio+")"}}/><div className="absolute bottom-6 left-6 flex items-center gap-2 rounded-full border border-white/15 bg-black/45 px-4 py-2 text-xs text-slate-200 backdrop-blur"><Sparkles size={14} className="gold"/> A place to keep growing <ArrowDownRight size={14}/></div></div>
         </div>
       </div>
     </section>
