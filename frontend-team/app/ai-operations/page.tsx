@@ -62,7 +62,7 @@ export default function AIOperations(){
 
   return <Shell roles={user.roles||[]} active="ai-operations">
     <div className="mb-8">
-      <h1 className="text-4xl font-semibold">AI Operations</h1>
+      <p className="section-kicker">Platform controls / Intelligence</p><h1 className="mt-3 font-display text-4xl tracking-tight sm:text-5xl">AI operations</h1>
       <p className="mt-2 max-w-3xl text-slate-500">
         Configure, validate, test and monitor Learnora AI without changing feature code.
       </p>
@@ -77,13 +77,13 @@ export default function AIOperations(){
         ["Recent requests",summary.recent_requests],
         ["Failures",summary.recent_failures],
         ["Avg latency",summary.average_latency_ms!=null?summary.average_latency_ms+" ms":"—"],
-      ].map(([label,value])=><div key={String(label)} className="rounded-2xl border border-white/[.07] bg-[#0e1319] p-4">
+      ].map(([label,value])=><div key={String(label)} className="border border-white/[.1] bg-[#11171e] p-4">
         <div className="text-xs uppercase tracking-wide text-slate-600">{label}</div>
         <div className="mt-2 text-xl font-semibold text-slate-100">{value}</div>
       </div>)}
     </div>}
 
-    <div className="mb-6 rounded-2xl border border-white/[.07] bg-[#0e1319] p-5">
+    <div className="mb-6 border border-white/[.1] bg-[#11171e] p-5">
       <div className="font-medium text-slate-200">AI control path</div>
       <div className="mt-2 text-sm text-slate-500">Learnora feature → AI profile → provider → model → gateway → LLM.</div>
       <div className="mt-3 grid gap-2 text-sm text-slate-400 md:grid-cols-3">
@@ -106,7 +106,7 @@ export default function AIOperations(){
         const validation=profile.validation_errors||[];
         const testResult=tests[profile.profile_key];
         const healthy=testResult?.success;
-        return <div key={profile.profile_key} className="rounded-2xl border border-white/[.07] bg-[#0e1319] p-5">
+        return <div key={profile.profile_key} className="border border-white/[.1] bg-[#11171e] p-5">
           <div className="flex flex-col gap-5">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
               <div className="min-w-0">
@@ -150,7 +150,7 @@ export default function AIOperations(){
 
             {validation.length>0&&<div className="rounded-xl border border-red-500/20 bg-red-500/5 p-3 text-xs text-red-300">{validation.join(" ")}</div>}
 
-            {testResult&&<div className="rounded-xl border border-white/[.06] bg-black/10 p-3 text-xs text-slate-400">
+            {testResult&&<div className="border border-white/[.1] bg-[#0c1015] p-3 text-xs text-slate-400">
               <div>Status: {testResult.status}{testResult.provider?(" · "+testResult.provider):""}{testResult.model?(" · "+testResult.model):""}</div>
               {testResult.fallback_used&&<div className="mt-1 text-amber-300">Primary failed; fallback succeeded{testResult.fallback_reason?(" ("+testResult.fallback_reason+")"):""}.</div>}
               {testResult.error&&<div className="mt-1 text-red-300">{testResult.error}</div>}
