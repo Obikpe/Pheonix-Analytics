@@ -1,0 +1,23 @@
+"use client";
+import {useEffect,useState} from "react";
+import {useRouter} from "next/navigation";
+import {ArrowRight,Compass,Target} from "lucide-react";
+import Logo from "../../components/brand/Logo";
+import {currentUser} from "../../lib/api";
+import {request} from "../../lib/api/client";
+
+const tracks=["Data & analytics","Software development","Business & entrepreneurship","Design & creative work","Teaching & education","Project management","Digital marketing","Career development","Personal growth"];
+export default function OnboardingPage(){
+ const router=useRouter();const [goal,setGoal]=useState("");const [experience,setExperience]=useState("beginner");const [track,setTrack]=useState(tracks[0]);const [interests,setInterests]=useState<string[]>([]);const [time,setTime]=useState("180");const [busy,setBusy]=useState(false);const [error,setError]=useState("");
+ useEffect(()=>{currentUser().then(async u=>{if(u.role!=="normal"){router.replace(u.role==="witstart"?"/dashboard/witstart":"/dashboard");return;}const p=await request<any>("/learner/onboarding");if(p.completed)router.replace("/dashboard");}).catch(()=>router.replace("/login"));},[router]);
+ function toggle(value:string){setInterests(old=>old.includes(value)?old.filter(x=>x!==value):old.length<12?[...old,value]:old)}
+ async function submit(e:any){e.preventDefault();setBusy(true);setError("");try{await request("/learner/onboarding",{method:"PUT",body:JSON.stringify({goal,experience_level:experience,preferred_track:track,interests,weekly_time_minutes:Number(time)})});router.replace("/dashboard");}catch(e:any){setError(e.message||"Your preferences could not be saved.");}finally{setBusy(false)}}
+ return <main className="min-h-screen bg-[#07090c] px-5 py-10 text-white sm:py-16"><div className="mx-auto max-w-3xl"><a href="/"><Logo/></a><p className="mt-12 text-xs font-bold uppercase tracking-[.22em] gold">Make this yours</p><h1 className="mt-4 max-w-2xl font-display text-4xl leading-tight sm:text-6xl">What are you hoping to do with what you learn?</h1><p className="mt-5 max-w-2xl text-sm leading-7 text-slate-400">A few answers help us shape a more useful starting point. You can change your direction as your interests grow.</p><form onSubmit={submit} className="mt-10 space-y-7 rounded-3xl border border-white/[.08] bg-[#0e1319] p-5 sm:p-8">
+ <label className="block text-sm font-medium">What would you like to achieve?<textarea required minLength={3} maxLength={1000} value={goal} onChange={e=>setGoal(e.target.value)} className="field mt-2 min-h-28" placeholder="For example: move into data analysis, build a small business, or become more confident at work."/></label>
+ <label className="block text-sm font-medium">Where are you starting from?<select className="field mt-2" value={experience} onChange={e=>setExperience(e.target.value)}><option value="beginner">I am new to this</option><option value="some_experience">I know a little and want to practise</option><option value="experienced">I have experience and want to deepen it</option><option value="career_changer">I am changing direction</option></select></label>
+ <label className="block text-sm font-medium">Which path feels closest to your goal?<select className="field mt-2" value={track} onChange={e=>setTrack(e.target.value)}>{tracks.map(t=><option key={t}>{t}</option>)}</select></label>
+ <fieldset><legend className="text-sm font-medium">What would you like to explore? <span className="text-xs text-slate-500">(choose any)</span></legend><div className="mt-3 flex flex-wrap gap-2">{tracks.map(t=><button type="button" key={t} onClick={()=>toggle(t)} aria-pressed={interests.includes(t)} className={"rounded-full border px-3 py-2 text-xs transition "+(interests.includes(t)?"border-[#d7ad35]/60 bg-[#d7ad35]/10 text-[#f2d477]":"border-white/10 text-slate-400 hover:border-white/25")}>{t}</button>)}</div></fieldset>
+ <label className="block text-sm font-medium">Time you can usually set aside each week<select className="field mt-2" value={time} onChange={e=>setTime(e.target.value)}><option value="60">About 1 hour</option><option value="180">About 3 hours</option><option value="300">About 5 hours</option><option value="600">About 10 hours</option></select></label>
+ {error&&<p role="alert" className="text-sm text-red-300">{error}</p>}<button disabled={busy} className="inline-flex min-h-12 items-center gap-2 rounded-xl bg-[#d7ad35] px-5 font-bold text-black disabled:opacity-50">{busy?"Saving your path…":"Build my learning path"} <ArrowRight size={16}/></button><p className="text-xs leading-5 text-slate-600">Your answers help personalise recommendations. They do not restrict what you can learn.</p>
+ </form></div></main>
+}
