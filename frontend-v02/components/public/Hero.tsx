@@ -32,7 +32,7 @@ export default function Hero() {
         </div>
 
         <div className="relative mx-auto w-full max-w-[590px] lg:ml-auto">
-          <div className="mb-3 flex items-center justify-between border-b border-white/[.12] pb-3 text-[10px] uppercase tracking-[.18em] text-slate-500"><span>Learning in motion</span><span>01 — 04</span></div>
+          <div className="mb-3 border-b border-white/[.12] pb-3 text-[10px] uppercase tracking-[.18em] text-slate-500">Learning in motion</div>
           <div className="relative aspect-[4/4.6] overflow-hidden border border-white/[.12] bg-[#151c24]">
             <img src={IMAGES.hero} alt="Learners working together at a table" className="h-full w-full object-cover" fetchPriority="high" decoding="async"/>
             <div className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-5 border-t border-white/20 bg-[#090b0e]/90 p-5 sm:p-6">
