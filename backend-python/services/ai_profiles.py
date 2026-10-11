@@ -161,49 +161,47 @@ def _usage_window_start(days: int):
 
 
 def _fallback(feature, message):
-    text = message.strip()
+    """Useful deterministic assistance when the configured LLM is unavailable.
 
-    if not text:
-        return (
-            "Tell me what you are learning or trying to accomplish, "
-            "and I will help you take the next useful step."
-        )
-
-    if feature == "practice":
-        return (
-            "Let's practise step by step. First, explain what you already "
-            f"understand about: {text[:300]}"
-        )
-
-    if feature == "coach":
-        return (
-            f"For '{text[:300]}', define the outcome, then choose the "
-            "smallest useful task you can complete in 15 minutes."
-        )
-
-    if feature == "project":
-        return (
-            f"For '{text[:300]}', define the goal, inputs, expected output "
-            "and how you will prove the result."
-        )
-
+    This is intentionally transparent: it does not pretend that a model
+    answered, and it never merely repeats the learner's prompt.
+    """
     if feature == "summarise":
         return (
-            "I can summarise the lesson accurately once you paste the lesson "
-            "text or notes you want me to work from."
+            "I can summarise your material, but I need the lesson text or notes "
+            "first. Paste the content here and I can help organise it into key "
+            "ideas, definitions, steps and examples when AI service is available."
         )
-
+    if feature == "practice":
+        return (
+            "Let's make this practical. Choose one concept, try a small example "
+            "without looking at the answer, then check your reasoning. Include "
+            "the topic and your level so the practice can be tailored."
+        )
+    if feature == "coach":
+        return (
+            "Start with a specific outcome you want to reach. Break it into one "
+            "task you can finish in 15–20 minutes, decide what evidence will show "
+            "you completed it, and schedule the next session."
+        )
+    if feature == "project":
+        return (
+            "Frame the project around four things: the problem, the inputs you "
+            "have, the result you want, and how you will test it. Share those "
+            "details and the point where you are stuck so we can work through it."
+        )
     if feature == "advanced_reasoning":
         return (
-            f"Let's reason from the available evidence about '{text[:300]}'. "
-            "Separate known facts, assumptions and the next evidence needed."
+            "A useful first pass is to separate confirmed facts from assumptions, "
+            "identify what evidence is missing, compare plausible explanations, "
+            "and choose the smallest test that would distinguish them."
         )
-
     return (
-        f"Let's break this down. What part of '{text[:300]}' is confusing "
-        "or where are you currently stuck?"
+        "I can help explain a concept, work through an example, or check your "
+        "reasoning. Start by telling me the topic and what you have tried so far. "
+        "The AI service is currently unavailable, so this is a guidance prompt "
+        "rather than a generated AI answer."
     )
-
 
 def _learning_context(user_id, organisation_id):
     facts = []
