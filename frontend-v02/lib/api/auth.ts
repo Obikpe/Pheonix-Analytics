@@ -32,7 +32,7 @@ export function currentUser(): Promise<any> {
   if (currentUserRequest && cachedForToken === token) return currentUserRequest;
 
   cachedForToken = token;
-  currentUserRequest = request<any>("/auth/me")
+  const pending = request<any>("/auth/me")
     .then((user) => {
       if (activeToken() === token) cachedUser = user;
       return user;
@@ -43,12 +43,15 @@ export function currentUser(): Promise<any> {
         cachedForToken = "";
       }
       throw error;
-    })
-    .finally(() => {
-      currentUserRequest = null;
     });
 
-  return currentUserRequest;
+  currentUserRequest = pending;
+  pending.then(
+    () => { if (currentUserRequest === pending) currentUserRequest = null; },
+    () => { if (currentUserRequest === pending) currentUserRequest = null; }
+  );
+
+  return pending;
 }
 
 export const forgotPassword = (email: string) =>
