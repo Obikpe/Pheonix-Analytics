@@ -100,6 +100,21 @@ export default function Home() {
         </div>
       </div>
     </section>
+    <section className="border-t border-white/[.08] bg-[#0b0f14] py-20 sm:py-24">
+      <div className="mx-auto grid max-w-7xl gap-10 px-5 lg:grid-cols-[.7fr_1.3fr] lg:px-8">
+        <div><p className="text-xs font-bold uppercase tracking-[.22em] gold">Questions, answered</p><h2 className="mt-5 font-display text-4xl sm:text-5xl">Before you begin.</h2><p className="mt-5 max-w-sm text-sm leading-7 text-slate-400">You should know what you are joining, what you can do here, and where Learnora is still growing.</p></div>
+        <div className="divide-y divide-white/[.08] border-y border-white/[.08]">
+          {[
+            ["Is Learnora only for people changing careers?","No. You might be learning for work, school, personal growth, a new responsibility or a project you want to complete. The point is to connect learning with something useful to you."],
+            ["What makes Learnora different from a course library?","A course is one part of the journey. Learnora is being built to connect lessons with practice, projects, feedback and a record of what you have demonstrated."],
+            ["Can my school or organisation use Learnora?","Yes. Organisations can enquire about a workspace shaped around their people, programmes, courses and agreed outcomes. Access and capacity are set through the organisation's arrangement."],
+            ["I teach or have expertise to share. Can I contribute?","Instructors and creators can explore the teaching pathway and apply to contribute. Creator tools and commercial features depend on the access currently available."],
+            ["Do I need to pay to get started?","Available access depends on the course, programme and account. We aim to be clear about what is available before you commit; organisation pricing is discussed directly rather than presented as a one-size-fits-all plan."],
+            ["Does completing a course mean a skill is verified?","Not automatically. Course progress, assessment results and instructor-reviewed evidence are different things. Learnora is designed to show that distinction clearly."]
+          ].map(([question,answer])=><details key={question} className="group py-5"><summary className="flex cursor-pointer list-none items-center justify-between gap-5 text-base font-semibold text-slate-100 marker:content-none">{question}<span className="text-xl font-light text-[#f2d477] transition-transform group-open:rotate-45">+</span></summary><p className="mt-4 max-w-3xl text-sm leading-7 text-slate-400">{answer}</p></details>)}
+        </div>
+      </div>
+    </section>
     <PublicFooter />
   </>;
 }
