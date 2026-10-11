@@ -32,9 +32,9 @@ export default function PublicNav() {
             </button>
             <div className={`absolute left-0 top-full w-[340px] pt-2 ${audienceOpen ? "visible opacity-100" : "invisible opacity-0"} transition-opacity duration-150`}>
               <div className="border border-white/[.12] bg-[#11171e] p-2 shadow-2xl shadow-black/40">
-                {audiences.map((item, i) => <a key={item.href} href={item.href} onClick={close} className="group/item flex items-start justify-between gap-4 border-b border-white/[.06] p-4 last:border-0 hover:bg-white/[.035]">
+                {audiences.map((item) => <a key={item.href} href={item.href} onClick={close} className="group/item flex items-start justify-between gap-4 border-b border-white/[.06] p-4 last:border-0 hover:bg-white/[.035]">
                   <span><span className="block text-sm font-semibold text-slate-100">{item.title}</span><span className="mt-1 block text-xs leading-5 text-slate-500">{item.detail}</span></span>
-                  <span className="pt-1 text-xs text-slate-600">0{i+1}</span>
+                  <ArrowRight size={14} className="mt-1 shrink-0 text-slate-600"/>
                 </a>)}
               </div>
             </div>
