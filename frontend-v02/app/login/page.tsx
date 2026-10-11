@@ -15,7 +15,7 @@ export default function Login() {
     e.preventDefault();setError("");setBusy(true);
     try {
       const result:any=await login(email,password);setToken(result.token||result.access_token);
-      if(result.account_type==="admin"){router.push("https://teamslearnora.vercel.app/login");return;}
+      if(result.account_type==="admin"){if(["super_admin","staff_admin"].includes(result.role)){clearOrganisationContext();router.push("https://teamslearnora.vercel.app/login");return;}if(result.role==="witstart_admin"){router.push("/dashboard/admin/witstart_admin");return;}setError("This administrator account is not configured for learner sign-in. Please contact your organisation administrator.");return;}
       const me:any=await currentUser().catch(()=>result);
       const memberships=me.organisation_memberships||[];
       const privileged=memberships.filter((m:any)=>["owner","admin"].includes(m.role));
