@@ -81,7 +81,9 @@ async def add_security_headers(request: Request, call_next):
 # Routers
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(grading.router, prefix="/api/grading", tags=["grading"])
-app.include_router(progress.router, prefix="/api/progress", tags=["progress"])
+# The progress router already declares its /api/progress prefix.
+# Do not add it a second time here.
+app.include_router(progress.router)
 app.include_router(billing.router, prefix="/api/billing", tags=["billing"])
 app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
 app.include_router(webhooks.router, prefix="/api/webhooks", tags=["webhooks"])
