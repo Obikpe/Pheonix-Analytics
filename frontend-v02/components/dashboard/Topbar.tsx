@@ -26,8 +26,17 @@ export default function Topbar({admin=false}:{admin?:boolean}) {
       const feed = await request<{notifications?:NoticePreview[]}>("/notifications/me?limit=10");
       const notices = Array.isArray(feed.notifications) ? feed.notifications : [];
       const currentIds = new Set(notices.map(n => n.id));
-      if (lastSeenIds.current) {
-        const fresh = notices.filter(n => !lastSeenIds.current!.has(n.id)).slice(0, 3).reverse();
+      let previousIds = lastSeenIds.current;
+      if (!previousIds) {
+        try {
+          const saved = localStorage.getItem("learnora_last_notification_ids");
+          if (saved) previousIds = new Set<string>(JSON.parse(saved));
+        } catch {
+          previousIds = null;
+        }
+      }
+      if (previousIds) {
+        const fresh = notices.filter(n => !previousIds!.has(n.id)).slice(0, 3).reverse();
         fresh.forEach(n => {
           try {
             const alert = new Notification(n.title, { body: n.body, tag: n.id });
@@ -41,6 +50,7 @@ export default function Topbar({admin=false}:{admin?:boolean}) {
         });
       }
       lastSeenIds.current = currentIds;
+      localStorage.setItem("learnora_last_notification_ids", JSON.stringify([...currentIds]));
     } catch {
       // Notification previews are optional and should not interrupt the workspace.
     }
