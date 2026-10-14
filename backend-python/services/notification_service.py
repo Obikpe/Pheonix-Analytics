@@ -86,28 +86,23 @@ def _send_to_users(course: dict, event: str, title: str, body: str, action_url: 
         if not user_ids:
             return 0
 
-        # Publish events are idempotent. Course updates, by contrast, may
-        # happen repeatedly and each meaningful update should be announced.
+        # Publish events are idempotent. Use one query for the prior fan-out
+        # instead of an N+1 query per learner. Meaningful course updates may
+        # recur and are therefore not deduplicated.
         already_notified: set[str] = set()
         if event == "course_published":
-            for user_id in user_ids:
-                try:
-                    rows = (
-                        supabase.table("learnora_notifications")
-                        .select("data")
-                        .eq("user_id", user_id)
-                        .eq("notification_type", event)
-                        .limit(100)
-                        .execute()
-                    ).data or []
-                    if any(
-                        isinstance(row.get("data"), dict)
-                        and str((row.get("data") or {}).get("course_id")) == course_id
-                        for row in rows
-                    ):
-                        already_notified.add(user_id)
-                except Exception:
-                    logger.exception("Could not check duplicate publish notification")
+            try:
+                prior = (
+                    supabase.table("learnora_notifications")
+                    .select("user_id")
+                    .eq("notification_type", event)
+                    .contains("data", {"course_id": course_id})
+                    .limit(5000)
+                    .execute()
+                ).data or []
+                already_notified = {str(row["user_id"]) for row in prior if row.get("user_id")}
+            except Exception:
+                logger.exception("Could not check duplicate publish notifications")
         now = datetime.now(timezone.utc).isoformat()
         rows_to_insert = [{
             "user_id": user_id,
@@ -121,8 +116,11 @@ def _send_to_users(course: dict, event: str, title: str, body: str, action_url: 
         } for user_id in user_ids if user_id not in already_notified]
         if not rows_to_insert:
             return 0
-        result = supabase.table("learnora_notifications").insert(rows_to_insert).execute()
-        return len(result.data or [])
+        inserted = 0
+        for start in range(0, len(rows_to_insert), 100):
+            result = supabase.table("learnora_notifications").insert(rows_to_insert[start:start + 100]).execute()
+            inserted += len(result.data or [])
+        return inserted
     except Exception:
         logger.exception("Notification delivery failed for course %s", course.get("id"))
         return 0
