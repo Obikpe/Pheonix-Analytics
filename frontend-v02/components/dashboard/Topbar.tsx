@@ -51,7 +51,6 @@ export default function Topbar({admin=false}:{admin?:boolean}) {
       }
       lastSeenIds.current = currentIds;
       localStorage.setItem("learnora_last_notification_ids", JSON.stringify(Array.from(currentIds)));
-      localStorage.setItem("learnora_last_notification_ids", JSON.stringify([...currentIds]));
     } catch {
       // Notification previews are optional and should not interrupt the workspace.
     }
