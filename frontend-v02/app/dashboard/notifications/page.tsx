@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Bell, Check, CheckCheck, Clock3, ExternalLink, RefreshCw, Sparkles } from "lucide-react";
+import { Bell, BellRing, Check, CheckCheck, Clock3, ExternalLink, RefreshCw, Sparkles } from "lucide-react";
 import Shell from "../../../components/dashboard/Shell";
 import EmptyState from "../../../components/feedback/EmptyState";
 import { request } from "../../../lib/api/client";
@@ -38,6 +38,36 @@ export default function NotificationsPage() {
   const [filter, setFilter] = useState<"all" | "unread">("all");
   const [busyId, setBusyId] = useState("");
   const [markingAll, setMarkingAll] = useState(false);
+  const [desktopStatus, setDesktopStatus] = useState("checking");
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !("Notification" in window)) {
+      setDesktopStatus("unsupported");
+      return;
+    }
+    const permission = Notification.permission;
+    setDesktopStatus(permission);
+    if (permission === "granted" && localStorage.getItem("learnora_desktop_notifications") === "enabled") setDesktopStatus("enabled");
+  }, []);
+
+  async function enableDesktopAlerts() {
+    if (typeof window === "undefined" || !("Notification" in window)) {
+      setDesktopStatus("unsupported");
+      return;
+    }
+    try {
+      const permission = Notification.permission === "default" ? await Notification.requestPermission() : Notification.permission;
+      if (permission === "granted") {
+        localStorage.setItem("learnora_desktop_notifications", "enabled");
+        setDesktopStatus("enabled");
+      } else {
+        localStorage.removeItem("learnora_desktop_notifications");
+        setDesktopStatus(permission);
+      }
+    } catch {
+      setDesktopStatus("unsupported");
+    }
+  }
 
   const load = useCallback(async (quiet = false) => {
     if (!quiet) setLoading(true);
@@ -116,12 +146,17 @@ export default function NotificationsPage() {
           <p className="text-[10px] font-semibold uppercase tracking-[.16em] text-slate-500">Unread</p>
           <p className="mt-1 text-2xl font-semibold tabular-nums">{unreadCount}</p>
         </div>
+        <button type="button" onClick={enableDesktopAlerts} disabled={desktopStatus === "unsupported" || desktopStatus === "enabled"} title={desktopStatus === "denied" ? "Allow notifications in your browser settings to enable alerts" : undefined} className="inline-flex min-h-11 items-center gap-2 border border-white/[.1] px-3 text-xs font-semibold text-slate-300 transition hover:border-[#d7ad35]/35 hover:text-[#f2d477] disabled:cursor-not-allowed disabled:opacity-50">
+          <BellRing size={15}/>{desktopStatus === "enabled" ? "Desktop alerts on" : desktopStatus === "unsupported" ? "Alerts unavailable" : desktopStatus === "denied" ? "Alerts blocked" : "Enable desktop alerts"}
+        </button>
         <button type="button" onClick={markAllRead} disabled={!unreadCount || markingAll} className="inline-flex min-h-11 items-center gap-2 border border-[#d7ad35]/35 px-4 text-xs font-semibold text-[#f2d477] transition hover:bg-[#d7ad35]/10 disabled:cursor-not-allowed disabled:opacity-40">
           <CheckCheck size={15}/>{markingAll ? "Updating…" : "Mark all read"}
         </button>
       </div>
     </div>
 
+    {desktopStatus === "enabled" && <p className="mt-3 text-xs text-slate-600">Browser alerts are enabled on this device while Learnora is open. The in-app inbox continues to work even when browser alerts are unavailable.</p>}
+    {desktopStatus === "denied" && <p className="mt-3 text-xs text-amber-200/70">Browser alerts are blocked by your browser. You can still receive in-app updates here.</p>}
     <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
       <div className="inline-flex border border-white/[.1] bg-[#0c1015] p-1" aria-label="Notification filter">
         <button type="button" onClick={() => setFilter("all")} aria-pressed={filter === "all"} className={`min-h-9 px-4 text-xs font-semibold transition ${filter === "all" ? "bg-white/[.09] text-white" : "text-slate-500 hover:text-white"}`}>All updates <span className="ml-1 tabular-nums text-slate-500">{items.length}</span></button>
