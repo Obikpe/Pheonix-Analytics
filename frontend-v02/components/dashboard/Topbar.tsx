@@ -1,12 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Bell } from "lucide-react";
 import { request } from "../../lib/api/client";
 
+type NoticePreview = { id: string; title: string; body: string; action_url?: string | null };
+
 export default function Topbar({admin=false}:{admin?:boolean}) {
   const [unread,setUnread] = useState(0);
+  const lastSeenIds = useRef<Set<string> | null>(null);
+
   const refresh = useCallback(async () => {
     if (admin) return;
     try {
@@ -14,6 +18,31 @@ export default function Topbar({admin=false}:{admin?:boolean}) {
       setUnread(Math.max(0, Number(result.unread_count || 0)));
     } catch {
       // A temporarily unavailable notification service should never break navigation.
+    }
+
+    try {
+      const desktopEnabled = localStorage.getItem("learnora_desktop_notifications") === "enabled";
+      if (!desktopEnabled || !("Notification" in window) || Notification.permission !== "granted") return;
+      const feed = await request<{notifications?:NoticePreview[]}>("/notifications/me?limit=10");
+      const notices = Array.isArray(feed.notifications) ? feed.notifications : [];
+      const currentIds = new Set(notices.map(n => n.id));
+      if (lastSeenIds.current) {
+        const fresh = notices.filter(n => !lastSeenIds.current!.has(n.id)).slice(0, 3).reverse();
+        fresh.forEach(n => {
+          try {
+            const alert = new Notification(n.title, { body: n.body, tag: n.id });
+            alert.onclick = () => {
+              window.focus();
+              if (n.action_url && n.action_url.startsWith("/") && !n.action_url.startsWith("//")) window.location.href = n.action_url;
+            };
+          } catch {
+            // Browser alerts are optional; the in-app inbox remains the source of truth.
+          }
+        });
+      }
+      lastSeenIds.current = currentIds;
+    } catch {
+      // Notification previews are optional and should not interrupt the workspace.
     }
   }, [admin]);
 
