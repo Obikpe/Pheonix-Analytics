@@ -59,6 +59,7 @@ export default function NotificationsPage() {
       const permission = Notification.permission === "default" ? await Notification.requestPermission() : Notification.permission;
       if (permission === "granted") {
         localStorage.setItem("learnora_desktop_notifications", "enabled");
+        localStorage.setItem("learnora_last_notification_ids", JSON.stringify(items.map(item => item.id)));
         setDesktopStatus("enabled");
       } else {
         localStorage.removeItem("learnora_desktop_notifications");
