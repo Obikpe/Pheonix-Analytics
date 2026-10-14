@@ -22,6 +22,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from .auth import supabase
+from services.notification_service import notify_course_updated
 from .permissions import (
     PermissionContext,
     get_permission_context,
@@ -404,6 +405,9 @@ def create_module(
                 detail="Module creation returned no record.",
             )
 
+        if course.get("status") == "published" and module.get("status") == "published":
+            notify_course_updated(course, ["module_added"])
+
         return {
             "success": True,
             "message": "Module created successfully.",
@@ -476,6 +480,9 @@ def update_module(
                 status_code=500,
                 detail="Module update returned no record.",
             )
+
+        if course.get("status") == "published" and any(key in update_data for key in ("title", "description", "status")):
+            notify_course_updated(course, ["module_updated"])
 
         return {
             "success": True,
@@ -687,6 +694,9 @@ def create_lesson(
                 detail="Lesson creation returned no record.",
             )
 
+        if course.get("status") == "published" and lesson.get("status") == "published":
+            notify_course_updated(course, ["lesson_added"])
+
         return {
             "success": True,
             "message": "Lesson created successfully.",
@@ -770,6 +780,9 @@ def update_lesson(
                 status_code=500,
                 detail="Lesson update returned no record.",
             )
+
+        if course.get("status") == "published" and any(key in update_data for key in ("title", "description", "content", "status", "duration_minutes")):
+            notify_course_updated(course, ["lesson_updated"])
 
         return {
             "success": True,
