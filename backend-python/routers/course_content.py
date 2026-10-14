@@ -125,6 +125,10 @@ def _get_course(course_id: str):
                 "organisation_id,"
                 "title,"
                 "slug,"
+                "short_description,"
+                "description,"
+                "level,"
+                "settings,"
                 "ownership,"
                 "status"
             )
