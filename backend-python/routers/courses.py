@@ -102,6 +102,8 @@ class CreateCourse(BaseModel):
     description: Optional[str] = None
 
     level: Optional[str] = None
+    track: Optional[str] = Field(default=None, max_length=120)
+    topics: list[str] = Field(default_factory=list)
 
     status: str = "draft"
     ownership: str = "learnora"
@@ -136,6 +138,8 @@ class UpdateCourse(BaseModel):
     short_description: Optional[str] = None
     description: Optional[str] = None
     level: Optional[str] = None
+    track: Optional[str] = Field(default=None, max_length=120)
+    topics: Optional[list[str]] = None
     status: Optional[str] = None
     thumbnail_url: Optional[str] = None
 
@@ -782,6 +786,12 @@ def create_course(
     # Create
     # --------------------------------------------------------
 
+    course_settings = dict(payload.settings or {})
+    if payload.track and payload.track.strip():
+        course_settings["track"] = payload.track.strip()
+    if payload.topics:
+        course_settings["topics"] = [item.strip() for item in payload.topics if item.strip()][:30]
+
     insert_data = {
         "organisation_id": organisation_id,
         "title": payload.title.strip(),
@@ -793,7 +803,7 @@ def create_course(
         "ownership": ownership,
         "thumbnail_url": payload.thumbnail_url,
         "estimated_hours": payload.estimated_hours,
-        "settings": payload.settings,
+        "settings": course_settings,
         "created_by": creator_uuid,
     }
 
@@ -912,6 +922,19 @@ def update_course(
         updates["level"] = _validate_level(
             payload.level
         )
+
+    settings_update = dict(updates.get("settings", course.get("settings") or {}))
+    if payload.track is not None:
+        if payload.track.strip():
+            settings_update["track"] = payload.track.strip()
+        else:
+            settings_update.pop("track", None)
+        updates["settings"] = settings_update
+
+    if payload.topics is not None:
+        settings_update = dict(updates.get("settings", course.get("settings") or {}))
+        settings_update["topics"] = [item.strip() for item in payload.topics if item.strip()][:30]
+        updates["settings"] = settings_update
 
     if payload.status is not None:
         updates["status"] = _validate_status(
