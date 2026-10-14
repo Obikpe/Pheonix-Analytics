@@ -45,6 +45,7 @@ from pydantic import BaseModel, Field
 from .auth import CurrentUser, get_current_user, supabase
 from services.capacity import ensure_org_capacity
 from services.audit import audit
+from services.notification_service import notify_course_published, notify_course_updated
 
 from .permissions import (
     PermissionContext,
@@ -827,6 +828,9 @@ def create_course(
             detail="Failed to create course.",
         )
 
+    if course.get("status") == "published":
+        notify_course_published(course)
+
     return {
         "success": True,
         "message": "Course created successfully.",
@@ -967,6 +971,12 @@ def update_course(
             detail="Failed to update course.",
         )
 
+    if updated_course.get("status") == "published":
+        if course.get("status") != "published":
+            notify_course_published(updated_course)
+        else:
+            notify_course_updated(updated_course, list(updates.keys()))
+
     return {
         "success": True,
         "message": "Course updated successfully.",
@@ -1053,6 +1063,8 @@ def publish_course(
             status_code=500,
             detail="Failed to publish course.",
         )
+
+    notify_course_published(updated_course)
 
     return {
         "success": True,
