@@ -86,27 +86,28 @@ def _send_to_users(course: dict, event: str, title: str, body: str, action_url: 
         if not user_ids:
             return 0
 
-        # Make publish events idempotent so retries or duplicate requests don't
-        # create a second identical notification for the same learner.
-        existing_by_user: dict[str, set[str]] = {}
-        for user_id in user_ids:
-            try:
-                rows = (
-                    supabase.table("learnora_notifications")
-                    .select("data")
-                    .eq("user_id", user_id)
-                    .eq("notification_type", event)
-                    .limit(100)
-                    .execute()
-                ).data or []
-                existing_by_user[user_id] = {
-                    str((row.get("data") or {}).get("course_id"))
-                    for row in rows
-                    if isinstance(row.get("data"), dict)
-                }
-            except Exception:
-                existing_by_user[user_id] = set()
-
+        # Publish events are idempotent. Course updates, by contrast, may
+        # happen repeatedly and each meaningful update should be announced.
+        already_notified: set[str] = set()
+        if event == "course_published":
+            for user_id in user_ids:
+                try:
+                    rows = (
+                        supabase.table("learnora_notifications")
+                        .select("data")
+                        .eq("user_id", user_id)
+                        .eq("notification_type", event)
+                        .limit(100)
+                        .execute()
+                    ).data or []
+                    if any(
+                        isinstance(row.get("data"), dict)
+                        and str((row.get("data") or {}).get("course_id")) == course_id
+                        for row in rows
+                    ):
+                        already_notified.add(user_id)
+                except Exception:
+                    logger.exception("Could not check duplicate publish notification")
         now = datetime.now(timezone.utc).isoformat()
         rows_to_insert = [{
             "user_id": user_id,
@@ -115,9 +116,9 @@ def _send_to_users(course: dict, event: str, title: str, body: str, action_url: 
             "title": title,
             "body": body,
             "action_url": action_url,
-            "data": {"course_id": course_id, "event": event},
+            "data": {"course_id": course_id, "event": event, "updated_at": now},
             "created_at": now,
-        } for user_id in user_ids if course_id not in existing_by_user.get(user_id, set())]
+        } for user_id in user_ids if user_id not in already_notified]
         if not rows_to_insert:
             return 0
         result = supabase.table("learnora_notifications").insert(rows_to_insert).execute()
