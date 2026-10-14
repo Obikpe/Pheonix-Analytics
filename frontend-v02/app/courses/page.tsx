@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { ArrowRight, BookOpen, Clock3, Search, SlidersHorizontal } from "lucide-react";
 import PublicNav from "../../components/public/PublicNav";
 import PublicFooter from "../../components/public/PublicFooter";
@@ -14,6 +15,7 @@ export default function Courses() {
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
   const [level, setLevel] = useState("all");
+  const [track, setTrack] = useState("all");
 
   async function loadCourses() {
     setLoading(true);
@@ -31,10 +33,13 @@ export default function Courses() {
   useEffect(() => { loadCourses(); }, []);
 
   const levels = useMemo(() => ["all", ...Array.from(new Set(items.map(c => String(c.level || "").trim()).filter(Boolean)))], [items]);
+  const tracks = useMemo(() => ["all", ...Array.from(new Set(items.map(c => String(c.settings?.track || c.track || "").trim()).filter(Boolean))).sort((a,b) => a.localeCompare(b))], [items]);
   const filtered = useMemo(() => items.filter(c => {
-    const text = [c.title, c.short_description, c.description, c.level].filter(Boolean).join(" ").toLowerCase();
-    return text.includes(query.trim().toLowerCase()) && (level === "all" || c.level === level);
-  }), [items, query, level]);
+    const courseTrack = String(c.settings?.track || c.track || "").trim();
+    const topics = Array.isArray(c.settings?.topics) ? c.settings.topics.join(" ") : "";
+    const text = [c.title, c.short_description, c.description, c.level, courseTrack, topics].filter(Boolean).join(" ").toLowerCase();
+    return text.includes(query.trim().toLowerCase()) && (level === "all" || c.level === level) && (track === "all" || courseTrack === track);
+  }), [items, query, level, track]);
 
   const usedImages = new Set<string>([IMAGES.hero,IMAGES.learners,IMAGES.instructors,IMAGES.organisations,IMAGES.portfolio,IMAGES.studio,IMAGES.library,IMAGES.workshop,IMAGES.tutors,IMAGES.community,IMAGES.aboutHero,IMAGES.aboutVision,IMAGES.learnerPage,IMAGES.instructorPage,IMAGES.organisationPage,IMAGES.login].map(url => url.split("?")[0]));
 
@@ -67,7 +72,16 @@ export default function Courses() {
               {levels.map(x => <option key={x} value={x} className="bg-[#10151b]">{x === "all" ? "All levels" : x}</option>)}
             </select>
           </label>
-          <span className="text-xs tabular-nums text-slate-500">{loading ? "Loading catalogue…" : `${filtered.length} ${filtered.length === 1 ? "course" : "courses"}`}</span>
+          <label className="flex min-h-12 items-center gap-3 border border-white/10 bg-[#10151b] px-4">
+            <span className="text-xs text-slate-500">Track</span>
+            <select aria-label="Filter by learning track" value={track} onChange={e => setTrack(e.target.value)} className="max-w-52 bg-transparent py-3 text-sm text-slate-200 outline-none">
+              {tracks.map(x => <option key={x} value={x} className="bg-[#10151b]">{x === "all" ? "All tracks" : x}</option>)}
+            </select>
+          </label>
+          <div className="flex items-center gap-3">
+            <span className="text-xs tabular-nums text-slate-500">{loading ? "Loading catalogue…" : `${filtered.length} ${filtered.length === 1 ? "course" : "courses"}`}</span>
+            {(query || level !== "all" || track !== "all") && <button type="button" onClick={() => {setQuery("");setLevel("all");setTrack("all");}} className="text-xs font-semibold text-[#f2d477] hover:text-white">Clear filters</button>}
+          </div>
         </div>
       </section>
 
@@ -80,10 +94,11 @@ export default function Courses() {
             const imageKey = candidate ? candidate.split("?")[0] : "";
             const image = imageKey && !usedImages.has(imageKey) ? candidate : "";
             if (image) usedImages.add(imageKey);
-            return <a key={course.id} href={"/courses/" + course.id} className="group min-w-0 bg-[#0b0f14] transition-colors hover:bg-[#10151b]">
+            return <Link key={course.id} href={"/courses/" + course.id} className="group min-w-0 bg-[#0b0f14] transition-colors hover:bg-[#10151b]">
               <div className="relative h-52 overflow-hidden bg-[#151c24]">
                 {image ? <img src={image} alt="" loading="lazy" className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.035]"/> : <div className="flex h-full items-end justify-between p-5"><span className="font-display text-6xl text-white/10">{String(i+1).padStart(2,"0")}</span><span className="text-xs uppercase tracking-[.18em] text-[#f2d477]">Learnora / Course</span></div>}
                 <span className="absolute left-4 top-4 border border-white/15 bg-[#080a0d] px-3 py-1.5 text-[10px] uppercase tracking-[.15em] text-slate-200">{course.level || "All levels"}</span>
+                {(course.settings?.track || course.track) && <span className="absolute bottom-4 left-4 max-w-[85%] truncate border border-[#d7ad35]/35 bg-[#080a0d]/90 px-3 py-1.5 text-[10px] uppercase tracking-[.12em] text-[#f2d477]">{course.settings?.track || course.track}</span>}
               </div>
               <div className="p-5 sm:p-6">
                 <h2 className="font-display text-2xl leading-snug">{course.title}</h2>
@@ -93,9 +108,9 @@ export default function Courses() {
                   <span className="inline-flex items-center gap-2 font-semibold text-[#f2d477]">View course <ArrowRight size={14}/></span>
                 </div>
               </div>
-            </a>;
+            </Link>;
           })}
-        </div> : <EmptyState title={query || level !== "all" ? "No courses match those filters" : "No published courses yet"} message={query || level !== "all" ? "Try a broader search or choose another level." : "Learnora has not returned published courses from the backend yet. Draft content is intentionally not shown as available learning."}/>}
+        </div> : <EmptyState title={query || level !== "all" || track !== "all" ? "No courses match those filters" : "No published courses yet"} message={query || level !== "all" || track !== "all" ? "Try a broader search, another level or a different learning track." : "Learnora has not returned published courses from the backend yet. Draft content is intentionally not shown as available learning."}/>}
       </section>
     </main>
     <PublicFooter/>
