@@ -128,7 +128,7 @@ export default function Topbar({ admin = false }: { admin?: boolean }) {
 
       // Keep browser alert deduplication bounded and scoped to recent notices.
       const priorBrowserIds = browserSeenIds.current || new Set<string>();
-      for (const id of currentIds) priorBrowserIds.add(id);
+      currentIds.forEach((id) => priorBrowserIds.add(id));
       browserSeenIds.current = new Set(Array.from(priorBrowserIds).slice(-MAX_TRACKED_IDS));
       try {
         localStorage.setItem(
