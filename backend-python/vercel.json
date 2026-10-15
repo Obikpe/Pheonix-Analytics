@@ -5,5 +5,5 @@
       "runtime": "vercel-python@4.2.0"
     }
   },
-  "git": {"deployment-enabled":false}
+  "git": {"deploymentEnabled":false}
 }
