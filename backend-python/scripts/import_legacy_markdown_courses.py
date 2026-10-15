@@ -26,6 +26,7 @@ from supabase import create_client
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE_COURSES = ROOT / "frontend" / "data" / "courses.json"
 SOURCE_LESSONS = ROOT / "frontend" / "data" / "lessons"
+SOURCE_LESSON_INDEX = ROOT / "frontend" / "data" / "lessons_index.json"
 ENV_FILE = ROOT / "backend-python" / ".env"
 PLACEHOLDER_RE = re.compile(
     r"(write complete explanatory notes here|insert lesson content here|todo:.*lesson)",
@@ -71,7 +72,32 @@ def load_sources() -> tuple[list[dict[str, Any]], dict[str, list[Path]]]:
     return catalogue, files_by_legacy_id
 
 
-def build_lesson_rows(course: dict[str, Any], module_id: str, files: list[Path]) -> tuple[list[dict], str, int]:
+def load_lesson_index() -> dict[str, dict[str, Any]]:
+    if not SOURCE_LESSON_INDEX.exists():
+        return {}
+    rows = json.loads(SOURCE_LESSON_INDEX.read_text(encoding="utf-8-sig"))
+    result: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        source = str(row.get("file") or "").replace("\\\\", "/")
+        if source.startswith("data/"):
+            source = source[5:]
+        if source:
+            result[source] = row
+    return result
+
+
+def lesson_duration(content: str, indexed: dict[str, Any] | None) -> int | None:
+    match = re.search(r"(?:\\*\\*)?Duration(?:\\*\\*)?\\s*:\\s*(\\d+)\\s*(?:min|minutes)", content, re.IGNORECASE)
+    if match:
+        return int(match.group(1))
+    value = (indexed or {}).get("estimated_minutes")
+    try:
+        return int(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def build_lesson_rows(course: dict[str, Any], module_id: str, files: list[Path], index_by_file: dict[str, dict[str, Any]]) -> tuple[list[dict], str, int]:
     outline = ""
     lessons: list[dict] = []
     placeholders = 0
@@ -89,17 +115,19 @@ def build_lesson_rows(course: dict[str, Any], module_id: str, files: list[Path])
         if PLACEHOLDER_RE.search(content):
             placeholders += 1
         title = title_from_markdown(content, f"Lesson {order_index:02d}")
+        relative_source = path.relative_to(ROOT).as_posix()
+        index_key = path.relative_to(ROOT / "frontend" / "data").as_posix()
         lessons.append({
             "module_id": module_id,
             "title": title,
             "slug": slugify(f"{legacy_id}-{legacy_lesson_id}"),
-            "description": None,
+            "description": f"Preserved Markdown source: {relative_source}",
             "order_index": order_index,
-            "lesson_type": "mixed",
+            "lesson_type": "article",
             # Keep the original Markdown intact. Draft status prevents placeholder
             # text from being presented as finished teaching material.
             "content": content,
-            "duration_minutes": None,
+            "duration_minutes": lesson_duration(content, index_by_file.get(index_key)),
             "is_preview": False,
             "status": "draft",
         })
@@ -113,6 +141,7 @@ def main() -> int:
     args = parser.parse_args()
 
     catalogue, files_by_id = load_sources()
+    index_by_file = load_lesson_index()
     if args.limit > 0:
         catalogue = catalogue[:args.limit]
 
@@ -209,7 +238,7 @@ def main() -> int:
         imported_courses += 1
 
         files = source_files
-        _, outline, placeholders = build_lesson_rows(course, "pending", files)
+        _, outline, placeholders = build_lesson_rows(course, "pending", files, index_by_file)
         module_payload = {
             "course_id": course_id,
             "title": f"{course_row['title']} — Curriculum",
@@ -221,7 +250,7 @@ def main() -> int:
         module_id = str(module_row["id"])
         imported_modules += 1
 
-        lesson_rows, _, _ = build_lesson_rows(course, module_id, files)
+        lesson_rows, _, _ = build_lesson_rows(course, module_id, files, index_by_file)
         for start in range(0, len(lesson_rows), 50):
             chunk = lesson_rows[start:start + 50]
             if chunk:
