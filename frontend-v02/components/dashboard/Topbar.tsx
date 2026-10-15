@@ -62,6 +62,35 @@ export default function Topbar({ admin = false }: { admin?: boolean }) {
           savedBrowserIds = null;
         }
         browserSeenIds.current = savedBrowserIds ? new Set(savedBrowserIds) : currentIds;
+        // If desktop alerts were enabled earlier, surface notices created while
+        // the learner was away, without replaying the entire historical inbox.
+        if (savedBrowserIds) {
+          const savedSet = new Set(savedBrowserIds);
+          const missed = notices
+            .filter((notice) => !savedSet.has(notice.id))
+            .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+          if (missed.length) {
+            showToast({ ...missed[0], extraCount: Math.max(0, missed.length - 1) });
+            if (
+              localStorage.getItem("learnora_desktop_notifications") === "enabled" &&
+              "Notification" in window &&
+              Notification.permission === "granted"
+            ) {
+              missed.slice(0, 3).reverse().forEach((notice) => {
+                try {
+                  const alert = new Notification(notice.title, { body: notice.body, tag: notice.id });
+                  alert.onclick = () => {
+                    window.focus();
+                    router.push(safeInternalPath(notice.action_url));
+                    alert.close();
+                  };
+                } catch {
+                  // Browser notifications are optional; in-app inbox remains authoritative.
+                }
+              });
+            }
+          }
+        }
       } else {
         const fresh = notices
           .filter((notice) => !lastSeenIds.current!.has(notice.id))
