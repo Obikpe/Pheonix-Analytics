@@ -87,7 +87,7 @@ export default function NotificationsPage() {
     void load();
     const timer = window.setInterval(() => {
       if (document.visibilityState === "visible") void load(true);
-    }, 30000);
+    }, 15000);
     const onFocus = () => { if (document.visibilityState === "visible") void load(true); };
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onFocus);
@@ -140,7 +140,7 @@ export default function NotificationsPage() {
       <div>
         <p className="section-kicker">Your learning signal</p>
         <h1 className="mt-3 font-display text-4xl tracking-tight sm:text-5xl">Notifications<span className="text-[#d7ad35]">.</span></h1>
-        <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-400">New courses matched to your track, changes to courses you follow, and updates tied to your learning journey.</p>
+        <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-400">New courses matched to your track, changes to courses you follow, and updates tied to your learning journey. Learnora checks for new activity while your workspace is open.</p>
       </div>
       <div className="flex flex-wrap items-center gap-3">
         <div className="border border-white/[.1] bg-white/[.025] px-4 py-3">
