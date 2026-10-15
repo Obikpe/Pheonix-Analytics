@@ -78,7 +78,7 @@ def load_lesson_index() -> dict[str, dict[str, Any]]:
     rows = json.loads(SOURCE_LESSON_INDEX.read_text(encoding="utf-8-sig"))
     result: dict[str, dict[str, Any]] = {}
     for row in rows:
-        source = str(row.get("file") or "").replace("\\\\", "/")
+        source = str(row.get("file") or "").replace("\\", "/")
         if source.startswith("data/"):
             source = source[5:]
         if source:
@@ -87,7 +87,7 @@ def load_lesson_index() -> dict[str, dict[str, Any]]:
 
 
 def lesson_duration(content: str, indexed: dict[str, Any] | None) -> int | None:
-    match = re.search(r"(?:\\*\\*)?Duration(?:\\*\\*)?\\s*:\\s*(\\d+)\\s*(?:min|minutes)", content, re.IGNORECASE)
+    match = re.search(r"(?:\*\*)?Duration(?:\*\*)?\s*:\s*(\d+)\s*(?:min|minutes)", content, re.IGNORECASE)
     if match:
         return int(match.group(1))
     value = (indexed or {}).get("estimated_minutes")
