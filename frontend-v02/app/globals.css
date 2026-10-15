@@ -87,3 +87,8 @@ img { color: transparent; }
 @media (max-width: 640px) {
   body { font-size: 14px; }
 }
+
+@keyframes toast-progress {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0); }
+}
