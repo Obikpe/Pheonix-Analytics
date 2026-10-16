@@ -43,7 +43,7 @@ Real file from 5 stores LAG_001_Ikeja, LAG_002_Lekki, LAG_003_VI, LDN_001_Camden
 
 **Real World Example 1 - Messy dataset simulation:**
 
-```
+```python
 import pandas as pd
 import numpy as np
 import re
@@ -246,7 +246,7 @@ This pipeline handles store_id, city, country, order_id CUST_101_LAG, price $25,
 
 **Real World Example 2 - Reusable cleaning functions module:**
 
-```
+```python
 # src/cleaning_pandas.py - reusable for all stores
 
 import pandas as pd
@@ -363,7 +363,7 @@ Download olist_customers_dataset.csv, olist_orders_dataset.csv, olist_order_paym
 
 **Task - Create file `cleaning_project_L22.py`:**
 
-```
+```python
 import pandas as pd
 import numpy as np
 import re

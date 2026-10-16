@@ -1,299 +1,673 @@
-﻿# Lesson 02 - Variance, Standard Deviation, Range, IQR - Measuring Spread
+﻿# Lesson 02 - Variance, Standard Deviation, Range, IQR - How Spread Out Is Your Data?
 
-**Duration:** 45 min | **Level:** Beginner | **Goal:** Measure how spread out and consistent your sales data is
+**Duration:** 90 min | **Level:** Absolute Beginner | **Goal:** Understand how consistent or variable your sales are
 
-## Learning Objectives
-- Calculate range, variance, standard deviation, IQR, and percentiles
-- Understand difference between population and sample formulas
-- Detect outliers using IQR method and interpret coefficient of variation
-- Use Pandas and NumPy for spread calculations
+## What You Will Learn
+
+In L01 you learned typical value (mean/median). But two stores can have same mean and be completely different:
+
+- **Store A consistent:** Orders per day = [20, 21, 19, 20, 20] - mean 20, always around 20
+- **Store B inconsistent:** Orders per day = [5, 35, 0, 40, 20] - mean 20, but some days empty, some days crowded
+
+Same mean, different risk! Store B needs extra staff some days, wastes staff other days.
+
+This lesson teaches you to measure **spread** - how far data is from the mean. Spread tells you reliability, risk, and consistency.
+
+We build from zero, everyday examples, pictures, tiny code steps.
 
 ---
 
-## 1. Why Mean Alone Is Not Enough
+## 1. Range - The Simplest Spread
 
-Consider two stores with same mean daily orders but different consistency:
+### What is Range?
 
-- **Store A:** Orders per day = [20, 21, 19, 20, 20] - mean 20, very consistent
-- **Store B:** Orders per day = [5, 35, 0, 40, 20] - mean 20, highly inconsistent
+Range = Maximum - Minimum. How wide is your data from smallest to largest?
 
-Same mean, completely different risk. Store B might need more staff on some days, be empty on others. Variance and standard deviation quantify this spread.
+If orders are [10, 12, 13, 11, 14], Min=10, Max=14, Range=14-10=4. All orders within 4k window.
 
-**Key Idea:** Central tendency (mean/median) tells you typical value. Spread tells you reliability and risk.
+If orders are [10, 12, 13, 11, 100], Min=10, Max=100, Range=90. Huge spread because one outlier.
 
-## 2. Range, Variance, Standard Deviation - Formulas Verified
+**Strength:** Very simple, easy to calculate.
+**Weakness:** Sensitive to one outlier. One huge order makes range huge, even if other 99 orders consistent.
 
-<svg width="100%" height="200" viewBox="0 0 700 200" xmlns="http://www.w3.org/2000/svg">
-  <rect x="0" y="0" width="700" height="200" rx="16" fill="#FFFFFF"/>
-  <text x="350" y="28" text-anchor="middle" font-family="Arial" font-size="12" font-weight="800" fill="#111827">MEASURING SPREAD</text>
-  <rect x="20" y="50" width="150" height="130" rx="12" fill="#FEE2E2" stroke="#991B1B" stroke-width="1.5"/>
-  <text x="95" y="70" text-anchor="middle" font-family="Arial" font-size="10" font-weight="800" fill="#7F1D1D">RANGE</text>
-  <text x="30" y="90" font-family="Arial" font-size="8" fill="#7F1D1D">Range = Max - Min</text>
-  <text x="30" y="105" font-family="Arial" font-size="8" fill="#7F1D1D">Ex: [5,10,15] Range=10</text>
-  <text x="30" y="120" font-family="Arial" font-size="8" fill="#7F1D1D">Simple but sensitive</text>
-  <text x="30" y="135" font-family="Arial" font-size="8" fill="#7F1D1D">to outliers</text>
-  <rect x="190" y="50" width="160" height="130" rx="12" fill="#DBEAFE" stroke="#1E40AF" stroke-width="1.5"/>
-  <text x="270" y="70" text-anchor="middle" font-family="Arial" font-size="10" font-weight="800" fill="#1E3A8A">VARIANCE & STD</text>
-  <text x="200" y="90" font-family="Arial" font-size="8" fill="#1E3A8A">Pop Var = Σ(x-μ)² / N</text>
-  <text x="200" y="105" font-family="Arial" font-size="8" fill="#1E3A8A">Sample Var = Σ(x-μ)² / (n-1)</text>
-  <text x="200" y="120" font-family="Arial" font-size="8" fill="#1E3A8A">Std = √Variance</text>
-  <text x="200" y="135" font-family="Arial" font-size="8" fill="#1E3A8A">Same units as data</text>
-  <text x="200" y="150" font-family="Arial" font-size="8" fill="#1E3A8A">68-95-99.7 rule uses std</text>
-  <rect x="370" y="50" width="150" height="130" rx="12" fill="#D1FAE5" stroke="#065F46" stroke-width="1.5"/>
-  <text x="445" y="70" text-anchor="middle" font-family="Arial" font-size="10" font-weight="800" fill="#064E3B">IQR</text>
-  <text x="380" y="90" font-family="Arial" font-size="8" fill="#064E3B">Q1=25th, Q3=75th</text>
-  <text x="380" y="105" font-family="Arial" font-size="8" fill="#064E3B">IQR = Q3 - Q1 (middle 50%)</text>
-  <text x="380" y="120" font-family="Arial" font-size="8" fill="#064E3B">Robust to outliers</text>
-  <text x="380" y="135" font-family="Arial" font-size="8" fill="#064E3B">Outlier: &lt;Q1-1.5*IQR</text>
-  <text x="380" y="150" font-family="Arial" font-size="8" fill="#064E3B">or &gt;Q3+1.5*IQR</text>
-  <rect x="540" y="50" width="140" height="130" rx="12" fill="#FEF3C7" stroke="#92400E" stroke-width="1.5"/>
-  <text x="610" y="70" text-anchor="middle" font-family="Arial" font-size="10" font-weight="800" fill="#92400E">CV</text>
-  <text x="550" y="90" font-family="Arial" font-size="8" fill="#92400E">CV = Std / Mean *100%</text>
-  <text x="550" y="105" font-family="Arial" font-size="8" fill="#92400E">Compares spread across</text>
-  <text x="550" y="120" font-family="Arial" font-size="8" fill="#92400E">different means</text>
-  <text x="550" y="135" font-family="Arial" font-size="8" fill="#92400E">Low CV = consistent</text>
+### Visual: Range
+
+<svg width="100%" height="180" viewBox="0 0 700 180" xmlns="http://www.w3.org/2000/svg">
+  <rect x="0" y="0" width="700" height="180" rx="16" fill="#FFFFFF" stroke="#E5E7EB" stroke-width="1"/>
+  <text x="350" y="25" text-anchor="middle" font-family="Arial" font-size="12" font-weight="800" fill="#111827">RANGE = MAX - MIN</text>
+  <rect x="20" y="50" width="300" height="100" rx="12" fill="#EFF6FF" stroke="#93C5FD" stroke-width="1"/>
+  <text x="170" y="70" text-anchor="middle" font-family="Arial" font-size="10" font-weight="700" fill="#1E40AF">Small Range - Consistent</text>
+  <text x="35" y="90" font-family="Arial" font-size="9" fill="#1E40AF">Data: [10, 11, 12, 13, 14]</text>
+  <text x="35" y="108" font-family="Arial" font-size="9" fill="#1E40AF">Min=10, Max=14, Range=4</text>
+  <text x="35" y="126" font-family="Arial" font-size="9" fill="#059669">✓ All close together, predictable</text>
+  <rect x="380" y="50" width="300" height="100" rx="12" fill="#FEF2F2" stroke="#FCA5A5" stroke-width="1"/>
+  <text x="530" y="70" text-anchor="middle" font-family="Arial" font-size="10" font-weight="700" fill="#7F1D1D">Large Range - Variable</text>
+  <text x="395" y="90" font-family="Arial" font-size="9" fill="#7F1D1D">Data: [10, 11, 12, 13, 100]</text>
+  <text x="395" y="108" font-family="Arial" font-size="9" fill="#7F1D1D">Min=10, Max=100, Range=90</text>
+  <text x="395" y="126" font-family="Arial" font-size="9" fill="#DC2626">✗ One outlier makes range huge</text>
 </svg>
 
-**Verified Formulas:**
+### Code Step-by-Step - Range Simple to Advanced
 
-1. **Range:** Range = Max - Min. Simple, but affected by single outlier.
+**Step 1 Plain Python - No Libraries:**
 
-2. **Variance:**
-   - Population variance: σ² = Σ(xᵢ - μ)² / N (divide by N, when you have entire population)
-   - Sample variance: s² = Σ(xᵢ - x̄)² / (n-1) (divide by n-1, when sample estimates population - Bessel's correction gives unbiased estimate)
+```python
+# Step 1: Most basic - find min and max by looping
+orders = [10, 12, 13, 11, 14]
+print(f"Orders: {orders}")
 
-3. **Standard Deviation:** σ = √σ² or s = √s². Same units as original data, more interpretable than variance. For normal distribution, about 68% data within 1 std, 95% within 2 std, 99.7% within 3 std (empirical rule).
+# Find min - smallest
+smallest = orders[0]  # Start with first value
+for value in orders:
+    if value < smallest:
+        smallest = value
+    print(f"Checking {value}, smallest so far {smallest}")
 
-4. **IQR:** IQR = Q3 - Q1 = 75th percentile - 25th percentile. Covers middle 50% of data, robust to outliers.
+print(f"Min = {smallest}")
 
-5. **Outlier Rule (Tukey):** Outlier if < Q1 - 1.5×IQR or > Q3 + 1.5×IQR. This is standard boxplot rule.
+# Find max - largest
+largest = orders[0]
+for value in orders:
+    if value > largest:
+        largest = value
 
-6. **Coefficient of Variation:** CV = (Std / Mean) × 100%. Unitless, lets you compare spread of stores with different average sales.
+print(f"Max = {largest}")
 
-**Example Manual Calculation:**
-Data: [10, 12, 14] - mean = 12
-Variance (population) = ((10-12)² + (12-12)² + (14-12)²)/3 = (4+0+4)/3 = 8/3 = 2.67
-Std = √2.67 = 1.63
-Range = 14-10 = 4
-
-## 3. Real World Example - Store Consistency
-
+# Range
+range_val = largest - smallest
+print(f"Range = Max - Min = {largest} - {smallest} = {range_val}")
 ```
-import pandas as pd
+
+What this does: Loop through each value, keep track of smallest and largest seen so far. Range is difference.
+
+**Step 2 Using built-in min() max():**
+
+```python
+# Step 2: Shorter - Python built-ins do looping for you
+orders = [10, 12, 13, 11, 14]
+min_val = min(orders)  # min() finds smallest automatically
+max_val = max(orders)  # max() finds largest automatically
+range_val = max_val - min_val
+print(f"Min {min_val}, Max {max_val}, Range {range_val}")
+```
+
+**Step 3 NumPy:**
+
+```python
 import numpy as np
-
-# Example: Daily orders for 2 stores (simulated)
-np.random.seed(42)
-# Consistent store: mean 20, low spread
-store_consistent = np.array([20, 21, 19, 20, 20, 22, 18, 20, 21, 19])
-# Inconsistent store: same mean 20, high spread
-store_inconsistent = np.array([5, 35, 0, 40, 20, 10, 30, 5, 35, 20])
-
-def spread_stats(data, name):
-    mean = np.mean(data)
-    median = np.median(data)
-    var_pop = np.var(data, ddof=0)  # population
-    var_sample = np.var(data, ddof=1)  # sample
-    std_pop = np.std(data, ddof=0)
-    std_sample = np.std(data, ddof=1)
-    data_range = np.max(data) - np.min(data)
-    q1 = np.percentile(data, 25)
-    q3 = np.percentile(data, 75)
-    iqr = q3 - q1
-    cv = (std_sample / mean * 100) if mean != 0 else 0
-    
-    print(f"{name}: {data}")
-    print(f"  Mean {mean:.2f}, Median {median:.2f}")
-    print(f"  Range {data_range}, Q1 {q1:.2f}, Q3 {q3:.2f}, IQR {iqr:.2f}")
-    print(f"  Var pop {var_pop:.2f}, Var sample {var_sample:.2f}")
-    print(f"  Std pop {std_pop:.2f}, Std sample {std_sample:.2f}")
-    print(f"  CV {cv:.1f}% - {'Consistent' if cv < 20 else 'Variable'}")
-    
-    # Outlier detection
-    lower = q1 - 1.5 * iqr
-    upper = q3 + 1.5 * iqr
-    outliers = data[(data < lower) | (data > upper)]
-    print(f"  Outlier bounds [{lower:.2f}, {upper:.2f}], Outliers {outliers}")
-    print()
-
-spread_stats(store_consistent, "Consistent Store (e.g., LAG_001_Ikeja)")
-spread_stats(store_inconsistent, "Inconsistent Store")
-
-# Real sales example with store IDs - where location adds context
-orders = [
-    {"order_id": "ORD_LAG_001_5001", "store_id": "LAG_001_Ikeja", "city": "Ikeja", "total": 53750},
-    {"order_id": "ORD_LAG_001_5002", "store_id": "LAG_001_Ikeja", "city": "Ikeja", "total": 34400},
-    {"order_id": "ORD_LAG_002_5003", "store_id": "LAG_002_Lekki", "city": "Lekki", "total": 91375},
-    {"order_id": "ORD_LAG_002_5004", "store_id": "LAG_002_Lekki", "city": "Lekki", "total": 80625},
-    {"order_id": "ORD_LDN_001_2001", "store_id": "LDN_001_Camden", "city": "Camden", "total": 433},
-    {"order_id": "ORD_ABJ_001_3001", "store_id": "ABJ_001_Garki", "city": "Garki", "total": 96750},
-]
-
-df = pd.DataFrame(orders)
-print("All orders spread:")
-print(f"  Mean {df['total'].mean():.2f}, Std {df['total'].std():.2f}, Range {df['total'].max() - df['total'].min():.2f}")
-print(f"  CV {df['total'].std()/df['total'].mean()*100:.1f}% - High because mixing NGN and GBP scales")
-
-# Groupby for meaningful spread comparison within same currency
-# Compare only Lagos stores (NGN)
-lagos_df = df[df['store_id'].str.contains('LAG|ABJ')]
-print(f"\nLagos/Abuja only (NGN) - more comparable:")
-print(f"  Mean {lagos_df['total'].mean():.2f}, Std {lagos_df['total'].std():.2f}, CV {lagos_df['total'].std()/lagos_df['total'].mean()*100:.1f}%")
-
-# Using pandas describe includes spread
-print(f"\nPandas describe (includes std, min, 25%, 50%, 75%, max):")
-print(df['total'].describe())
+orders = np.array([10, 12, 13, 11, 14])
+range_val = np.max(orders) - np.min(orders)
+print(f"NumPy Range = {range_val}")
+# Or np.ptp = peak to peak = max-min
+print(f"NumPy ptp = {np.ptp(orders)} same as range")
 ```
 
-**Interpretation:**
-- **Low std/CV:** Sales predictable, easier inventory planning. Good for LAG_001_Ikeja if it has CV < 20%
-- **High std/CV:** Sales volatile, need safety stock. Might indicate promotional effects or inconsistent demand
-- **IQR outlier detection:** Flag orders with total < Q1-1.5IQR or > Q3+1.5IQR for review - could be data entry error like $25,000 entered as $250,000
+**Step 4 Pandas:**
 
-## 4. Hands-On Assignment with Kaggle Dataset
-
-**Dataset to download:**
-- Primary: https://www.kaggle.com/datasets/olistbr/brazilian-ecommerce - olist_order_payments_dataset.csv payment_value column has right-skew and outliers
-- Secondary: https://www.kaggle.com/datasets/vivek468/superstore-dataset-final - Superstore.csv Sales column by Region, perfect for comparing spread across regions
-
-**Task - Create file `spread_stats_L02.py`:**
-
-```
+```python
 import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
-import os
+df = pd.DataFrame({"total": [10,12,13,11,14]})
+range_val = df["total"].max() - df["total"].min()
+print(f"Pandas Range = {range_val}")
+```
 
-print("=== Part 1: Manual Spread Calculation ===")
-data = np.array([10, 12, 14, 10, 12, 14, 100])  # Last value outlier
-print(f"Data {data}")
-print(f"Mean {np.mean(data):.2f}, Median {np.median(data):.2f}")
-print(f"Range {np.max(data)-np.min(data)}")
-print(f"Var pop {np.var(data, ddof=0):.2f}, Var sample {np.var(data, ddof=1):.2f}")
-print(f"Std pop {np.std(data, ddof=0):.2f}, Std sample {np.std(data, ddof=1):.2f}")
-q1 = np.percentile(data, 25)
-q3 = np.percentile(data, 75)
+---
+
+## 2. Variance - Average Squared Distance from Mean
+
+### What is Variance in Plain English?
+
+Variance measures how far each value is from the mean, on average. But with a twist: we square the distances.
+
+Why square?
+1. Distance can be negative (if value below mean). Squaring makes all positive.
+2. Squaring punishes large distances more - a value far from mean counts more.
+
+Think of it like this: If most orders are close to mean 12k, variance small. If orders are spread far from mean, variance large.
+
+**Formula - Don't be scared, we break it down:**
+
+Population Variance = Sum of (each value - mean)^2 / N
+Sample Variance = Sum of (each value - mean)^2 / (n-1)
+
+Where N = total population size, n = sample size.
+
+Why n-1 for sample? Called Bessel's correction. When you only have sample not entire population, dividing by n-1 gives better estimate of true population variance. Unbiased estimate. If you have entire population, divide by N.
+
+### Visual: Variance - Distances from Mean
+
+<svg width="100%" height="250" viewBox="0 0 700 250" xmlns="http://www.w3.org/2000/svg">
+  <rect x="0" y="0" width="700" height="250" rx="16" fill="#FFFFFF" stroke="#E5E7EB" stroke-width="1"/>
+  <text x="350" y="25" text-anchor="middle" font-family="Arial" font-size="12" font-weight="800" fill="#111827">VARIANCE - AVERAGE SQUARED DISTANCE FROM MEAN</text>
+  
+  <rect x="20" y="50" width="310" height="180" rx="12" fill="#EFF6FF" stroke="#93C5FD" stroke-width="1"/>
+  <text x="175" y="70" text-anchor="middle" font-family="Arial" font-size="10" font-weight="700" fill="#1E40AF">Low Variance - Close to Mean</text>
+  <text x="35" y="90" font-family="Arial" font-size="8" fill="#1E40AF">Data: [11,12,12,13,12] Mean=12</text>
+  <text x="35" y="108" font-family="Arial" font-size="8" fill="#1E40AF">Distances from mean:</text>
+  <text x="35" y="122" font-family="Arial" font-size="8" fill="#1E40AF">11-12=-1 squared=1</text>
+  <text x="35" y="136" font-family="Arial" font-size="8" fill="#1E40AF">12-12=0 squared=0</text>
+  <text x="35" y="150" font-family="Arial" font-size="8" fill="#1E40AF">12-12=0 squared=0</text>
+  <text x="35" y="164" font-family="Arial" font-size="8" fill="#1E40AF">13-12=1 squared=1</text>
+  <text x="35" y="178" font-family="Arial" font-size="8" fill="#1E40AF">12-12=0 squared=0</text>
+  <text x="35" y="198" font-family="Arial" font-size="9" font-weight="800" fill="#1E40AF">Sum squared=2, Var=2/5=0.4 Small!</text>
+  <text x="35" y="212" font-family="Arial" font-size="8" fill="#059669">✓ All near mean, consistent, low risk</text>
+
+  <rect x="360" y="50" width="320" height="180" rx="12" fill="#FEF2F2" stroke="#FCA5A5" stroke-width="1"/>
+  <text x="520" y="70" text-anchor="middle" font-family="Arial" font-size="10" font-weight="700" fill="#7F1D1D">High Variance - Far from Mean</text>
+  <text x="375" y="90" font-family="Arial" font-size="8" fill="#7F1D1D">Data: [5,12,20,2,21] Mean=12</text>
+  <text x="375" y="108" font-family="Arial" font-size="8" fill="#7F1D1D">Distances from mean:</text>
+  <text x="375" y="122" font-family="Arial" font-size="8" fill="#7F1D1D">5-12=-7 squared=49</text>
+  <text x="375" y="136" font-family="Arial" font-size="8" fill="#7F1D1D">12-12=0 squared=0</text>
+  <text x="375" y="150" font-family="Arial" font-size="8" fill="#7F1D1D">20-12=8 squared=64</text>
+  <text x="375" y="164" font-family="Arial" font-size="8" fill="#7F1D1D">2-12=-10 squared=100</text>
+  <text x="375" y="178" font-family="Arial" font-size="8" fill="#7F1D1D">21-12=9 squared=81</text>
+  <text x="375" y="198" font-family="Arial" font-size="9" font-weight="800" fill="#7F1D1D">Sum squared=294, Var=294/5=58.8 Large!</text>
+  <text x="375" y="212" font-family="Arial" font-size="8" fill="#DC2626">✗ Far from mean, inconsistent, high risk</text>
+</svg>
+
+### Code Step-by-Step - Variance
+
+**Step 1 Plain Python - Understand Logic:**
+
+```python
+# Step 1: Calculate variance by hand - no libraries
+orders = [11, 12, 12, 13, 12]
+print(f"Orders: {orders}")
+
+# Step A: Calculate mean
+mean = sum(orders) / len(orders)
+print(f"Mean = {mean}")
+
+# Step B: For each value, distance from mean and square it
+squared_distances = []
+for value in orders:
+    distance = value - mean
+    squared = distance ** 2  # **2 means squared
+    squared_distances.append(squared)
+    print(f"Value {value}, distance from mean {value}-{mean}={distance}, squared={squared}")
+
+print(f"Squared distances: {squared_distances}")
+
+# Step C: Average the squared distances
+sum_squared = sum(squared_distances)
+print(f"Sum of squared distances = {sum_squared}")
+
+# Population variance divide by N
+N = len(orders)
+var_pop = sum_squared / N
+print(f"Population variance = Sum/N = {sum_squared}/{N} = {var_pop}")
+
+# Sample variance divide by n-1 (Bessel's correction)
+var_sample = sum_squared / (N - 1)
+print(f"Sample variance = Sum/(n-1) = {sum_squared}/{N-1} = {var_sample} - slightly larger, unbiased")
+
+print(f"\nLow variance {var_pop} means all close to mean, consistent")
+```
+
+What this does: For each order, find how far from mean, square it, then average squares. Squaring makes negatives positive and punishes far values more.
+
+**Step 2 Using sum() and list comprehension:**
+
+```python
+# Step 2: Shorter
+orders = [11, 12, 12, 13, 12]
+mean = sum(orders) / len(orders)
+# List comprehension - one line to calculate all squared distances
+squared_distances = [(x - mean)**2 for x in orders]
+print(f"Squared distances: {squared_distances}")
+var_pop = sum(squared_distances) / len(orders)
+var_sample = sum(squared_distances) / (len(orders)-1)
+print(f"Var pop {var_pop}, Var sample {var_sample}")
+```
+
+**Step 3 NumPy:**
+
+```python
+import numpy as np
+orders = np.array([11, 12, 12, 13, 12])
+mean = np.mean(orders)
+var_pop = np.var(orders, ddof=0)  # ddof=0 divide by N population
+var_sample = np.var(orders, ddof=1)  # ddof=1 divide by n-1 sample
+print(f"Mean {mean}, Var pop (ddof=0) {var_pop}, Var sample (ddof=1) {var_sample}")
+
+# Why ddof? Delta Degrees of Freedom - how many less than N you divide by
+# ddof=0 divide by N, ddof=1 divide by N-1
+```
+
+**Step 4 Pandas:**
+
+```python
+import pandas as pd
+df = pd.DataFrame({"total": [11,12,12,13,12]})
+print(f"Pandas var pop {df['total'].var(ddof=0)}")  # Pandas default ddof=1 sample!
+print(f"Pandas var sample {df['total'].var(ddof=1)} default is sample")
+# Important: Pandas .var() default is sample (n-1), NumPy default is population (N)
+```
+
+**Important Difference:** Pandas .var() default ddof=1 (sample), NumPy np.var default ddof=0 (population). Always check!
+
+---
+
+## 3. Standard Deviation - Square Root of Variance, Same Units as Data
+
+### What is Standard Deviation?
+
+Variance is squared units. If orders are in Naira, variance is in Naira squared - hard to interpret.
+
+Standard deviation = square root of variance. Same units as original data (Naira), easy to interpret.
+
+If mean = 12k and std = 2k, you know typical order deviates about 2k from mean.
+
+**For normal distribution:**
+- About 68% of data within 1 std of mean (mean ± 1*std)
+- About 95% within 2 std (mean ± 2*std)
+- About 99.7% within 3 std (mean ± 3*std)
+
+This is called empirical rule or 68-95-99.7 rule.
+
+### Visual: Standard Deviation and 68-95-99.7 Rule
+
+<svg width="100%" height="220" viewBox="0 0 700 220" xmlns="http://www.w3.org/2000/svg">
+  <rect x="0" y="0" width="700" height="220" rx="16" fill="#FFFFFF" stroke="#E5E7EB" stroke-width="1"/>
+  <text x="350" y="25" text-anchor="middle" font-family="Arial" font-size="12" font-weight="800" fill="#111827">STANDARD DEVIATION - SAME UNITS AS DATA, 68-95-99.7 RULE</text>
+  
+  <!-- Bell curve simplified -->
+  <rect x="20" y="50" width="660" height="150" rx="12" fill="#EFF6FF" stroke="#93C5FD" stroke-width="1"/>
+  <text x="350" y="70" text-anchor="middle" font-family="Arial" font-size="10" font-weight="700" fill="#1E40AF">Normal Distribution with Mean=12k, Std=2k</text>
+  
+  <!-- Axis -->
+  <line x1="50" y1="160" x2="650" y2="160" stroke="#9CA3AF" stroke-width="1"/>
+  <text x="50" y="175" font-family="Arial" font-size="8" fill="#6B7280">6k</text>
+  <text x="150" y="175" font-family="Arial" font-size="8" fill="#6B7280">8k</text>
+  <text x="250" y="175" font-family="Arial" font-size="8" fill="#6B7280">10k</text>
+  <text x="350" y="175" font-family="Arial" font-size="9" font-weight="800" fill="#1E40AF">12k Mean</text>
+  <text x="450" y="175" font-family="Arial" font-size="8" fill="#6B7280">14k</text>
+  <text x="550" y="175" font-family="Arial" font-size="8" fill="#6B7280">16k</text>
+  <text x="630" y="175" font-family="Arial" font-size="8" fill="#6B7280">18k</text>
+
+  <!-- Bell shape using path -->
+  <path d="M 50 160 Q 200 160 250 120 Q 300 60 350 50 Q 400 60 450 120 Q 500 160 650 160" fill="#BFDBFE" stroke="#2563EB" stroke-width="1.5" opacity="0.6"/>
+
+  <!-- Std bands -->
+  <rect x="250" y="90" width="200" height="70" fill="#DBEAFE" opacity="0.5"/>
+  <text x="350" y="100" text-anchor="middle" font-family="Arial" font-size="8" fill="#1E40AF">68% within 1 std</text>
+  <text x="350" y="115" text-anchor="middle" font-family="Arial" font-size="8" fill="#1E40AF">Mean ±1*Std = 10k to 14k</text>
+
+  <text x="100" y="195" font-family="Arial" font-size="8" fill="#6B7280">Mean-3Std Mean-2Std Mean-1Std Mean Mean+1Std Mean+2Std Mean+3Std</text>
+  <text x="350" y="210" text-anchor="middle" font-family="Arial" font-size="8" font-style="italic" fill="#374151">Std = √Variance, same units as data (Naira), easy to interpret. Small std = consistent, large std = variable.</text>
+</svg>
+
+### Code Step-by-Step - Standard Deviation
+
+**Step 1 Plain Python:**
+
+```python
+# Step 1: Std is sqrt of variance
+import math
+
+orders = [11, 12, 12, 13, 12]
+mean = sum(orders) / len(orders)
+squared_distances = [(x-mean)**2 for x in orders]
+var_pop = sum(squared_distances) / len(orders)
+
+# Std = sqrt(var)
+std_pop = math.sqrt(var_pop)  # sqrt() square root
+print(f"Var pop {var_pop}, Std pop sqrt({var_pop}) = {std_pop}")
+
+# Interpretation
+print(f"Mean {mean}k, Std {std_pop:.2f}k - typical order deviates about {std_pop:.2f}k from mean")
+print(f"68% of orders within {mean-std_pop:.2f}k to {mean+std_pop:.2f}k (if normal)")
+```
+
+**Step 2 NumPy:**
+
+```python
+import numpy as np
+orders = np.array([11,12,12,13,12])
+std_pop = np.std(orders, ddof=0)
+std_sample = np.std(orders, ddof=1)
+print(f"NumPy std pop {std_pop:.2f}, std sample {std_sample:.2f}")
+```
+
+**Step 3 Pandas:**
+
+```python
+import pandas as pd
+df = pd.DataFrame({"total": [11,12,12,13,12]})
+print(f"Pandas std pop {df['total'].std(ddof=0):.2f}, std sample {df['total'].std(ddof=1):.2f} default sample")
+```
+
+---
+
+## 4. IQR - Interquartile Range, Robust Spread
+
+### What is IQR?
+
+IQR = Q3 - Q1. Middle 50% of data.
+
+- Q1 = 25th percentile = 25% of data below it
+- Q2 = Median = 50th percentile
+- Q3 = 75th percentile = 75% of data below it
+
+IQR covers middle 50% - from 25% to 75%. Robust to outliers because it ignores top 25% and bottom 25% extremes.
+
+**Outlier detection using IQR (Tukey's rule):**
+- Lower bound = Q1 - 1.5 * IQR
+- Upper bound = Q3 + 1.5 * IQR
+- Any value outside [lower, upper] is outlier.
+
+This is how boxplots detect outliers.
+
+### Visual: Quartiles and IQR
+
+<svg width="100%" height="220" viewBox="0 0 700 220" xmlns="http://www.w3.org/2000/svg">
+  <rect x="0" y="0" width="700" height="220" rx="16" fill="#FFFFFF" stroke="#E5E7EB" stroke-width="1"/>
+  <text x="350" y="25" text-anchor="middle" font-family="Arial" font-size="12" font-weight="800" fill="#111827">IQR = Q3 - Q1 = MIDDLE 50% - ROBUST TO OUTLIERS</text>
+  
+  <rect x="20" y="50" width="660" height="150" rx="12" fill="#F0FDF4" stroke="#86EFAC" stroke-width="1"/>
+  <text x="350" y="70" text-anchor="middle" font-family="Arial" font-size="10" font-weight="700" fill="#065F46">Sorted Data: [5, 10, 11, 12, 13, 14, 15, 20, 100]</text>
+  
+  <!-- Number line -->
+  <line x1="40" y1="120" x2="640" y2="120" stroke="#6B7280" stroke-width="2"/>
+  
+  <!-- Q1 -->
+  <line x1="150" y1="100" x2="150" y2="140" stroke="#059669" stroke-width="2"/>
+  <text x="150" y="95" text-anchor="middle" font-family="Arial" font-size="8" font-weight="800" fill="#065F46">Q1=10</text>
+  <text x="150" y="155" text-anchor="middle" font-family="Arial" font-size="7" fill="#065F46">25% below</text>
+
+  <!-- Median -->
+  <line x1="350" y1="100" x2="350" y2="140" stroke="#2563EB" stroke-width="3"/>
+  <text x="350" y="95" text-anchor="middle" font-family="Arial" font-size="9" font-weight="800" fill="#1E40AF">Median=12</text>
+  <text x="350" y="155" text-anchor="middle" font-family="Arial" font-size="7" fill="#1E40AF">50% below</text>
+
+  <!-- Q3 -->
+  <line x1="500" y1="100" x2="500" y2="140" stroke="#059669" stroke-width="2"/>
+  <text x="500" y="95" text-anchor="middle" font-family="Arial" font-size="8" font-weight="800" fill="#065F46">Q3=15</text>
+  <text x="500" y="155" text-anchor="middle" font-family="Arial" font-size="7" fill="#065F46">75% below</text>
+
+  <!-- IQR bracket -->
+  <line x1="150" y1="80" x2="500" y2="80" stroke="#10B981" stroke-width="2"/>
+  <line x1="150" y1="75" x2="150" y2="85" stroke="#10B981" stroke-width="2"/>
+  <line x1="500" y1="75" x2="500" y2="85" stroke="#10B981" stroke-width="2"/>
+  <text x="325" y="75" text-anchor="middle" font-family="Arial" font-size="9" font-weight="800" fill="#065F46">IQR = Q3-Q1 = 15-10=5 (middle 50%)</text>
+
+  <!-- Outlier bounds -->
+  <text x="350" y="180" text-anchor="middle" font-family="Arial" font-size="8" fill="#374151">Outlier bounds: Lower = Q1 -1.5*IQR =10-7.5=2.5, Upper= Q3+1.5*IQR=15+7.5=22.5</text>
+  <text x="350" y="195" text-anchor="middle" font-family="Arial" font-size="8" fill="#DC2626">Values outside [2.5, 22.5] are outliers → 100 is outlier, 5 is not (but close)</text>
+  <text x="350" y="210" text-anchor="middle" font-family="Arial" font-size="8" font-style="italic" fill="#065F46">IQR robust because it ignores bottom 25% and top 25% extremes, only middle 50%</text>
+</svg>
+
+### Code Step-by-Step - IQR and Outlier Detection
+
+**Step 1 Plain Python - Percentiles:**
+
+```python
+# Step 1: Find Q1, Q3 manually - percentile is value below which % of data falls
+orders = [5, 10, 11, 12, 13, 14, 15, 20, 100]
+sorted_orders = sorted(orders)
+n = len(sorted_orders)
+print(f"Sorted: {sorted_orders}, n={n}")
+
+# Simple percentile method: index = p*(n-1)
+# Q1 25th percentile index = 0.25*(9-1)=2 -> value at index 2 = 11
+# Q3 75th percentile index = 0.75*(9-1)=6 -> value at index 6 = 15
+# Different methods exist, but concept same: 25% below Q1, 75% below Q3
+
+# For simplicity use linear interpolation concept
+def simple_percentile(data, p):
+    # p between 0 and 100
+    sorted_data = sorted(data)
+    n = len(sorted_data)
+    # Index = p/100 * (n-1)
+    idx = (p/100) * (n-1)
+    lower = int(idx)
+    upper = lower + 1
+    if upper >= n:
+        return sorted_data[lower]
+    # Interpolate between lower and upper
+    weight = idx - lower
+    return sorted_data[lower] * (1-weight) + sorted_data[upper] * weight
+
+q1 = simple_percentile(orders, 25)
+q3 = simple_percentile(orders, 75)
+print(f"Q1 25th percentile = {q1}, Q3 75th percentile = {q3}")
+
 iqr = q3 - q1
-print(f"Q1 {q1:.2f}, Q3 {q3:.2f}, IQR {iqr:.2f}")
-print(f"CV {np.std(data, ddof=1)/np.mean(data)*100:.1f}%")
-lower = q1 - 1.5*iqr
-upper = q3 + 1.5*iqr
-outliers = data[(data < lower) | (data > upper)]
-print(f"Outlier bounds [{lower:.2f}, {upper:.2f}], Outliers {outliers} - Mean inflated by outlier, median/IQR robust")
+print(f"IQR = Q3-Q1 = {q3}-{q1} = {iqr} - middle 50% spread")
 
-print("\n=== Part 2: Your Stores Consistency ===")
-orders = [
-    {"store_id": "LAG_001_Ikeja", "city": "Ikeja", "total": 53750},
-    {"store_id": "LAG_001_Ikeja", "city": "Ikeja", "total": 34400},
-    {"store_id": "LAG_001_Ikeja", "city": "Ikeja", "total": 91375},
-    {"store_id": "LAG_002_Lekki", "city": "Lekki", "total": 80625},
-    {"store_id": "LAG_002_Lekki", "city": "Lekki", "total": 32250},
-    {"store_id": "LDN_001_Camden", "city": "Camden", "total": 433},
-    {"store_id": "ABJ_001_Garki", "city": "Garki", "total": 96750},
-]
-df = pd.DataFrame(orders)
+# Outlier bounds
+lower_bound = q1 - 1.5 * iqr
+upper_bound = q3 + 1.5 * iqr
+print(f"Lower bound Q1-1.5*IQR = {q1}-1.5*{iqr} = {lower_bound}")
+print(f"Upper bound Q3+1.5*IQR = {q3}+1.5*{iqr} = {upper_bound}")
 
-# Overall spread
-print(f"All orders: Mean {df['total'].mean():.2f}, Std {df['total'].std():.2f}, CV {df['total'].std()/df['total'].mean()*100:.1f}% - High CV due to mixing scales")
+outliers = [x for x in orders if x < lower_bound or x > upper_bound]
+print(f"Outliers outside [{lower_bound}, {upper_bound}]: {outliers}")
 
-# Per store - only where location adds meaning (comparing consistency within similar stores)
-for store_id in df['store_id'].unique():
-    subset = df[df['store_id']==store_id]['total']
-    if len(subset) > 1:
-        cv = subset.std()/subset.mean()*100 if subset.mean()!=0 else 0
-        print(f"  {store_id}: n={len(subset)}, Mean {subset.mean():.2f}, Std {subset.std():.2f}, CV {cv:.1f}%, Range {subset.max()-subset.min():.2f}")
-
-print("\n=== Part 3: Kaggle Dataset Spread ===")
-kaggle_files = ["olist_order_payments_dataset.csv", "Superstore.csv"]
-found = None
-for kf in kaggle_files:
-    if os.path.exists(kf):
-        found = kf
-        break
-
-if found:
-    print(f"Found {found}")
-    df_kaggle = pd.read_csv(found, encoding="utf-8", low_memory=False, nrows=10000)
-    
-    if "payment_value" in df_kaggle.columns:
-        col = "payment_value"
-        vals = df_kaggle[col].dropna()
-        print(f"  {col}: Mean {vals.mean():.2f}, Median {vals.median():.2f}, Std {vals.std():.2f}, Range {vals.max()-vals.min():.2f}")
-        print(f"  Q1 {vals.quantile(0.25):.2f}, Q3 {vals.quantile(0.75):.2f}, IQR {vals.quantile(0.75)-vals.quantile(0.25):.2f}")
-        print(f"  CV {vals.std()/vals.mean()*100:.1f}%")
-        q1 = vals.quantile(0.25)
-        q3 = vals.quantile(0.75)
-        iqr = q3 - q1
-        lower = q1 - 1.5*iqr
-        upper = q3 + 1.5*iqr
-        outliers = vals[(vals < lower) | (vals > upper)]
-        print(f"  Outliers by IQR method: {len(outliers)} ({len(outliers)/len(vals)*100:.1f}%) - Values outside [{lower:.2f}, {upper:.2f}]")
-        print(f"  After removing outliers, mean {vals[(vals>=lower)&(vals<=upper)].mean():.2f} vs original mean {vals.mean():.2f} - Mean drops when high outliers removed")
-        
-        # Describe includes spread
-        print(f"  Describe:")
-        print(vals.describe())
-    
-    if "Sales" in df_kaggle.columns and "Region" in df_kaggle.columns:
-        print(f"\n  Spread by Region (Superstore):")
-        for region in df_kaggle["Region"].unique():
-            subset = df_kaggle[df_kaggle["Region"]==region]["Sales"].dropna()
-            cv = subset.std()/subset.mean()*100 if subset.mean()!=0 else 0
-            print(f"    {region}: Mean {subset.mean():.2f}, Std {subset.std():.2f}, CV {cv:.1f}%, IQR {subset.quantile(0.75)-subset.quantile(0.25):.2f} - CV compares consistency across regions with different means")
-    
-    # Save cleaned without outliers example
-    if "payment_value" in df_kaggle.columns:
-        vals = df_kaggle["payment_value"].dropna()
-        q1 = vals.quantile(0.25)
-        q3 = vals.quantile(0.75)
-        iqr = q3 - q1
-        lower = q1 - 1.5*iqr
-        upper = q3 + 1.5*iqr
-        df_no_outliers = df_kaggle[(df_kaggle["payment_value"]>=lower)&(df_kaggle["payment_value"]<=upper)]
-        df_no_outliers.head(1000).to_csv("cleaned_no_outliers_L02.csv", index=False)
-        print(f"  Saved cleaned_no_outliers_L02.csv with {len(df_no_outliers)} rows after IQR outlier removal (from {len(df_kaggle)})")
-
-else:
-    print("No Kaggle file found. Download:")
-    print("  Primary: https://www.kaggle.com/datasets/olistbr/brazilian-ecommerce - olist_order_payments_dataset.csv payment_value - has outliers, test IQR method")
-    print("  Secondary: https://www.kaggle.com/datasets/vivek468/superstore-dataset-final - Superstore.csv Sales by Region - compare CV across regions")
-
-print("\n=== Summary ===")
-print("Range simple but sensitive to outliers, IQR robust (middle 50%)")
-print("Variance average squared distance from mean, std sqrt(variance) same units as data")
-print("Sample variance divides by n-1 (Bessel correction) for unbiased estimate")
-print("CV = std/mean*100% unitless compares spread across different means")
-print("Outlier rule Q1-1.5IQR, Q3+1.5IQR standard Tukey boxplot rule")
+print(f"\nIQR robust - outlier 100 does not affect Q1, Q3 much because it is in top 25% which IQR ignores")
 ```
 
-**Deliverable:** Upload `spread_stats_L02.py` plus console output showing range, variance pop/sample, std, IQR, CV, outlier bounds and count, comparison of mean with and without outliers, and if Kaggle file present, stats for payment_value and spread by Region
+**Step 2 NumPy:**
 
-**Kaggle Links:**
-1. Primary: https://www.kaggle.com/datasets/olistbr/brazilian-ecommerce - payment_value column - right-skewed with high outliers, perfect for IQR method
-2. Secondary: https://www.kaggle.com/datasets/vivek468/superstore-dataset-final - Superstore.csv Sales by Region - compare CV across East, West, Central, South
+```python
+import numpy as np
+orders = np.array([5, 10, 11, 12, 13, 14, 15, 20, 100])
+q1 = np.percentile(orders, 25)
+q3 = np.percentile(orders, 75)
+iqr = q3 - q1
+print(f"NumPy Q1 {q1}, Q3 {q3}, IQR {iqr}")
+print(f"Lower {q1-1.5*iqr}, Upper {q3+1.5*iqr}, Outliers {[x for x in orders if x < q1-1.5*iqr or x > q3+1.5*iqr]}")
 
-## 5. Checklist
+# Also np.quantile 0-1 scale
+q1_q = np.quantile(orders, 0.25)
+print(f"np.quantile 0.25 = {q1_q} same as percentile 25")
+```
 
-- Can you calculate range = max - min manually and explain why sensitive to outliers?
-- Can you calculate population variance Σ(x-μ)²/N and sample variance Σ(x-μ)²/(n-1) and explain Bessel's correction n-1 gives unbiased estimate?
-- Can you calculate std = √variance and interpret 68-95-99.7 rule for normal data?
-- Can you calculate Q1 25th, Q3 75th, IQR = Q3-Q1 and outlier bounds Q1-1.5IQR, Q3+1.5IQR and flag outliers?
-- Can you calculate CV = std/mean*100% and explain low CV consistent, high CV variable, and CV allows comparison across different means?
-- Can you use pandas df.describe() to get std, min, 25%, 50%, 75%, max and np.percentile for Q1/Q3?
-- Can you explain why IQR and median are robust to outliers while mean and std are sensitive?
-- Can you load Kaggle payment_value and show that mean drops after removing IQR outliers, and compare CV across Regions for Superstore?
+**Step 3 Pandas:**
 
-If yes, you can quantify spread and consistency.
+```python
+import pandas as pd
+df = pd.DataFrame({"total": [5, 10, 11, 12, 13, 14, 15, 20, 100]})
+q1 = df["total"].quantile(0.25)
+q3 = df["total"].quantile(0.75)
+iqr = q3 - q1
+print(f"Pandas Q1 {q1}, Q3 {q3}, IQR {iqr}")
+print(f"Describe gives Q1, Q3, IQR info:")
+print(df["total"].describe())
+# describe shows count, mean, std, min, 25% (Q1), 50% (median), 75% (Q3), max
+```
 
-Next: Data Distributions - Shapes, Skewness, Kurtosis.
+---
 
-**Key Takeaway:** Mean tells typical value, spread tells reliability. Range = max-min simple but outlier sensitive. Variance = average squared distance from mean, population divides by N, sample divides by n-1 (unbiased). Std = √variance same units as data, 68% within 1 std for normal. IQR = Q3-Q1 middle 50% robust. Outlier if < Q1-1.5IQR or > Q3+1.5IQR (Tukey rule). CV = std/mean*100% unitless compares consistency across different means - low CV consistent. Use IQR/median when outliers present.
+## 5. Coefficient of Variation - Compare Spread Across Different Means
 
-**Notes Verified:**
-- Range formula Max-Min verified
-- Population variance Σ(xᵢ-μ)²/N and sample variance Σ(xᵢ-x̄)²/(n-1) with Bessel's correction explanation verified standard
-- Std = √variance verified, same units as data verified, 68-95-99.7 empirical rule for normal verified
-- IQR = Q3-Q1 verified, Q1 25th percentile, Q3 75th verified
-- Outlier rule Q1-1.5IQR, Q3+1.5IQR Tukey boxplot rule verified standard
-- CV = std/mean*100% unitless compares spread across different means verified
-- Pandas std default ddof=1 (sample) verified, NumPy var/std ddof parameter verified
+### What is CV?
+
+CV = (Std / Mean) * 100%. Unitless percentage, lets you compare spread of stores with different average sales.
+
+If Store A mean 20 std 2 CV=10% and Store B mean 100 std 10 CV=10% - both equally consistent relative to their means, even though absolute std different.
+
+Low CV (<20%) = consistent, High CV (>50%) = variable.
+
+### Visual: CV
+
+<svg width="100%" height="150" viewBox="0 0 700 150" xmlns="http://www.w3.org/2000/svg">
+  <rect x="0" y="0" width="700" height="150" rx="16" fill="#FFFFFF" stroke="#E5E7EB" stroke-width="1"/>
+  <text x="350" y="25" text-anchor="middle" font-family="Arial" font-size="12" font-weight="800" fill="#111827">COEFFICIENT OF VARIATION CV = STD / MEAN *100%</text>
+  <rect x="20" y="50" width="300" height="80" rx="12" fill="#EFF6FF" stroke="#93C5FD" stroke-width="1"/>
+  <text x="170" y="70" text-anchor="middle" font-family="Arial" font-size="10" font-weight="700" fill="#1E40AF">Store A: Mean 20, Std 2</text>
+  <text x="170" y="90" text-anchor="middle" font-family="Arial" font-size="9" fill="#1E40AF">CV = 2/20*100% = 10% - Consistent</text>
+  <text x="170" y="110" text-anchor="middle" font-family="Arial" font-size="8" fill="#6B7280">Small std relative to mean</text>
+  <rect x="380" y="50" width="300" height="80" rx="12" fill="#FEF2F2" stroke="#FCA5A5" stroke-width="1"/>
+  <text x="530" y="70" text-anchor="middle" font-family="Arial" font-size="10" font-weight="700" fill="#7F1D1D">Store B: Mean 100, Std 50</text>
+  <text x="530" y="90" text-anchor="middle" font-family="Arial" font-size="9" fill="#7F1D1D">CV = 50/100*100% = 50% - Variable</text>
+  <text x="530" y="110" text-anchor="middle" font-family="Arial" font-size="8" fill="#6B7280">Large std relative to mean</text>
+</svg>
+
+### Code - CV
+
+```python
+# CV calculation
+mean_a = 20
+std_a = 2
+cv_a = (std_a / mean_a) * 100
+print(f"Store A mean {mean_a} std {std_a} CV {cv_a:.1f}% consistent")
+
+mean_b = 100
+std_b = 50
+cv_b = (std_b / mean_b) * 100
+print(f"Store B mean {mean_b} std {std_b} CV {cv_b:.1f}% variable")
+
+# Using real data
+import numpy as np
+orders_a = np.array([20,21,19,20,20])
+orders_b = np.array([5,35,0,40,20])
+cv_a_real = np.std(orders_a, ddof=1) / np.mean(orders_a) * 100
+cv_b_real = np.std(orders_b, ddof=1) / np.mean(orders_b) * 100
+print(f"\nReal Store A orders {orders_a} CV {cv_a_real:.1f}% consistent")
+print(f"Real Store B orders {orders_b} CV {cv_b_real:.1f}% variable - same mean 20 but more risk")
+```
+
+---
+
+## 6. Real Store Example - Where Location Adds Context
+
+```python
+import pandas as pd
+
+orders_data = [
+    {"order_id": "ORD_LAG_001_5001", "store_id": "LAG_001_Ikeja", "total": 53750},
+    {"order_id": "ORD_LAG_001_5002", "store_id": "LAG_001_Ikeja", "total": 34400},
+    {"order_id": "ORD_LAG_001_5003", "store_id": "LAG_001_Ikeja", "total": 50000},
+    {"order_id": "ORD_LAG_002_5003", "store_id": "LAG_002_Lekki", "total": 91375},
+    {"order_id": "ORD_LAG_002_5004", "store_id": "LAG_002_Lekki", "total": 80625},
+    {"order_id": "ORD_LDN_001_2001", "store_id": "LDN_001_Camden", "total": 433},
+]
+
+df = pd.DataFrame(orders_data)
+print(df)
+
+# Group by store - location ID adds value for consistency comparison
+for store_id in df["store_id"].unique():
+    subset = df[df["store_id"]==store_id]["total"]
+    if len(subset) > 1:
+        mean = subset.mean()
+        std = subset.std(ddof=1)
+        cv = std/mean*100 if mean!=0 else 0
+        q1 = subset.quantile(0.25)
+        q3 = subset.quantile(0.75)
+        iqr = q3-q1
+        print(f"\n{store_id}:")
+        print(f"  Orders {subset.tolist()}")
+        print(f"  Mean {mean:.0f}, Std {std:.0f}, Range {subset.max()-subset.min():.0f}")
+        print(f"  Q1 {q1:.0f}, Q3 {q3:.0f}, IQR {iqr:.0f}")
+        print(f"  CV {cv:.1f}% - {'Consistent' if cv<20 else 'Variable' if cv<50 else 'Highly variable'}")
+        # Outlier bounds per store
+        lower = q1 - 1.5*iqr
+        upper = q3 + 1.5*iqr
+        outliers = subset[(subset<lower)|(subset>upper)].tolist()
+        print(f"  Outlier bounds [{lower:.0f}, {upper:.0f}], Outliers {outliers}")
+
+print(f"\nDon't mix NGN and GBP stores when comparing spread - different scales inflate CV artificially")
+```
+
+---
+
+## 7. Hands-On Assignment - Simple to Advanced
+
+Dataset: https://www.kaggle.com/datasets/olistbr/brazilian-ecommerce - payment_value has outliers perfect for IQR
+
+Create spread_stats_L02.py:
+
+Section A Plain Python Range Var Std:
+
+```python
+orders=[10,12,13,11,14]
+min_val=min(orders)
+max_val=max(orders)
+range_val=max_val-min_val
+print(f"Range {range_val}")
+
+mean=sum(orders)/len(orders)
+squared=[(x-mean)**2 for x in orders]
+var_pop=sum(squared)/len(orders)
+var_sample=sum(squared)/(len(orders)-1)
+import math
+std_pop=math.sqrt(var_pop)
+print(f"Var pop {var_pop} var sample {var_sample} std pop {std_pop}")
+```
+
+Section B NumPy Pandas:
+
+```python
+import numpy as np, pandas as pd
+orders=np.array([10,12,13,11,14])
+print(f"NumPy var pop {np.var(orders,ddof=0)} var sample {np.var(orders,ddof=1)} std {np.std(orders,ddof=0)}")
+df=pd.DataFrame({"total":orders})
+print(df["total"].describe())  # includes std min 25% 50% 75% max
+```
+
+Section C IQR Outlier:
+
+```python
+import numpy as np
+orders=np.array([5,10,11,12,13,14,15,20,100])
+q1=np.percentile(orders,25)
+q3=np.percentile(orders,75)
+iqr=q3-q1
+lower=q1-1.5*iqr
+upper=q3+1.5*iqr
+outliers=[x for x in orders if x<lower or x>upper]
+print(f"Q1 {q1} Q3 {q3} IQR {iqr} bounds [{lower},{upper}] outliers {outliers}")
+```
+
+Section D CV:
+
+```python
+import numpy as np
+a=np.array([20,21,19,20,20])
+b=np.array([5,35,0,40,20])
+cv_a=np.std(a,ddof=1)/np.mean(a)*100
+cv_b=np.std(b,ddof=1)/np.mean(b)*100
+print(f"Store A CV {cv_a:.1f}% consistent vs Store B CV {cv_b:.1f}% variable same mean")
+```
+
+Section E Kaggle Real Data:
+
+```python
+import os, pandas as pd
+if os.path.exists("olist_order_payments_dataset.csv"):
+    df=pd.read_csv("olist_order_payments_dataset.csv", nrows=10000)
+    vals=df["payment_value"].dropna()
+    print(f"payment_value Mean {vals.mean():.2f} Median {vals.median():.2f} Std {vals.std():.2f} Range {vals.max()-vals.min():.2f}")
+    q1=vals.quantile(0.25)
+    q3=vals.quantile(0.75)
+    iqr=q3-q1
+    lower=q1-1.5*iqr
+    upper=q3+1.5*iqr
+    outliers=vals[(vals<lower)|(vals>upper)]
+    print(f"Q1 {q1:.2f} Q3 {q3:.2f} IQR {iqr:.2f} bounds [{lower:.2f},{upper:.2f}] outliers {len(outliers)} ({len(outliers)/len(vals)*100:.1f}%)")
+    print(f"After removing outliers mean {vals[(vals>=lower)&(vals<=upper)].mean():.2f} vs original {vals.mean():.2f} mean drops")
+    print(f"CV {vals.std()/vals.mean()*100:.1f}%")
+else:
+    print("Download https://www.kaggle.com/datasets/olistbr/brazilian-ecommerce")
+```
+
+Deliverable: Upload spread_stats_L02.py + output showing range, var pop/sample, std, IQR, CV, outlier bounds and count, mean drops after removing outliers.
+
+Kaggle Links:
+1. Primary https://www.kaggle.com/datasets/olistbr/brazilian-ecommerce payment_value outliers perfect for IQR
+2. Secondary https://www.kaggle.com/datasets/vivek468/superstore-dataset-final Sales by Region compare CV
+
+## 8. Checklist
+- Calculate range Max-Min simple but sensitive to outlier
+- Calculate population var Sum(x-mean)^2/N and sample var Sum/(n-1) Bessel correction unbiased why n-1 better estimate
+- Calculate std sqrt(var) same units 68-95-99.7 rule normal
+- Calculate Q1 25th Q3 75th IQR Q3-Q1 middle 50% robust
+- Outlier bounds Q1-1.5IQR Q3+1.5IQR Tukey rule flag outliers
+- Calculate CV std/mean*100% unitless compare consistency different means low CV consistent
+- Use pandas describe gives std min 25% 50% 75% max and np.percentile
+- Explain IQR median robust mean std sensitive
+
+Key Takeaway: Range simple sensitive. Var average squared distance pop N sample n-1 Bessel. Std sqrt var same units 68% within 1 std normal. IQR Q3-Q1 middle 50% robust outlier Q1-1.5IQR Q3+1.5IQR. CV std/mean*100% compares consistency.
+
