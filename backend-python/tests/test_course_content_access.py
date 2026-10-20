@@ -55,6 +55,7 @@ class FakeSupabase:
         self.rows = {
             "course_access": course_access or [],
             "learnora_enrolments": enrolments or [],
+            "organisations": [{"id": "org-a", "is_active": True}],
             **tables,
         }
 
