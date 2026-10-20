@@ -741,17 +741,27 @@ FOR EACH ROW EXECUTE FUNCTION public.learnora_sync_org_membership_status();
 
 
 
--- Scope this grant hardening to organisation, contract, membership, access,
--- enrolment and AI-usage tables used by the organisation workflows. Do not
--- revoke grants on shared learner/catalogue/progress tables in this migration:
--- those require a separate usage audit to avoid breaking non-organisation
--- learner journeys. These organisation tables are accessed through the
--- authenticated FastAPI service using the server-side service_role key.
--- RLS is enabled but currently has no direct-client policies; remove latent
--- broad browser-role grants without adding broad policies.
+-- Reviewed Learnora frontend entry points and learner/course pages use
+-- the authenticated FastAPI backend rather than direct Supabase table access.
+-- These RLS-enabled tables currently have no table-specific policies, so browser
+-- roles are already default-denied; revoke broad grants to remove latent risk
+-- if a policy is introduced later. The backend service_role access is retained.
+-- Do not add broad RLS policies as a workaround.
 REVOKE ALL PRIVILEGES ON TABLE
     public.organisations,
     public.organisation_members,
+    public.users,
+    public.learnora_courses,
+    public.learnora_creator_accounts,
+    public.learnora_discussions,
+    public.learnora_learning_paths,
+    public.course_modules,
+    public.learnora_lessons,
+    public.learnora_lesson_progress,
+    public.learner_lesson_notes,
+    public.quizzes,
+    public.quiz_questions,
+    public.quiz_attempts,
     public.organisation_teams,
     public.organisation_team_members,
     public.cohorts,
