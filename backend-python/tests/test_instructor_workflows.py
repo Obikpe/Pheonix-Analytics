@@ -17,7 +17,7 @@ os.environ.setdefault("SUPABASE_SERVICE_ROLE_KEY", "test-service-key")
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from routers import instructor_workflows as workflows
+from routers import instructor_workflows as workflows, creator, creator_finance
 
 
 class FakeResponse:
@@ -109,6 +109,8 @@ class InstructorAssessmentJourneyTests(unittest.TestCase):
                 "id": "assignment-1", "course_id": "course-1",
                 "title": "Data task", "max_score": 20,
             }],
+            "learnora_creator_applications": [{"id": "application-1", "user_id": "creator-user", "application_data": {"display_name": "Creator"}, "status": "submitted", "created_at": "2026-10-20T09:00:00+00:00", "reviewed_at": None, "reviewed_by": None}],
+            "learnora_creator_payouts": [{"id": "payout-1", "creator_id": "creator-1", "amount_minor": 2500, "currency": "NGN", "status": "requested", "requested_at": "2026-10-20T09:00:00+00:00", "processed_at": None}],
             "assignment_submissions": [{
                 "id": "submission-1", "assignment_id": "assignment-1",
                 "user_id": "learner-1", "submission_text": "My answer",
@@ -121,6 +123,8 @@ class InstructorAssessmentJourneyTests(unittest.TestCase):
         workflows.supabase = FakeSupabase(self.store)
         app = FastAPI()
         app.include_router(workflows.router)
+        app.include_router(creator.router)
+        app.include_router(creator_finance.router)
         self.user = SimpleNamespace(id="instructor-1")
         self.context = context_for()
         app.dependency_overrides[workflows.get_current_user] = lambda: self.user
@@ -158,6 +162,28 @@ class InstructorAssessmentJourneyTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 403)
         self.assertEqual(self.store["assignment_submissions"][0]["status"], "submitted")
+
+    def test_creator_application_queue_requires_staff_permission(self):
+        response = self.client.get("/api/creator/admin/applications")
+        self.assertEqual(response.status_code, 403)
+
+    def test_authorised_staff_can_list_creator_applications(self):
+        self.context.has_permission = lambda permission: permission in {"courses.view", "users.update"}
+        response = self.client.get("/api/creator/admin/applications?status=submitted")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["count"], 1)
+        self.assertEqual(response.json()["applications"][0]["id"], "application-1")
+
+    def test_creator_payout_queue_requires_staff_permission(self):
+        response = self.client.get("/api/creator-finance/admin/payouts")
+        self.assertEqual(response.status_code, 403)
+
+    def test_authorised_staff_can_list_creator_payout_requests(self):
+        self.context.has_permission = lambda permission: permission in {"courses.view", "users.update"}
+        response = self.client.get("/api/creator-finance/admin/payouts?status=requested")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["count"], 1)
+        self.assertEqual(response.json()["payouts"][0]["id"], "payout-1")
 
     def test_score_cannot_exceed_assignment_maximum(self):
         response = self.client.patch(
