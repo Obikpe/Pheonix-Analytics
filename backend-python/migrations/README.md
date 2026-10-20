@@ -63,3 +63,13 @@ The detailed Step 4 inventory, workflow findings, proposed resource-scoped role-
 ## Automated tests
 
 The production SQL transaction dry run completed without SQL errors and the migration tool reported success. Post-migration verification passed for the checks listed above. The Security Advisor still reports 92 RLS-enabled tables with no policies across the project and two mutable-search-path warnings on out-of-scope functions (`set_updated_at`, `update_admins_updated_at`). No concurrency/load test has been performed. Migration-history drift for older repository files 001–015 remains unresolved; do not replay or mark those files applied without object-level evidence. Confirm the deployed backend target and finish CI checks before merge/deployment.
+
+
+## Step 5 — backend workflow follow-up
+
+A code review of the AI quota path found a live-path defect: the Python limit resolver deliberately represents an unlimited monthly quota as `NULL`, and the quota RPC already skips the monthly comparison for `NULL`, but migration 023's function rejects `NULL` before that comparison. As a result, requests using the default/no-monthly-cap configuration can fail closed with `quota_unavailable`.
+
+- Added `025_allow_unlimited_monthly_ai_quota.sql` to preserve the intended contract: the daily limit is required, while a null monthly limit means unlimited.
+- Added `tests/test_ai_quota_reservation.py` to cover the Python-to-RPC payload for unlimited monthly quotas and malformed RPC responses.
+- Migration 025 is a repository change only at this point. It has **not** been applied to Pheonix, and no deployment was created. Apply it only after review and an approved production-migration step.
+- The new tests and all existing CI checks must finish on the updated PR head before calling this correction verified.
