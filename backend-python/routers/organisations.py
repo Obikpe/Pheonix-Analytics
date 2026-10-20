@@ -624,13 +624,13 @@ def assign_course_to_member(
             ensure_org_capacity(organisation_id, "courses")
             if access:
                 supabase.table("course_access").update({
-                    "status": "active", "access_type": "assigned",
+                    "status": "active", "access_type": "scoped",
                     "assigned_by": context.user_id, "assigned_at": now,
                 }).eq("id", access[0]["id"]).execute()
             else:
                 inserted_access = supabase.table("course_access").insert({
                     "course_id": course_id, "organisation_id": organisation_id,
-                    "access_type": "assigned", "status": "active",
+                    "access_type": "scoped", "status": "active",
                     "assigned_by": context.user_id, "assigned_at": now,
                 }).execute()
                 if not inserted_access.data:
@@ -791,7 +791,7 @@ def assign_course_to_cohort(organisation_id: str, cohort_id: str, body: dict, co
         if course.get("ownership") != "organisation":
             ensure_org_capacity(organisation_id, "courses")
         if access:
-            supabase.table("course_access").update({"status": "active", "access_type": "assigned"}).eq("id", access[0]["id"]).execute()
+            supabase.table("course_access").update({"status": "active", "access_type": "scoped"}).eq("id", access[0]["id"]).execute()
         else:
             supabase.table("course_access").insert({
                 "course_id": course_id, "organisation_id": organisation_id,
@@ -946,13 +946,13 @@ def assign_course_to_team(
                 ensure_org_capacity(organisation_id, "courses")
             if access:
                 supabase.table("course_access").update({
-                    "status": "active", "access_type": "assigned",
+                    "status": "active", "access_type": "scoped",
                     "assigned_by": context.user_id, "assigned_at": now,
                 }).eq("id", access[0]["id"]).execute()
             else:
                 supabase.table("course_access").insert({
                     "course_id": course_id, "organisation_id": organisation_id,
-                    "access_type": "assigned", "status": "active",
+                    "access_type": "scoped", "status": "active",
                     "assigned_by": context.user_id, "assigned_at": now,
                 }).execute()
 
