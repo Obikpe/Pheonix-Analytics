@@ -473,8 +473,8 @@ BEGIN
             FROM public.organisation_members
             WHERE organisation_id = NEW.organisation_id AND user_id = NEW.user_id
             LIMIT 1;
-            IF NOT FOUND OR v_member_status <> 'active' THEN
-                RAISE EXCEPTION 'Active organisation enrolment requires active organisation membership'
+            IF NOT FOUND OR v_member_status <> 'active' OR v_member_role <> 'learner' THEN
+                RAISE EXCEPTION 'Active organisation enrolment requires an active learner membership in the same organisation'
                     USING ERRCODE = '23514';
             END IF;
             IF NEW.cohort_id IS NOT NULL THEN
