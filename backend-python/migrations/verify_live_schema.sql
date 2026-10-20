@@ -60,7 +60,7 @@ SELECT grantee, table_name,
        string_agg(privilege_type, ', ' ORDER BY privilege_type) AS privileges
 FROM information_schema.role_table_grants
 WHERE table_schema = 'public'
-  AND grantee IN ('anon','authenticated','service_role')
+  AND grantee IN ('PUBLIC','anon','authenticated','service_role')
   AND table_name IN (
       'organisations','organisation_members','organisation_teams',
       'organisation_team_members','cohorts','cohort_members',
