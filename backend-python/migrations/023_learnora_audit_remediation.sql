@@ -446,6 +446,10 @@ BEGIN
                 RAISE EXCEPTION 'Team must exist and be active before adding members'
                     USING ERRCODE = '23514';
             END IF;
+            SELECT is_active INTO v_workspace_active FROM public.organisations WHERE id = v_org;
+            IF NOT COALESCE(v_workspace_active, false) THEN
+                RAISE EXCEPTION 'Inactive organisations cannot accept active team members' USING ERRCODE = '23514';
+            END IF;
             SELECT status INTO v_member_status
             FROM public.organisation_members
             WHERE organisation_id = v_org AND user_id = NEW.user_id
@@ -494,6 +498,10 @@ BEGIN
         IF NEW.status = 'active' AND v_resource_status NOT IN ('draft','upcoming','active') THEN
             RAISE EXCEPTION 'Closed cohorts cannot receive active course assignments' USING ERRCODE = '23514';
         END IF;
+        SELECT is_active INTO v_workspace_active FROM public.organisations WHERE id = v_org;
+        IF NEW.status = 'active' AND NOT COALESCE(v_workspace_active, false) THEN
+            RAISE EXCEPTION 'Inactive organisations cannot receive active cohort course assignments' USING ERRCODE = '23514';
+        END IF;
         SELECT ownership, organisation_id INTO v_course_owner, v_course_org
         FROM public.learnora_courses WHERE id = NEW.course_id;
         IF NOT FOUND THEN
@@ -510,6 +518,10 @@ BEGIN
         END IF;
         IF NEW.status = 'active' AND v_resource_status <> 'active' THEN
             RAISE EXCEPTION 'Inactive teams cannot receive active course assignments' USING ERRCODE = '23514';
+        END IF;
+        SELECT is_active INTO v_workspace_active FROM public.organisations WHERE id = v_org;
+        IF NEW.status = 'active' AND NOT COALESCE(v_workspace_active, false) THEN
+            RAISE EXCEPTION 'Inactive organisations cannot receive active team course assignments' USING ERRCODE = '23514';
         END IF;
         SELECT ownership, organisation_id INTO v_course_owner, v_course_org
         FROM public.learnora_courses WHERE id = NEW.course_id;
@@ -532,6 +544,10 @@ BEGIN
         END IF;
     ELSIF TG_TABLE_NAME = 'learnora_enrolments' THEN
         IF NEW.status = 'active' AND NEW.organisation_id IS NOT NULL THEN
+            SELECT is_active INTO v_workspace_active FROM public.organisations WHERE id = NEW.organisation_id;
+            IF NOT COALESCE(v_workspace_active, false) THEN
+                RAISE EXCEPTION 'Inactive organisations cannot receive active course enrolments' USING ERRCODE = '23514';
+            END IF;
             SELECT role, status INTO v_member_role, v_member_status
             FROM public.organisation_members
             WHERE organisation_id = NEW.organisation_id AND user_id = NEW.user_id
