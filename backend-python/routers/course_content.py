@@ -283,12 +283,34 @@ def _check_course_view_access(
     # through an individual enrolment below.
     if ownership != "learnora":
         if course_org is not None:
-            if organisation_id and str(course_org) == str(organisation_id):
+            if not organisation_id or str(course_org) != str(organisation_id):
+                raise HTTPException(403, "You do not have access to this course.")
+            role = (context.organisation_role or "").strip().lower()
+            legacy_role = str(getattr(context.user, "role", "") or "").strip().lower()
+            if role not in {"learner"} and legacy_role not in {"normal", "witstart", "learner"}:
                 return
-            raise HTTPException(
-                status_code=403,
-                detail="You do not have access to this course.",
-            )
+            grant = (
+                supabase.table("course_access")
+                .select("id")
+                .eq("course_id", course_id)
+                .eq("organisation_id", str(organisation_id))
+                .eq("status", "active")
+                .limit(1)
+                .execute()
+            ).data or []
+            enrolment = (
+                supabase.table("learnora_enrolments")
+                .select("id")
+                .eq("course_id", course_id)
+                .eq("user_id", str(context.user_id))
+                .eq("organisation_id", str(organisation_id))
+                .in_("status", ["active", "completed"])
+                .limit(1)
+                .execute()
+            ).data or []
+            if grant or enrolment:
+                return
+            raise HTTPException(403, "You are not enrolled in or assigned to this course.")
 
     # Learnora-owned catalogue content is available to an organisation only
     # when that organisation has an active course-access record.
