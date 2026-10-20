@@ -27,6 +27,8 @@ The repository also contains numbered SQL scripts, but those filenames do not co
 
 ## Remediation migration contents
 
+The proposed additive migration is kept under `backend-python/migrations/` as a review artifact, not in the canonical `supabase/migrations/` chain, until this drift is reconciled. Do not move or apply it through the migration runner before that review.
+
 The proposed additive migration:
 
 - permits the `community` organisation type already offered by the API consumer;
