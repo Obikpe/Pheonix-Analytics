@@ -34,17 +34,19 @@ The proposed `023_learnora_audit_remediation.sql` is **not applied**. It:
 - permits the `community` organisation type already accepted by the API;
 - backfills quiz-to-module associations, sets a 70% default and validates a non-null passing score between 70 and 100;
 - adds a team-course assignment relation and persistent AI quota reservations with a transaction-locked RPC;
-- validates team, cohort, course-access and enrolment tenant relationships at the database boundary;
+- validates team, cohort, course-access and enrolment tenant relationships at the database boundary, including active workspace/resource state and published-course requirements;
+- distinguishes organisation-wide course grants (`access_type = assigned`) from scoped individual/team/cohort grants (`access_type = scoped`) so a scoped assignment cannot grant all learners access; course-content reads validate the active membership/assignment source and current course entitlement;
+- counts course capacity across organisation-owned courses, organisation grants, team assignments and cohort assignments without double-counting the same course, and serialises these checks under transaction-scoped advisory locks;
 - deactivates team/cohort memberships and clears a team-manager assignment when organisation membership is suspended or moved;
 - serialises capacity checks under concurrent writes, rejects cohort-capacity reductions below current active membership, and adds capacity/date-range constraints;
 - fixes capacity-trigger update fast paths, pins the relevant Learnora timestamp-trigger function search path, and constrains AI quota scope values;
-- revokes inherited `PUBLIC` and direct `anon`/`authenticated` table privileges from the listed organisation, contract, AI, enrolment, course-mapping and assessment/progress tables, while explicitly retaining `service_role` access to the two new tables.
+- revokes inherited `PUBLIC` and direct `anon`/`authenticated` table privileges from the listed RLS-protected organisation, course catalogue/creator, contract, AI, enrolment, learning-path/discussion and assessment/progress tables, while explicitly retaining `service_role` access to the two new tables.
 
 The live schema already has `learnora_capacity_reservations` with resource type, quantity, used quantity, status and expiry, but the inspected capacity service uses current counts and contract entitlements; no live capacity trigger/routine was found. Do not create a second capacity-reservation table or double-count reservation quantities until the existing table's intended contract-allocation role is confirmed.
 
 ## RLS and grants
 
-RLS is enabled on the inspected organisation tables but there are no table-specific policies. The grant audit found broad table privileges for `anon` and `authenticated`; those roles are currently denied by the no-policy RLS state, but broad grants create latent risk if policies are added later. The proposed migration removes inherited/direct browser-role table grants on the listed backend-only tables. It does not add blanket RLS policies. Any future direct-client path needs explicit, least-privilege grants and policies.
+RLS is enabled on the inspected organisation tables but there are no table-specific policies. The grant audit found broad table privileges for `anon` and `authenticated`; those roles are currently denied by the no-policy RLS state, but broad grants create latent risk if policies are added later. The proposed migration removes inherited/direct browser-role table grants on the listed RLS-protected tables after reviewing the repository's learner/course entry points, which use the backend API rather than direct Supabase table access. It does not add blanket RLS policies. Any future direct-client path needs explicit, least-privilege grants and policies.
 
 The Security Advisor reported three functions with mutable `search_path`. The proposed migration pins the Learnora timestamp-trigger function used by organisation/course/cohort records and the new security-definer functions. The other two findings (`set_updated_at`, also used by internal staff/team tables, and `update_admins_updated_at`, used by internal administrator records) remain outside this organisation-only scope.
 
@@ -56,4 +58,4 @@ The detailed Step 4 inventory, workflow findings, proposed resource-scoped role-
 
 ## Automated tests
 
-Backend regression tests passed on commit `fa157db75a128751499a8893b90c361057b96b24`. The latest branch head contains verification/documentation-only changes; backend verification, quality checks and frontend builds are being rerun. SQL has not been executed or linted against a non-production database, and no concurrency/load test has been performed. Do not merge or deploy until the migration history is reconciled, the proposed SQL is reviewed/tested on a non-production database, the deployed backend target is confirmed, and the schema migration is safely applied.
+Backend regression tests passed on earlier commits. After the later scoped-access, entitlement and SQL-capacity changes, backend regression tests, backend verification, quality checks and frontend builds are running again on the newest branch head; final status must be checked before considering the branch verified. SQL has not been executed or linted against a non-production database, and no concurrency/load test has been performed. Do not merge or deploy until the migration history is reconciled, the proposed SQL is reviewed/tested on a non-production database, the deployed backend target is confirmed, and the schema migration is safely applied.
