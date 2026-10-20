@@ -61,7 +61,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
     # Limit preview CORS to Learnora projects under this Vercel team; production origins remain explicit above.
-    allow_origin_regex=r"https://(?:learnora|teamslearnora)-[a-z0-9-]+-obikpes-projects\\.vercel\\.app",
+    allow_origin_regex=r"https://(?:learnora|teamslearnora)-[a-z0-9-]+-obikpes-projects\.vercel\.app",
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=[
