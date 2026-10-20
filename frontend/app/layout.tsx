@@ -28,9 +28,9 @@ const jetBrainsMono = JetBrains_Mono({
 });
 
 export const metadata = {
-  title: 'Learnora ME | Learn Skills. Build Your Future.',
+  title: 'Learnora ME — Learn. Practise. Build. Prove.',
   description:
-    'Learnora ME is a practical learning platform for data, technology, business, web development, data science and more.',
+    'Connect structured learning with hands-on practice, real projects, feedback and evidence of the skills you can demonstrate.',
 };
 
 export default function RootLayout({
