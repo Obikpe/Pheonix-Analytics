@@ -4,8 +4,15 @@ Run from backend-python with:
     python -m unittest discover -s tests -v
 The suite uses an in-memory Supabase query double and never writes production data.
 """
+import os
 import unittest
 from types import SimpleNamespace
+
+# Importing the app router requires syntactically valid local Supabase settings;
+# tests replace its client before making requests and never contact the network.
+os.environ.setdefault("APP_ENV", "development")
+os.environ.setdefault("SUPABASE_URL", "https://example.supabase.co")
+os.environ.setdefault("SUPABASE_SERVICE_ROLE_KEY", "test-service-key")
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
