@@ -32,9 +32,9 @@ const stages = [
 ];
 
 const audiences = [
-  { icon: GraduationCap, title: "For learners", text: "Build practical skills through lessons, practice, projects and an honest record of progress.", href: "#library", link: "Explore learning" },
-  { icon: Compass, title: "For instructors", text: "Guide learners, review practical work and create learning experiences with clear outcomes.", href: "#playground", link: "Explore the learning tools" },
-  { icon: Network, title: "For organisations", text: "Shape learning around your people, programmes, teams and agreed outcomes.", href: "#organisations", link: "Explore organisation learning" },
+  { icon: GraduationCap, title: "For learners", text: "Build practical skills through lessons, practice, projects and an honest record of progress.", href: "/for-learners", link: "Explore learning" },
+  { icon: Compass, title: "For instructors", text: "Guide learners, review practical work and create learning experiences with clear outcomes.", href: "/for-instructors", link: "Explore teaching" },
+  { icon: Network, title: "For organisations", text: "Shape learning around your people, programmes, teams and agreed outcomes.", href: "/for-organisations", link: "Explore organisation learning" },
 ];
 
 const tracks = [
@@ -202,7 +202,7 @@ export default function Page() {
         <div className="mx-auto flex max-w-[82rem] flex-col gap-5 px-5 py-8 text-xs text-slate-500 sm:px-8 md:flex-row md:items-center md:justify-between lg:px-10">
           <a href="/" className="flex items-center gap-3 text-sm font-semibold text-slate-200"><span className="grid size-8 place-items-center rounded-lg bg-[#d7ad35]/10 text-[#f2d477]"><Layers3 size={16}/></span>Learnora ME</a>
           <p>Learn. Practise. Build. Prove.</p>
-          <div className="flex flex-wrap gap-5"><a href="#how-it-works" className="hover:text-[#f2d477]">How it works</a><a href="#library" className="hover:text-[#f2d477]">Courses</a><button type="button" onClick={() => openAuth("login")} className="hover:text-[#f2d477]">Sign in</button><button type="button" onClick={() => openAuth("register")} className="hover:text-[#f2d477]">Get started</button></div>
+          <div className="flex flex-wrap gap-x-5 gap-y-3"><a href="/about" className="hover:text-[#f2d477]">About</a><a href="/how-it-works" className="hover:text-[#f2d477]">How it works</a><a href="/courses" className="hover:text-[#f2d477]">Courses</a><a href="/for-learners" className="hover:text-[#f2d477]">For learners</a><a href="/for-instructors" className="hover:text-[#f2d477]">For instructors</a><a href="/for-organisations" className="hover:text-[#f2d477]">For organisations</a><button type="button" onClick={() => openAuth("login")} className="hover:text-[#f2d477]">Sign in</button><button type="button" onClick={() => openAuth("register")} className="hover:text-[#f2d477]">Get started</button></div>
         </div>
       </footer>
     </main>
