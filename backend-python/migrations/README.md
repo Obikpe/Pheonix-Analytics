@@ -26,6 +26,7 @@ The active project's `supabase_migrations.schema_migrations` table contained the
 | 20261011051442 | learner_onboarding_profiles |
 | 20261020230826 | learnora_audit_remediation |
 | 20261020230906 | restore_shared_learner_grants_and_lock_trigger_routines |
+| 20261020232148 | allow_unlimited_monthly_ai_quota |
 
 The repository's canonical numbered SQL chain is under `supabase/migrations/`. The registered names for the organisation portal and migrations 017–022 align with files 016–022. The live registry does not contain matching records for 001–015; `add_learnora_ai_profiles` does not match the filenames `014_learnora_ai_foundation.sql` or `015_learnora_ai_permissions.sql`. The `learner_onboarding_profiles` record also has no matching numbered file among 001–022.
 
@@ -71,5 +72,7 @@ A code review of the AI quota path found a live-path defect: the Python limit re
 
 - Added `025_allow_unlimited_monthly_ai_quota.sql` to preserve the intended contract: the daily limit is required, while a null monthly limit means unlimited.
 - Added `tests/test_ai_quota_reservation.py` to cover the Python-to-RPC payload for unlimited monthly quotas and malformed RPC responses.
-- Migration 025 is a repository change only at this point. It has **not** been applied to Pheonix, and no deployment was created. Apply it only after review and an approved production-migration step.
-- The new tests and all existing CI checks must finish on the updated PR head before calling this correction verified.
+- Migration 025 was dry-run inside a transaction and then applied to the active Pheonix project on 2026-10-20. The live migration registry records it as `20261020232148` (`allow_unlimited_monthly_ai_quota`).
+- Read-only post-apply verification confirmed the deployed function permits a `NULL` monthly limit while requiring a daily limit, remains `SECURITY DEFINER`, denies EXECUTE to `anon` and `authenticated`, and grants EXECUTE to `service_role`.
+- On PR head `49b67f707d9cdcb84a4e7a13d425684d3b07e88b`, backend regression tests, quality checks, backend verification and frontend CI all completed successfully. These runs are evidence for that commit only; rerun after any further changes.
+- No Vercel deployment was created.
