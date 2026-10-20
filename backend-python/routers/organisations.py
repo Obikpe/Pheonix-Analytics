@@ -147,6 +147,24 @@ class UpdateOrganisation(BaseModel):
     is_active: Optional[bool] = None
 
 
+# Supported models are configuration-driven; the UI can adapt without
+# introducing organisation-specific routes or hard-coded tenant exceptions.
+ORGANISATION_TYPES = {
+    "academy", "corporate", "university", "school", "bootcamp",
+    "nonprofit", "custom", "community",
+}
+ORGANISATION_CAPABILITIES = {
+    "academy": {"instructor_led": True, "cohorts": True, "teams": True, "individual_course_assignment": True, "team_course_assignment": True},
+    "bootcamp": {"instructor_led": True, "cohorts": True, "teams": True, "individual_course_assignment": True, "team_course_assignment": True},
+    "community": {"instructor_led": True, "cohorts": True, "teams": True, "individual_course_assignment": True, "team_course_assignment": True},
+    "corporate": {"instructor_led": False, "cohorts": False, "teams": True, "individual_course_assignment": True, "team_course_assignment": True},
+    "university": {"instructor_led": True, "cohorts": True, "teams": True, "individual_course_assignment": True, "team_course_assignment": True},
+    "school": {"instructor_led": True, "cohorts": True, "teams": True, "individual_course_assignment": True, "team_course_assignment": True},
+    "nonprofit": {"instructor_led": True, "cohorts": True, "teams": True, "individual_course_assignment": True, "team_course_assignment": True},
+    "custom": {"instructor_led": True, "cohorts": True, "teams": True, "individual_course_assignment": True, "team_course_assignment": True},
+}
+
+
 # ---------------------------------------------------------------------------
 # HELPERS
 # ---------------------------------------------------------------------------
@@ -169,6 +187,30 @@ def _normalise_slug(value: str) -> str:
     )
 
 
+def _with_capabilities(organisation: dict):
+    result = dict(organisation)
+    org_type = str(result.get("organisation_type") or "custom").strip().lower()
+    capabilities = dict(ORGANISATION_CAPABILITIES.get(org_type, ORGANISATION_CAPABILITIES["custom"]))
+    settings = result.get("settings") or {}
+    overrides = settings.get("capabilities") if isinstance(settings, dict) else None
+    if isinstance(overrides, dict):
+        for key in capabilities:
+            if isinstance(overrides.get(key), bool):
+                capabilities[key] = overrides[key]
+    result["capabilities"] = capabilities
+    return result
+
+
+def _validate_organisation_type(value: str) -> str:
+    normalised = value.strip().lower()
+    if normalised not in ORGANISATION_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported organisation type. Allowed values: {', '.join(sorted(ORGANISATION_TYPES))}.",
+        )
+    return normalised
+
+
 def _get_organisation(organisation_id: str):
     response = (
         supabase
@@ -181,7 +223,7 @@ def _get_organisation(organisation_id: str):
 
     rows = response.data or []
 
-    return rows[0] if rows else None
+    return _with_capabilities(rows[0]) if rows else None
 
 
 def _ensure_slug_available(
@@ -926,7 +968,7 @@ def list_organisations(
 
         return {
             "success": True,
-            "organisations": response.data or [],
+            "organisations": [_with_capabilities(row) for row in (response.data or [])],
         }
 
     # Organisation-level user:
@@ -1021,7 +1063,7 @@ def create_organisation(
 
     name = payload.name.strip()
     slug = _normalise_slug(payload.slug)
-    organisation_type = payload.organisation_type.strip().lower()
+    organisation_type = _validate_organisation_type(payload.organisation_type)
     template = payload.template.strip().lower()
 
     if not name:
@@ -1188,10 +1230,8 @@ def update_organisation(
         updates["slug"] = slug
 
     if payload.organisation_type is not None:
-        updates["organisation_type"] = (
+        updates["organisation_type"] = _validate_organisation_type(
             payload.organisation_type
-            .strip()
-            .lower()
         )
 
     if payload.template is not None:
