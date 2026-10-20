@@ -189,7 +189,7 @@ DECLARE
 BEGIN
     IF TG_TABLE_NAME = 'cohort_members' THEN
         IF NEW.status <> 'active' THEN RETURN NEW; END IF;
-        IF TG_OP = 'UPDATE' AND OLD.status = 'active' THEN RETURN NEW; END IF;
+        IF TG_OP = 'UPDATE' AND OLD.status = 'active' AND OLD.cohort_id = NEW.cohort_id THEN RETURN NEW; END IF;
         v_cohort := NEW.cohort_id;
         PERFORM pg_advisory_xact_lock(hashtextextended('cohort:' || v_cohort::text, 0));
         SELECT capacity INTO v_cohort_limit FROM public.cohorts WHERE id = v_cohort;
