@@ -19,6 +19,8 @@ export default function OrganisationWorkspace() {
   const [teams, setTeams] = useState<any[]>([]);
   const [courseCatalogue, setCourseCatalogue] = useState<any[]>([]);
   const [cohortCourses, setCohortCourses] = useState<any[]>([]);
+  const [teamCourses, setTeamCourses] = useState<any[]>([]);
+  const [teamCourseSelections, setTeamCourseSelections] = useState<Record<string, string>>({});
   const [assignedCourses, setAssignedCourses] = useState<any[]>([]);
   const [orgCourseSelection, setOrgCourseSelection] = useState("");
   const [courseSelections, setCourseSelections] = useState<Record<string, string>>({});
@@ -68,7 +70,7 @@ export default function OrganisationWorkspace() {
       setUser(me);
       setNeedsOrgSelection(false);
       const id = encodeURIComponent(selected.organisation_id);
-      const [orgResult, memberResult, summaryResult, contractResult, capacityResult, programmeResult, cohortResult, teamResult, cohortCourseResult, publicCourseResult, assignedCourseResult] = await Promise.all([
+      const [orgResult, memberResult, summaryResult, contractResult, capacityResult, programmeResult, cohortResult, teamResult, cohortCourseResult, publicCourseResult, assignedCourseResult, teamCourseResult] = await Promise.all([
         request<any>("/organisations/" + id),
         request<any>("/organisations/" + id + "/members"),
         request<any>("/organisations/" + id + "/members/summary"),
@@ -80,6 +82,7 @@ export default function OrganisationWorkspace() {
         request<any>("/organisations/" + id + "/cohort-courses"),
         request<any>("/organisations/" + id + "/available-courses"),
         request<any>("/organisations/" + id + "/assigned-courses"),
+        request<any>("/organisations/" + id + "/team-course-assignments"),
       ]);
       setOrg(orgResult.organisation || orgResult);
       setMembers(memberResult.members || []);
@@ -92,6 +95,7 @@ export default function OrganisationWorkspace() {
       setCohortCourses(cohortCourseResult.assignments || []);
       setCourseCatalogue(publicCourseResult.courses || []);
       setAssignedCourses(assignedCourseResult.courses || []);
+      setTeamCourses(teamCourseResult.assignments || []);
     } catch (e: any) {
       setError(e.message || "The organisation workspace could not be loaded.");
     } finally {
@@ -232,6 +236,19 @@ export default function OrganisationWorkspace() {
     }
   }
 
+  async function assignCourseToTeam(teamId: string) {
+    if (!user?.organisation_id || !teamCourseSelections[teamId]) return;
+    setError(""); setNotice("");
+    try {
+      const result = await request<any>("/organisations/" + encodeURIComponent(user.organisation_id) + "/teams/" + encodeURIComponent(teamId) + "/courses", {
+        method: "POST", body: JSON.stringify({ course_id: teamCourseSelections[teamId] }),
+      });
+      setNotice("Course assigned to team. " + (result.enrolments_created || 0) + " new learner enrolments created.");
+      setTeamCourseSelections((old) => ({ ...old, [teamId]: "" }));
+      await load();
+    } catch (e: any) { setError(e.message || "Course could not be assigned to this team."); }
+  }
+
   async function addTeamMember(teamId: string) {
     if (!user?.organisation_id || !teamUserIds[teamId]?.trim()) return;
     setError(""); setNotice("");
@@ -260,6 +277,9 @@ export default function OrganisationWorkspace() {
   }
 
   const modules = Array.isArray(org?.settings?.enabled_modules) ? org.settings.enabled_modules : [];
+  const capabilities = org?.capabilities || (org?.organisation_type === "corporate"
+    ? { instructor_led: false, programmes: false, cohorts: false, teams: true, individual_course_assignment: true, team_course_assignment: true }
+    : { instructor_led: true, programmes: true, cohorts: true, teams: true, individual_course_assignment: true, team_course_assignment: true });
   const entitlements = Array.isArray(capacity?.entitlements) ? capacity.entitlements : Array.isArray(capacity?.capacity) ? capacity.capacity : [];
 
   return (
@@ -271,7 +291,7 @@ export default function OrganisationWorkspace() {
             <a href="#overview" className="hover:text-white">Overview</a>
             <a href="#people" className="hover:text-white">People</a>
             <a href="#configuration" className="hover:text-white">Configuration</a>
-            <a href="#structure" className="hover:text-white">Teams & cohorts</a>
+            <a href="#structure" className="hover:text-white">{capabilities.cohorts ? "Teams & cohorts" : "Teams & learning assignments"}</a>
             <a href="#contract" className="hover:text-white">Contract</a>
             <a href="/courses" className="hover:text-white">Courses</a>
           </nav>
@@ -356,7 +376,7 @@ export default function OrganisationWorkspace() {
 
             <section id="structure" className="mt-8 border border-white/[.12] bg-[#11171e] p-5 sm:p-6">
               <div className="flex flex-wrap items-start justify-between gap-4">
-                <div><p className="text-xs font-bold uppercase tracking-[.18em] gold">Organisation structure</p><h2 className="mt-2 text-2xl font-semibold">Programmes, cohorts and teams</h2><p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">Programmes group learning initiatives, cohorts group learners in a defined period, and teams organise people around work. Contract entitlements are enforced by the backend.</p></div>
+                <div><p className="text-xs font-bold uppercase tracking-[.18em] gold">Organisation structure</p><h2 className="mt-2 text-2xl font-semibold">{capabilities.cohorts ? "Programmes, cohorts and teams" : "Teams and employee learning"}</h2><p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">{capabilities.cohorts ? "Programmes group learning initiatives, cohorts group learners in a defined period, and teams organise people around work." : "Organise employees into teams and assign the same or different published courses to each team. Instructors and cohorts are optional for this corporate model."} Contract entitlements are enforced by the backend.</p></div>
                 <div className="rounded-xl border border-white/[.06] bg-black/20 p-3 text-xs text-slate-500">Use an existing member's user ID when assigning them to a cohort or team.</div>
               </div>
 
@@ -367,37 +387,37 @@ export default function OrganisationWorkspace() {
                 {!courseCatalogue.length && <p className="mt-3 text-xs leading-5 text-slate-600">No published courses are currently available to assign. Draft courses are intentionally excluded.</p>}
               </div>
               <div className="mt-6 grid gap-4 xl:grid-cols-3">
-                <form onSubmit={createProgramme} className="rounded-xl border border-white/[.07] bg-black/15 p-4">
+                {capabilities.programmes && <form onSubmit={createProgramme} className="rounded-xl border border-white/[.07] bg-black/15 p-4">
                   <h3 className="font-semibold">Create programme</h3>
                   <label className="mt-4 block text-xs text-slate-400">Programme name<input required minLength={2} value={programmeForm.name} onChange={(e) => setProgrammeForm((old: any) => ({ ...old, name: e.target.value }))} className={inputClass} /></label>
                   <label className="mt-3 block text-xs text-slate-400">Description<textarea value={programmeForm.description} onChange={(e) => setProgrammeForm((old: any) => ({ ...old, description: e.target.value }))} rows={3} className={inputClass} /></label>
                   <div className="mt-3 grid grid-cols-2 gap-2"><label className="text-xs text-slate-400">Start<input type="date" value={programmeForm.start_date} onChange={(e) => setProgrammeForm((old: any) => ({ ...old, start_date: e.target.value }))} className={inputClass} /></label><label className="text-xs text-slate-400">End<input type="date" value={programmeForm.end_date} onChange={(e) => setProgrammeForm((old: any) => ({ ...old, end_date: e.target.value }))} className={inputClass} /></label></div>
                   <button disabled={busy} className="mt-4 rounded-xl bg-[#d7ad35] px-4 py-3 text-sm font-bold text-black disabled:opacity-50">{busy ? "Creating…" : "Create programme"}</button>
-                </form>
+                </form>}
 
-                <form onSubmit={createCohort} className="rounded-xl border border-white/[.07] bg-black/15 p-4">
+                {capabilities.cohorts && <form onSubmit={createCohort} className="rounded-xl border border-white/[.07] bg-black/15 p-4">
                   <h3 className="font-semibold">Create cohort</h3>
                   <label className="mt-4 block text-xs text-slate-400">Cohort name<input required minLength={2} value={cohortForm.name} onChange={(e) => setCohortForm((old: any) => ({ ...old, name: e.target.value }))} className={inputClass} /></label>
                   <label className="mt-3 block text-xs text-slate-400">Programme<select value={cohortForm.programme_id} onChange={(e) => setCohortForm((old: any) => ({ ...old, programme_id: e.target.value }))} className={inputClass}><option value="">No programme</option>{programmes.filter((p) => p.status !== "archived").map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
                   <div className="mt-3 grid grid-cols-2 gap-2"><label className="text-xs text-slate-400">Start<input type="date" value={cohortForm.start_date} onChange={(e) => setCohortForm((old: any) => ({ ...old, start_date: e.target.value }))} className={inputClass} /></label><label className="text-xs text-slate-400">End<input type="date" value={cohortForm.end_date} onChange={(e) => setCohortForm((old: any) => ({ ...old, end_date: e.target.value }))} className={inputClass} /></label></div>
                   <div className="mt-3 grid grid-cols-2 gap-2"><label className="text-xs text-slate-400">Learner capacity<input type="number" min="1" value={cohortForm.capacity} onChange={(e) => setCohortForm((old: any) => ({ ...old, capacity: e.target.value }))} className={inputClass} /></label><label className="text-xs text-slate-400">Instructor capacity<input type="number" min="0" value={cohortForm.instructor_capacity} onChange={(e) => setCohortForm((old: any) => ({ ...old, instructor_capacity: e.target.value }))} className={inputClass} /></label></div>
                   <button disabled={busy} className="mt-4 rounded-xl bg-[#d7ad35] px-4 py-3 text-sm font-bold text-black disabled:opacity-50">{busy ? "Creating…" : "Create cohort"}</button>
-                </form>
+                </form>}
 
-                <form onSubmit={createTeam} className="rounded-xl border border-white/[.07] bg-black/15 p-4">
+                {capabilities.teams && <form onSubmit={createTeam} className="rounded-xl border border-white/[.07] bg-black/15 p-4">
                   <h3 className="font-semibold">Create team</h3>
                   <label className="mt-4 block text-xs text-slate-400">Team name<input required minLength={2} value={teamForm.name} onChange={(e) => setTeamForm((old: any) => ({ ...old, name: e.target.value }))} className={inputClass} /></label>
                   <label className="mt-3 block text-xs text-slate-400">Slug (optional)<input value={teamForm.slug} onChange={(e) => setTeamForm((old: any) => ({ ...old, slug: e.target.value }))} className={inputClass} /></label>
                   <label className="mt-3 block text-xs text-slate-400">Manager user ID (optional)<input value={teamForm.manager_user_id} onChange={(e) => setTeamForm((old: any) => ({ ...old, manager_user_id: e.target.value }))} className={inputClass} /></label>
                   <label className="mt-3 block text-xs text-slate-400">Description<textarea value={teamForm.description} onChange={(e) => setTeamForm((old: any) => ({ ...old, description: e.target.value }))} rows={2} className={inputClass} /></label>
                   <button disabled={busy} className="mt-4 rounded-xl bg-[#d7ad35] px-4 py-3 text-sm font-bold text-black disabled:opacity-50">{busy ? "Creating…" : "Create team"}</button>
-                </form>
+                </form>}
               </div>
 
               <div className="mt-8 grid gap-4 xl:grid-cols-3">
-                <div className="rounded-xl border border-white/[.07] p-4"><h3 className="font-semibold">Programmes <span className="text-xs text-slate-500">({programmes.length})</span></h3><div className="mt-3 space-y-2">{programmes.map((p) => <div key={p.id} className="rounded-lg bg-black/20 p-3"><div className="flex items-start justify-between gap-2"><p className="text-sm font-medium">{p.name}</p><span className="text-[10px] uppercase text-slate-500">{p.status}</span></div><p className="mt-2 text-xs text-slate-500">{p.start_date || "Start not set"} → {p.end_date || "End not set"}</p></div>)}{!programmes.length && <p className="text-xs leading-5 text-slate-600">No programmes created yet.</p>}</div></div>
-                <div className="rounded-xl border border-white/[.07] p-4"><h3 className="font-semibold">Cohorts <span className="text-xs text-slate-500">({cohorts.length})</span></h3><div className="mt-3 space-y-3">{cohorts.map((cohort) => <div key={cohort.id} className="rounded-lg bg-black/20 p-3"><div className="flex items-start justify-between gap-2"><p className="text-sm font-medium">{cohort.name}</p><span className="text-[10px] uppercase text-slate-500">{cohort.status}</span></div><p className="mt-2 text-xs text-slate-500">{cohort.start_date || "Start not set"} → {cohort.end_date || "End not set"} · Capacity {cohort.capacity ?? "—"}</p><div className="mt-3 space-y-2">{cohortCourses.filter((assignment) => String(assignment.cohort_id) === String(cohort.id) && assignment.status === "active").map((assignment) => <p key={assignment.id} className="rounded-lg border border-white/[.06] px-2 py-2 text-xs text-slate-400">Course: {assignment.course?.title || assignment.course_id}</p>)}</div><div className="mt-3 grid gap-2"><select aria-label={"Course for "+cohort.name} value={courseSelections[cohort.id] || ""} onChange={(e) => setCourseSelections((old) => ({ ...old, [cohort.id]: e.target.value }))} className="w-full rounded-lg border border-white/10 bg-[#090c10] px-2 py-2 text-xs"><option value="">Choose a published course</option>{courseCatalogue.map((course) => <option key={course.id} value={course.id}>{course.title}</option>)}</select><button disabled={!courseSelections[cohort.id] || !courseCatalogue.length} onClick={() => void assignCourseToCohort(String(cohort.id))} className="rounded-lg border border-white/10 px-3 py-2 text-xs disabled:opacity-50">Assign course</button></div><div className="mt-3 flex gap-2"><input aria-label={"Learner user ID for "+cohort.name} value={cohortUserIds[cohort.id] || ""} onChange={(e) => setCohortUserIds((old) => ({ ...old, [cohort.id]: e.target.value }))} placeholder="Learner user ID" className="min-w-0 flex-1 rounded-lg border border-white/10 bg-[#090c10] px-2 py-2 text-xs" /><button onClick={() => void addCohortMember(String(cohort.id))} className="rounded-lg border border-white/10 px-3 py-2 text-xs">Add</button></div></div>)}{!cohorts.length && <p className="text-xs leading-5 text-slate-600">No cohorts created yet.</p>}</div></div>
-                <div className="rounded-xl border border-white/[.07] p-4"><h3 className="font-semibold">Teams <span className="text-xs text-slate-500">({teams.length})</span></h3><div className="mt-3 space-y-3">{teams.map((team) => <div key={team.id} className="rounded-lg bg-black/20 p-3"><div className="flex items-start justify-between gap-2"><p className="text-sm font-medium">{team.name}</p><span className="text-[10px] uppercase text-slate-500">{team.status}</span></div><p className="mt-2 text-xs text-slate-500">{team.description || "No description"} · {team.slug}</p><a href={"/dashboard/team/"+team.id} className="mt-3 inline-block text-xs font-semibold gold">Open team workspace →</a><div className="mt-3 grid gap-2"><input aria-label={"Member user ID for "+team.name} value={teamUserIds[team.id] || ""} onChange={(e) => setTeamUserIds((old) => ({ ...old, [team.id]: e.target.value }))} placeholder="Existing member user ID" className="w-full rounded-lg border border-white/10 bg-[#090c10] px-2 py-2 text-xs" /><div className="flex gap-2"><select aria-label={"Team role for "+team.name} value={teamRoles[team.id] || "member"} onChange={(e) => setTeamRoles((old) => ({ ...old, [team.id]: e.target.value }))} className="min-w-0 flex-1 rounded-lg border border-white/10 bg-[#090c10] px-2 py-2 text-xs"><option value="member">Member</option><option value="lead">Team lead</option><option value="manager">Manager</option></select><button onClick={() => void addTeamMember(String(team.id))} className="rounded-lg border border-white/10 px-3 py-2 text-xs">Add</button></div></div><div className="mt-4 border-t border-white/[.06] pt-3"><p className="text-xs font-semibold text-slate-300">Assigned learning</p><div className="mt-2 space-y-2">{teamCourses.filter((assignment) => String(assignment.team_id) === String(team.id) && assignment.status === "active").map((assignment) => <p key={assignment.id} className="rounded-lg border border-white/[.06] px-2 py-2 text-xs text-slate-400">{assignment.course?.title || assignment.course_id}</p>)}</div>{capabilities.team_course_assignment && <><select aria-label={"Course for "+team.name} value={teamCourseSelections[team.id] || ""} onChange={(e) => setTeamCourseSelections((old) => ({ ...old, [team.id]: e.target.value }))} className="mt-3 w-full rounded-lg border border-white/10 bg-[#090c10] px-2 py-2 text-xs"><option value="">Assign a published course to this team</option>{courseCatalogue.map((course) => <option key={course.id} value={course.id}>{course.title}</option>)}</select><button disabled={!teamCourseSelections[team.id] || !courseCatalogue.length} onClick={() => void assignCourseToTeam(String(team.id))} className="mt-2 w-full rounded-lg border border-white/10 px-3 py-2 text-xs disabled:opacity-50">Assign course to team</button></>}</div></div>)}{!teams.length && <p className="text-xs leading-5 text-slate-600">No teams created yet.</p>}</div></div>
+                {capabilities.programmes && <div className="rounded-xl border border-white/[.07] p-4"><h3 className="font-semibold">Programmes <span className="text-xs text-slate-500">({programmes.length})</span></h3><div className="mt-3 space-y-2">{programmes.map((p) => <div key={p.id} className="rounded-lg bg-black/20 p-3"><div className="flex items-start justify-between gap-2"><p className="text-sm font-medium">{p.name}</p><span className="text-[10px] uppercase text-slate-500">{p.status}</span></div><p className="mt-2 text-xs text-slate-500">{p.start_date || "Start not set"} → {p.end_date || "End not set"}</p></div>)}{!programmes.length && <p className="text-xs leading-5 text-slate-600">No programmes created yet.</p>}</div></div>}
+                {capabilities.cohorts && <div className="rounded-xl border border-white/[.07] p-4"><h3 className="font-semibold">Cohorts <span className="text-xs text-slate-500">({cohorts.length})</span></h3><div className="mt-3 space-y-3">{cohorts.map((cohort) => <div key={cohort.id} className="rounded-lg bg-black/20 p-3"><div className="flex items-start justify-between gap-2"><p className="text-sm font-medium">{cohort.name}</p><span className="text-[10px] uppercase text-slate-500">{cohort.status}</span></div><p className="mt-2 text-xs text-slate-500">{cohort.start_date || "Start not set"} → {cohort.end_date || "End not set"} · Capacity {cohort.capacity ?? "—"}</p><div className="mt-3 space-y-2">{cohortCourses.filter((assignment) => String(assignment.cohort_id) === String(cohort.id) && assignment.status === "active").map((assignment) => <p key={assignment.id} className="rounded-lg border border-white/[.06] px-2 py-2 text-xs text-slate-400">Course: {assignment.course?.title || assignment.course_id}</p>)}</div><div className="mt-3 grid gap-2"><select aria-label={"Course for "+cohort.name} value={courseSelections[cohort.id] || ""} onChange={(e) => setCourseSelections((old) => ({ ...old, [cohort.id]: e.target.value }))} className="w-full rounded-lg border border-white/10 bg-[#090c10] px-2 py-2 text-xs"><option value="">Choose a published course</option>{courseCatalogue.map((course) => <option key={course.id} value={course.id}>{course.title}</option>)}</select><button disabled={!courseSelections[cohort.id] || !courseCatalogue.length} onClick={() => void assignCourseToCohort(String(cohort.id))} className="rounded-lg border border-white/10 px-3 py-2 text-xs disabled:opacity-50">Assign course</button></div><div className="mt-3 flex gap-2"><input aria-label={"Learner user ID for "+cohort.name} value={cohortUserIds[cohort.id] || ""} onChange={(e) => setCohortUserIds((old) => ({ ...old, [cohort.id]: e.target.value }))} placeholder="Learner user ID" className="min-w-0 flex-1 rounded-lg border border-white/10 bg-[#090c10] px-2 py-2 text-xs" /><button onClick={() => void addCohortMember(String(cohort.id))} className="rounded-lg border border-white/10 px-3 py-2 text-xs">Add</button></div></div>)}{!cohorts.length && <p className="text-xs leading-5 text-slate-600">No cohorts created yet.</p>}</div></div>}
+                {capabilities.teams && <div className="rounded-xl border border-white/[.07] p-4"><h3 className="font-semibold">Teams <span className="text-xs text-slate-500">({teams.length})</span></h3><div className="mt-3 space-y-3">{teams.map((team) => <div key={team.id} className="rounded-lg bg-black/20 p-3"><div className="flex items-start justify-between gap-2"><p className="text-sm font-medium">{team.name}</p><span className="text-[10px] uppercase text-slate-500">{team.status}</span></div><p className="mt-2 text-xs text-slate-500">{team.description || "No description"} · {team.slug}</p><a href={"/dashboard/team/"+team.id} className="mt-3 inline-block text-xs font-semibold gold">Open team workspace →</a><div className="mt-3 grid gap-2"><input aria-label={"Member user ID for "+team.name} value={teamUserIds[team.id] || ""} onChange={(e) => setTeamUserIds((old) => ({ ...old, [team.id]: e.target.value }))} placeholder="Existing member user ID" className="w-full rounded-lg border border-white/10 bg-[#090c10] px-2 py-2 text-xs" /><div className="flex gap-2"><select aria-label={"Team role for "+team.name} value={teamRoles[team.id] || "member"} onChange={(e) => setTeamRoles((old) => ({ ...old, [team.id]: e.target.value }))} className="min-w-0 flex-1 rounded-lg border border-white/10 bg-[#090c10] px-2 py-2 text-xs"><option value="member">Member</option><option value="lead">Team lead</option><option value="manager">Manager</option></select><button onClick={() => void addTeamMember(String(team.id))} className="rounded-lg border border-white/10 px-3 py-2 text-xs">Add</button></div></div><div className="mt-4 border-t border-white/[.06] pt-3"><p className="text-xs font-semibold text-slate-300">Assigned learning</p><div className="mt-2 space-y-2">{teamCourses.filter((assignment) => String(assignment.team_id) === String(team.id) && assignment.status === "active").map((assignment) => <p key={assignment.id} className="rounded-lg border border-white/[.06] px-2 py-2 text-xs text-slate-400">{assignment.course?.title || assignment.course_id}</p>)}</div>{capabilities.team_course_assignment && <><select aria-label={"Course for "+team.name} value={teamCourseSelections[team.id] || ""} onChange={(e) => setTeamCourseSelections((old) => ({ ...old, [team.id]: e.target.value }))} className="mt-3 w-full rounded-lg border border-white/10 bg-[#090c10] px-2 py-2 text-xs"><option value="">Assign a published course to this team</option>{courseCatalogue.map((course) => <option key={course.id} value={course.id}>{course.title}</option>)}</select><button disabled={!teamCourseSelections[team.id] || !courseCatalogue.length} onClick={() => void assignCourseToTeam(String(team.id))} className="mt-2 w-full rounded-lg border border-white/10 px-3 py-2 text-xs disabled:opacity-50">Assign course to team</button></>}</div></div>)}{!teams.length && <p className="text-xs leading-5 text-slate-600">No teams created yet.</p>}</div></div>}
               </div>
             </section>
           </>
