@@ -29,6 +29,8 @@ At inspection time, the live database had nine registered migration records (thr
 
 This is migration-history drift, not a safe basis for replaying SQL. The repository's normal numbered migration chain is under `supabase/migrations/`, while the proposed remediation remains in `backend-python/migrations/` as a review artifact until the registry is reconciled. Do not move it into the active migration chain or run the Supabase CLI against the directory until the earlier scripts have an explicit applied/not-applied mapping; otherwise old migrations may be replayed. Do not infer that a numbered script is already applied solely because it exists in GitHub.
 
+The live object inventory also does not contain the legacy tables `tracks`, `enrollments`, `user_progress`, `user_project_progress` and `community_qna` defined in `001_initial.sql`; newer Learnora structures such as `learnora_learning_paths`, `learnora_enrolments`, `learnora_lesson_progress` and `learnora_discussions` exist instead. This may be intentional replacement, but it must be confirmed against code references and data lineage before declaring the old migration obsolete. Several shared legacy tables (`courses`, `lessons`, `audit_logs`, and others) still exist alongside Learnora-prefixed tables, so migrations must be reconciled by object/constraint/function state, not filenames alone.
+
 ## 2. Confirmed gaps and risks
 
 ### A. Tenant integrity is mostly enforced in application code
