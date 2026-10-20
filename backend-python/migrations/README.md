@@ -52,7 +52,7 @@ The Security Advisor reported three functions with mutable `search_path`. The pr
 
 ## Verification
 
-Run `verify_live_schema.sql` against the confirmed target before and after a reviewed migration. It reports migration records, relevant columns, constraints, RLS/policy state, grants, triggers/functions and read-only integrity/capacity/date preflight counts. The current snapshot returned zero conflicts for the seven tenant-integrity checks and zero violations for the capacity/date checks; these are point-in-time results, not a guarantee for future writes.
+Run `verify_live_schema.sql` before a reviewed migration. After applying to a disposable or approved target, run `verify_post_migration.sql` for team/cohort course assignment integrity, AI usage-log carry-forward, new-table RLS, browser grants and security-definer function settings. Both scripts are read-only. The pre-migration script reports migration records, relevant columns, constraints, RLS/policy state, grants, triggers/functions and integrity/capacity/date preflight counts. The current snapshot returned zero conflicts for the seven tenant-integrity checks and zero violations for the capacity/date checks; these are point-in-time results, not a guarantee for future writes.
 
 The detailed Step 4 inventory, workflow findings, proposed resource-scoped role-assignment table and staged migration plan are in `STEP_4_ORGANISATION_DATA_MODEL_PLAN.md`.
 
