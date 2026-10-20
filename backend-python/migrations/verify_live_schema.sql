@@ -55,6 +55,23 @@ WHERE n.nspname = 'public'
 GROUP BY c.relname, c.relrowsecurity, c.relforcerowsecurity
 ORDER BY c.relname;
 
+-- Effective table grants for the named API roles; pair this with the RLS policy output above.
+SELECT grantee, table_name,
+       string_agg(privilege_type, ', ' ORDER BY privilege_type) AS privileges
+FROM information_schema.role_table_grants
+WHERE table_schema = 'public'
+  AND grantee IN ('anon','authenticated','service_role')
+  AND table_name IN (
+      'organisations','organisation_members','organisation_teams',
+      'organisation_team_members','cohorts','cohort_members',
+      'cohort_course_assignments','team_course_assignments','course_access',
+      'learnora_programmes','learnora_contracts','learnora_contract_entitlements',
+      'learnora_ai_limits','learnora_capacity_reservations',
+      'learnora_ai_quota_reservations','learnora_enrolments','quizzes'
+  )
+GROUP BY grantee, table_name
+ORDER BY table_name, grantee;
+
 SELECT event_object_table AS table_name, trigger_name, action_timing,
        event_manipulation, action_statement
 FROM information_schema.triggers
