@@ -116,6 +116,15 @@ BEGIN
         FROM public.learnora_ai_quota_reservations r
         WHERE (p_limit_feature = '*' OR r.feature = p_limit_feature)
           AND r.created_at >= date_trunc('month', v_now);
+    ELSIF p_scope_type = 'feature' THEN
+        SELECT count(*)::integer INTO v_day_count
+        FROM public.learnora_ai_quota_reservations r
+        WHERE r.feature = p_limit_feature
+          AND r.created_at >= date_trunc('day', v_now);
+        SELECT count(*)::integer INTO v_month_count
+        FROM public.learnora_ai_quota_reservations r
+        WHERE r.feature = p_limit_feature
+          AND r.created_at >= date_trunc('month', v_now);
     ELSE
         SELECT count(*)::integer INTO v_day_count
         FROM public.learnora_ai_quota_reservations r
