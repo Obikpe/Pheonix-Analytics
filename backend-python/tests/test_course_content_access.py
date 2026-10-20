@@ -72,6 +72,32 @@ def context(organisation_id="org-a", user_id="user-1", platform_admin=False, rol
 
 
 class CourseContentAccessTests(unittest.TestCase):
+    def test_scoped_course_assignment_does_not_grant_access_to_every_organisation_learner(self):
+        course = {"id": "course-1", "ownership": "learnora", "organisation_id": None}
+        db = FakeSupabase(course_access=[{
+            "id": "grant-1", "course_id": "course-1",
+            "organisation_id": "org-a", "status": "active", "access_type": "scoped",
+        }])
+        with patch.object(course_content, "supabase", db):
+            with self.assertRaises(HTTPException) as raised:
+                course_content._check_course_view_access(context(role="learner"), course)
+        self.assertEqual(raised.exception.status_code, 403)
+
+    def test_scoped_course_assignment_allows_the_enrolled_learner(self):
+        course = {"id": "course-1", "ownership": "learnora", "organisation_id": None}
+        db = FakeSupabase(
+            course_access=[{
+                "id": "grant-1", "course_id": "course-1",
+                "organisation_id": "org-a", "status": "active", "access_type": "scoped",
+            }],
+            enrolments=[{
+                "id": "enrolment-1", "course_id": "course-1",
+                "user_id": "user-1", "organisation_id": "org-a", "status": "active",
+            }],
+        )
+        with patch.object(course_content, "supabase", db):
+            course_content._check_course_view_access(context(role="learner"), course)
+
     def test_organisation_owned_course_is_readable_inside_own_tenant(self):
         course = {"id": "course-1", "ownership": "organisation", "organisation_id": "org-a"}
         with patch.object(course_content, "supabase", FakeSupabase()):
@@ -95,7 +121,7 @@ class CourseContentAccessTests(unittest.TestCase):
         course = {"id": "course-1", "ownership": "organisation", "organisation_id": "org-a"}
         db = FakeSupabase(course_access=[{
             "id": "grant-1", "course_id": "course-1",
-            "organisation_id": "org-a", "status": "active",
+            "organisation_id": "org-a", "status": "active", "access_type": "assigned",
         }])
         with patch.object(course_content, "supabase", db):
             course_content._check_course_view_access(context(role="learner"), course)
@@ -104,7 +130,7 @@ class CourseContentAccessTests(unittest.TestCase):
         course = {"id": "course-1", "ownership": "learnora", "organisation_id": None}
         db = FakeSupabase(course_access=[{
             "id": "grant-1", "course_id": "course-1",
-            "organisation_id": "org-a", "status": "active",
+            "organisation_id": "org-a", "status": "active", "access_type": "assigned",
         }])
         with patch.object(course_content, "supabase", db):
             course_content._check_course_view_access(context(), course)
