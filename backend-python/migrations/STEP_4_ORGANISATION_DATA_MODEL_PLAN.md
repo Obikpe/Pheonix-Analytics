@@ -21,6 +21,7 @@ The active project already contains the following structures; reuse them rather 
 | Cohort course assignment | `cohort_course_assignments` |
 | Organisation course access | `course_access`, `learnora_access_entitlements`, `learnora_enrolments` |
 | Contract and entitlements | `learnora_contracts`, `learnora_contract_entitlements`, `learnora_contract_versions`, `learnora_contract_clauses` |
+| Capacity reservation records | `learnora_capacity_reservations` (resource type, quantity, used quantity, status, expiry) |
 | AI limits and usage | `learnora_ai_limits`, `ai_usage_logs` |
 | Assessment and progress | `quizzes`, `quiz_attempts`, `course_modules`, `learnora_lessons` |
 
@@ -51,9 +52,11 @@ The live schema has cohort course assignments, but no `team_course_assignments` 
 
 ### D. Capacity checks are race-prone in Python alone
 
-The current `services/capacity.py` reads current counts and then the route writes a new row. Concurrent requests can both pass that check. The proposed SQL capacity trigger in migration 023 serialises capacity checks with transaction-scoped advisory locks. Before use, fix its update fast paths so moving an active record between organisations, changing a role, changing a course, or reactivating a record cannot bypass the destination capacity check. Keep the Python check for friendly errors, but make the database the concurrency authority.
+The current `services/capacity.py` reads current counts and then the route writes a new row. Concurrent requests can both pass that check. The live schema also contains `learnora_capacity_reservations` with resource type, quantity, used quantity, status and expiry, but the inspected capacity service reads live table counts and contract entitlements rather than using that table; no live capacity trigger/routine was found. Before deciding whether that table represents reserved contract allocation or should participate in enforcement, inspect its writers and contract workflow. Do not double-count its quantities alongside live member/course counts.
 
-Cohort member capacity must be enforced in the same transaction as insertion/reactivation. Lowering a cohort capacity below current active membership should be rejected or explicitly handled; it must not silently remove learners.
+The proposed SQL capacity trigger in migration 023 serialises capacity checks with transaction-scoped advisory locks. Its update fast paths have been hardened so moving an active record between organisations or changing a course cannot bypass the destination capacity check. The Python check remains for friendly errors; the database is the concurrency authority once the migration is reviewed and applied.
+
+Cohort member capacity is enforced in the same transaction as insertion/reactivation. Lowering a cohort capacity below current active membership is rejected; it must not silently remove learners.
 
 ### E. AI quota reservations are missing
 
@@ -108,6 +111,7 @@ This sequence is intentionally additive and staged; exact migration filenames/ve
 
 - Live schema and registered migration history inspected read-only.
 - Security Advisor inspected.
-- Initial data-integrity queries are being used as preflight checks; a zero result is evidence only for the specific checked relationship and current rows, not a guarantee for future writes.
+- The current live-data preflight returned **zero rows with issues** for these six checks: active team members without active organisation membership; active cohort members without active learner membership; cohort/programme organisation mismatch; cohort assignments to another organisation's private course; course access to another organisation's private course; and active team managers without active organisation membership. These counts describe only current data and do not prevent future invalid writes without the proposed guards.
+- `learnora_capacity_reservations` exists and must be reconciled with the actual contract-capacity workflow before any migration or runtime refactor.
 - No SQL migration has been applied and no production data has been changed.
 - Remaining gate before any migration: reconcile the complete numbered repository migration set with the live timestamped migration records and verify the deployed backend's Supabase project reference.
