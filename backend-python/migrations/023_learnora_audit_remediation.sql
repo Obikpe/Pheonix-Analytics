@@ -586,3 +586,39 @@ CREATE TRIGGER learnora_sync_org_membership_status
 AFTER UPDATE OF status, organisation_id, role ON public.organisation_members
 FOR EACH ROW EXECUTE FUNCTION public.learnora_sync_org_membership_status();
 
+
+
+-- These tables are accessed through the authenticated FastAPI service, which
+-- uses the server-side service_role key. RLS is enabled but currently has no
+-- direct-client policies; remove latent broad table grants from browser roles.
+-- Do not grant broad policies as a workaround. Any future direct-client path
+-- must receive an explicitly reviewed, least-privilege grant and RLS policy.
+REVOKE ALL PRIVILEGES ON TABLE
+    public.organisations,
+    public.organisation_members,
+    public.organisation_teams,
+    public.organisation_team_members,
+    public.cohorts,
+    public.cohort_members,
+    public.cohort_course_assignments,
+    public.team_course_assignments,
+    public.course_access,
+    public.learnora_programmes,
+    public.learnora_programme_courses,
+    public.learnora_contracts,
+    public.learnora_contract_entitlements,
+    public.learnora_contract_versions,
+    public.learnora_access_entitlements,
+    public.learnora_enrolments,
+    public.learnora_ai_limits,
+    public.learnora_ai_quota_reservations,
+    public.learnora_capacity_reservations,
+    public.ai_usage_logs,
+    public.quizzes,
+    public.quiz_questions,
+    public.quiz_attempts,
+    public.course_modules,
+    public.learnora_lessons,
+    public.learnora_lesson_progress,
+    public.learner_lesson_notes
+FROM anon, authenticated;
