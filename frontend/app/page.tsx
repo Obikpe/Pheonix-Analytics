@@ -1,9 +1,9 @@
 "use client";
 
 import Header from "../components/Header";
-import Library from "../components/Library";
 import Playground from "../components/Playground";
 import Pricing from "../components/Pricing";
+import CoursesPreview from "../components/CoursesPreview";
 import {
   ArrowDownRight,
   ArrowRight,
@@ -187,13 +187,7 @@ export default function Page() {
         </div>
       </section>
 
-      <section className="learnora-catalogue-intro">
-        <div className="mx-auto grid max-w-[82rem] gap-5 px-5 py-14 sm:px-8 lg:grid-cols-[1fr_auto] lg:items-end lg:px-10">
-          <div><p className="learnora-kicker">The course library</p><h2 className="learnora-section-title mt-4">Find your next useful skill.</h2><p className="mt-4 max-w-2xl text-sm leading-7 text-slate-400">Explore the available courses below. Course access and progress depend on your account and enrolment.</p></div>
-          <span className="inline-flex items-center gap-2 text-xs text-slate-500"><BookOpen size={15} className="text-[#f2d477]"/> Browse the available catalogue</span>
-        </div>
-      </section>
-      <div className="learnora-existing-feature"><Library /></div>
+      <CoursesPreview />
       <div className="learnora-existing-feature"><Playground /></div>
       <div className="learnora-existing-feature"><Pricing /></div>
 
