@@ -4,7 +4,6 @@
 -- Pin shared timestamp-trigger functions used by organisation/course records.
 -- This changes function resolution only; the trigger behaviour is unchanged.
 ALTER FUNCTION public.learnora_set_updated_at() SET search_path = pg_catalog, public;
-ALTER FUNCTION public.set_updated_at() SET search_path = pg_catalog, public;
 
 -- Keep API organisation types aligned with the supported community workflow.
 ALTER TABLE public.organisations
