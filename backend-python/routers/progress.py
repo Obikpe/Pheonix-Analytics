@@ -397,7 +397,7 @@ def get_assignment(assignment_id: str, user: CurrentUser = Depends(get_current_u
 @router.post("/assignments/{assignment_id}/submissions", status_code=201)
 def submit_assignment(assignment_id: str, body: AssignmentSubmissionIn, user: CurrentUser = Depends(get_current_user)):
     result = (supabase.table("assignments")
-        .select("id,course_id,is_published")
+        .select("id,lesson_id,course_id,is_published")
         .eq("id", assignment_id).eq("is_published", True).limit(1).execute())
     if not result.data:
         raise HTTPException(404, "Published assignment not found.")
