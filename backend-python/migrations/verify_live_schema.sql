@@ -82,7 +82,8 @@ WHERE n.nspname = 'public'
       'reserve_learnora_ai_quota',
       'learnora_enforce_org_capacity',
       'learnora_validate_org_relationships',
-      'learnora_sync_org_membership_status'
+      'learnora_sync_org_membership_status',
+      'learnora_set_updated_at', 'set_updated_at'
   )
 ORDER BY p.proname;
 
