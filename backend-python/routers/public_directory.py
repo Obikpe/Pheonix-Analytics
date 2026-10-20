@@ -6,6 +6,7 @@ to be discoverable.
 """
 from fastapi import APIRouter, HTTPException
 from urllib.parse import urlparse
+from uuid import UUID
 
 from .auth import supabase
 
@@ -58,6 +59,13 @@ def _public_course_payload(course: dict) -> dict:
 
 
 def _public_course_lookup(course_id: str) -> dict:
+    # Course primary keys are UUIDs. Legacy local identifiers such as "ws_03"
+    # are not database IDs and should return a clean 404, not a Postgres 500.
+    try:
+        UUID(course_id)
+    except (ValueError, TypeError, AttributeError):
+        raise HTTPException(404, "Course not found.") from None
+
     result = (
         supabase.table("learnora_courses")
         .select("id,organisation_id,creator_id,title,slug,short_description,description,level,status,ownership,thumbnail_url,estimated_hours,settings,created_at")
