@@ -60,6 +60,7 @@ SELECT l.user_id, l.organisation_id, COALESCE(l.feature, 'tutor'),
        COALESCE(l.organisation_id::text, l.user_id::text),
        COALESCE(l.feature, 'tutor'), l.id, l.created_at
 FROM public.ai_usage_logs l
+WHERE l.user_id IS NOT NULL
 ON CONFLICT (usage_log_id) DO NOTHING;
 
 -- Corporate/team learning assignments are distinct from cohort assignments.
@@ -294,6 +295,7 @@ BEGIN
             SELECT course_id FROM public.course_access
             WHERE organisation_id = v_org AND status = 'active'
               AND (TG_OP = 'INSERT' OR id <> NEW.id)
+              AND (TG_TABLE_NAME <> 'learnora_courses' OR course_id <> NEW.id)
         ) scoped_courses;
     END IF;
 
