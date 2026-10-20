@@ -349,6 +349,55 @@ def _check_course_view_access(
     )
 
 
+def _assert_module_unlocked(context: PermissionContext, module: dict):
+    """Learners must pass every prior module assessment at 70% or higher."""
+    if context.is_platform_admin:
+        return
+    role = (context.organisation_role or "").strip().lower()
+    legacy_role = str(getattr(context.user, "role", "") or "").strip().lower()
+    if role != "learner" and legacy_role not in {"normal", "witstart", "learner"}:
+        return
+
+    previous_modules = (
+        supabase.table("course_modules")
+        .select("id,title,order_index")
+        .eq("course_id", str(module["course_id"]))
+        .lt("order_index", module["order_index"])
+        .neq("status", "archived")
+        .order("order_index")
+        .execute()
+    ).data or []
+    for previous in previous_modules:
+        quizzes = (
+            supabase.table("quizzes")
+            .select("id")
+            .eq("module_id", str(previous["id"]))
+            .eq("is_published", True)
+            .execute()
+        ).data or []
+        if not quizzes:
+            raise HTTPException(
+                status_code=409,
+                detail=f'Module "{previous.get("title") or "previous module"}" has no published assessment yet.',
+            )
+        for quiz in quizzes:
+            attempts = (
+                supabase.table("quiz_attempts")
+                .select("id")
+                .eq("quiz_id", str(quiz["id"]))
+                .eq("user_id", str(context.user_id))
+                .eq("passed", True)
+                .gte("score", 70)
+                .limit(1)
+                .execute()
+            ).data or []
+            if not attempts:
+                raise HTTPException(
+                    status_code=423,
+                    detail=f'Pass the assessment for "{previous.get("title") or "the previous module"}" with at least 70% to unlock this module.',
+                )
+
+
 def _validate_module_status(status: str):
     if status not in MODULE_STATUSES:
         raise HTTPException(
@@ -452,6 +501,8 @@ def get_module(
             status_code=404,
             detail="Module not found.",
         )
+
+    _assert_module_unlocked(context, module)
 
     course = _get_course(str(module["course_id"]))
     if not course:
@@ -681,6 +732,8 @@ def list_lessons(
             detail="Module not found.",
         )
 
+    _assert_module_unlocked(context, module)
+
     course = _get_course(str(module["course_id"]))
     if not course:
         raise HTTPException(
@@ -750,6 +803,7 @@ def get_lesson(
             status_code=404,
             detail="Module not found.",
         )
+    _assert_module_unlocked(context, module)
     course = _get_course(str(module["course_id"]))
     if not course:
         raise HTTPException(
