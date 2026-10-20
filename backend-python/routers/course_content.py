@@ -398,7 +398,24 @@ def _check_course_view_access(
                 .limit(20)
                 .execute()
             ).data or []
+            is_learner = (
+                (context.organisation_role or "").strip().lower() == "learner"
+                or str(getattr(context.user, "role", "") or "").strip().lower() in {"normal", "witstart", "learner"}
+            )
             if grant:
+                if is_learner:
+                    active_learner = (
+                        supabase.table("organisation_members")
+                        .select("id")
+                        .eq("organisation_id", str(organisation_id))
+                        .eq("user_id", str(context.user_id))
+                        .eq("role", "learner")
+                        .eq("status", "active")
+                        .limit(1)
+                        .execute()
+                    ).data or []
+                    if not active_learner:
+                        raise HTTPException(403, "An active learner membership is required for this organisation course.")
                 return
             if any(_has_active_scoped_course_source(str(context.user_id), str(organisation_id), course_id, row) for row in enrolments):
                 return
@@ -427,6 +444,23 @@ def _check_course_view_access(
             )
 
         if access_result.data:
+            is_learner = (
+                (context.organisation_role or "").strip().lower() == "learner"
+                or str(getattr(context.user, "role", "") or "").strip().lower() in {"normal", "witstart", "learner"}
+            )
+            if is_learner:
+                active_learner = (
+                    supabase.table("organisation_members")
+                    .select("id")
+                    .eq("organisation_id", str(organisation_id))
+                    .eq("user_id", str(context.user_id))
+                    .eq("role", "learner")
+                    .eq("status", "active")
+                    .limit(1)
+                    .execute()
+                ).data or []
+                if not active_learner:
+                    raise HTTPException(403, "An active learner membership is required for this organisation course.")
             return
 
     # Preserve individual course enrolments, including enrolments without an
