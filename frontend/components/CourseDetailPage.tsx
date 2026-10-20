@@ -41,7 +41,7 @@ export default function CourseDetailPage({ courseId }: { courseId: string }) {
       const response = await fetch(API_BASE + "/api/courses/" + encodeURIComponent(courseId) + "/enrol",{method:"POST",headers:{Authorization:"Bearer "+token,"Content-Type":"application/json"}});
       const body = await response.json().catch(()=>({}));
       if(!response.ok)throw new Error(typeof body.detail==="string"?body.detail:"Enrolment is not available for this course.");
-      location.assign("/dashboard/learning/" + encodeURIComponent(courseId));
+      location.assign("/dashboard/course/" + encodeURIComponent(courseId));
     } catch(e:any) { setEnrolError(e?.message||"Enrolment is not available for this course."); }
     finally { setEnrolling(false); }
   }
