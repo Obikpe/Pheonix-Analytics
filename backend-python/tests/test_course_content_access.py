@@ -3,9 +3,15 @@
 Run from backend-python with:
     python -m unittest discover -s tests
 """
+import os
 import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
+
+# Allow isolated unit tests to import the application without production secrets.
+os.environ.setdefault("APP_ENV", "development")
+os.environ.setdefault("SUPABASE_URL", "https://example.supabase.co")
+os.environ.setdefault("SUPABASE_SERVICE_ROLE_KEY", "unit-test-service-key")
 
 from fastapi import HTTPException
 
