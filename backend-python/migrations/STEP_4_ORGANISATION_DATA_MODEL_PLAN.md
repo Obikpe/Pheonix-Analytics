@@ -25,7 +25,9 @@ The active project already contains the following structures; reuse them rather 
 | AI limits and usage | `learnora_ai_limits`, `ai_usage_logs` |
 | Assessment and progress | `quizzes`, `quiz_attempts`, `course_modules`, `learnora_lessons` |
 
-At inspection time, the live database had nine registered migration records (through `20261011051442`, `learner_onboarding_profiles`). The numbered repository SQL scripts are not a one-to-one representation of that timestamped history. Therefore, do not infer that a numbered script is already applied solely because it exists in GitHub.
+At inspection time, the live database had nine registered migration records (through `20261011051442`, `learner_onboarding_profiles`). The registered names for `learnora_organisation_portal` and migrations `017`–`022` align with repository files `016`–`022`, but the live registry does not contain matching entries for repository migrations `001`–`015`. The first live record is named `add_learnora_ai_profiles`, not `014_learnora_ai_foundation` or `015_learnora_ai_permissions`; the schema contains AI profile/provider tables, but that is not enough to prove the scripts were applied as-is. The live `learner_onboarding_profiles` record also has no matching numbered file among repository migrations `001`–`022`.
+
+This is migration-history drift, not a safe basis for replaying SQL. The repository's normal numbered migration chain is under `supabase/migrations/`, while the proposed remediation remains in `backend-python/migrations/` as a review artifact until the registry is reconciled. Do not move it into the active migration chain or run the Supabase CLI against the directory until the earlier scripts have an explicit applied/not-applied mapping; otherwise old migrations may be replayed. Do not infer that a numbered script is already applied solely because it exists in GitHub.
 
 ## 2. Confirmed gaps and risks
 
