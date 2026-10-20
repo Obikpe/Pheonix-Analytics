@@ -679,44 +679,35 @@ FOR EACH ROW EXECUTE FUNCTION public.learnora_sync_org_membership_status();
 
 
 
--- These tables are accessed through the authenticated FastAPI service, which
--- uses the server-side service_role key. RLS is enabled but currently has no
--- direct-client policies; remove latent broad table grants from browser roles.
--- Do not grant broad policies as a workaround. Any future direct-client path
--- must receive an explicitly reviewed, least-privilege grant and RLS policy.
+-- Scope this grant hardening to organisation, contract, membership, access,
+-- enrolment and AI-usage tables used by the organisation workflows. Do not
+-- revoke grants on shared learner/catalogue/progress tables in this migration:
+-- those require a separate usage audit to avoid breaking non-organisation
+-- learner journeys. These organisation tables are accessed through the
+-- authenticated FastAPI service using the server-side service_role key.
+-- RLS is enabled but currently has no direct-client policies; remove latent
+-- broad browser-role grants without adding broad policies.
 REVOKE ALL PRIVILEGES ON TABLE
     public.organisations,
     public.organisation_members,
-    public.users,
-    public.learnora_courses,
-    public.learnora_creator_accounts,
-    public.learnora_discussions,
-    public.learnora_learning_paths,
     public.organisation_teams,
     public.organisation_team_members,
     public.cohorts,
     public.cohort_members,
     public.cohort_course_assignments,
     public.team_course_assignments,
-    public.course_access,
     public.learnora_programmes,
     public.learnora_programme_courses,
     public.learnora_contracts,
     public.learnora_contract_entitlements,
     public.learnora_contract_versions,
     public.learnora_access_entitlements,
+    public.course_access,
     public.learnora_enrolments,
     public.learnora_ai_limits,
     public.learnora_ai_quota_reservations,
     public.learnora_capacity_reservations,
-    public.ai_usage_logs,
-    public.quizzes,
-    public.quiz_questions,
-    public.quiz_attempts,
-    public.course_modules,
-    public.learnora_lessons,
-    public.learnora_lesson_progress,
-    public.learner_lesson_notes
+    public.ai_usage_logs
 FROM PUBLIC, anon, authenticated;
 
 GRANT ALL PRIVILEGES ON TABLE public.team_course_assignments, public.learnora_ai_quota_reservations TO service_role;
