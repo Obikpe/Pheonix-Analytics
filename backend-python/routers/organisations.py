@@ -789,6 +789,12 @@ def assign_course_to_cohort(organisation_id: str, cohort_id: str, body: dict, co
         assignment_row = inserted.data[0]
 
     cohort_members = (supabase.table("cohort_members").select("user_id").eq("cohort_id", cohort_id).eq("status", "active").execute()).data or []
+    active_learners = (
+        supabase.table("organisation_members").select("user_id")
+        .eq("organisation_id", organisation_id).eq("role", "learner").eq("status", "active").execute()
+    ).data or []
+    active_learner_ids = {str(row["user_id"]) for row in active_learners}
+    cohort_members = [row for row in cohort_members if str(row["user_id"]) in active_learner_ids]
     created = 0
     for cohort_member in cohort_members:
         existing_enrolment = (supabase.table("learnora_enrolments").select("id").eq("user_id", cohort_member["user_id"]).eq("course_id", course_id).in_("status", ["active", "completed"]).limit(1).execute()).data
@@ -951,6 +957,15 @@ def assign_course_to_team(
         .eq("status", "active")
         .execute()
     ).data or []
+    active_org_members = (
+        supabase.table("organisation_members")
+        .select("user_id")
+        .eq("organisation_id", organisation_id)
+        .eq("status", "active")
+        .execute()
+    ).data or []
+    active_user_ids = {str(row["user_id"]) for row in active_org_members}
+    members = [row for row in members if str(row["user_id"]) in active_user_ids]
     created = 0
     for member in members:
         current = (
@@ -1073,11 +1088,17 @@ def list_team_members(
     context: PermissionContext = Depends(require_permission("organisations.view")),
 ):
     _assert_organisation_scope(context, organisation_id)
-    team = supabase.table("organisation_teams").select("id").eq("id", team_id).eq("organisation_id", organisation_id).limit(1).execute()
+    team = supabase.table("organisation_teams").select("id,organisation_id").eq("id", team_id).eq("organisation_id", organisation_id).limit(1).execute()
     if not team.data:
         raise HTTPException(404, "Team not found.")
-    rows = supabase.table("organisation_team_members").select("id,team_id,user_id,role,status,joined_at").eq("team_id", team_id).order("joined_at", desc=True).execute()
-    return {"success": True, "members": rows.data or []}
+    rows = supabase.table("organisation_team_members").select("id,team_id,user_id,role,status,joined_at").eq("team_id", team_id).eq("status", "active").order("joined_at", desc=True).execute()
+    active_org_members = (
+        supabase.table("organisation_members").select("user_id")
+        .eq("organisation_id", organisation_id).eq("status", "active").execute()
+    ).data or []
+    active_user_ids = {str(row["user_id"]) for row in active_org_members}
+    visible = [row for row in (rows.data or []) if str(row["user_id"]) in active_user_ids]
+    return {"success": True, "members": visible}
 
 
 @router.post("/{organisation_id}/teams/{team_id}/members", status_code=201)
@@ -1148,7 +1169,8 @@ def update_team_member(
     ).data or []
     if not existing_member:
         raise HTTPException(404, "Team membership not found.")
-    if changes.get("status") == "active":
+    target_status = changes.get("status", existing_member[0].get("status"))
+    if target_status == "active":
         _require_active_organisation(organisation)
         if team.data[0].get("status") != "active":
             raise HTTPException(409, "An inactive team cannot accept active memberships.")
@@ -1239,7 +1261,8 @@ def list_my_organisation_teams(user: CurrentUser = Depends(get_current_user)):
     for team in teams:
         role = organisation_roles.get(str(team["organisation_id"]))
         membership = membership_map.get(str(team["id"]))
-        if membership or role in {"owner", "admin"}:
+        is_assigned_manager = str(team.get("manager_user_id") or "") == str(user.id)
+        if membership or is_assigned_manager or role in {"owner", "admin"}:
             visible.append({**team, "membership": membership, "organisation_role": role})
     return {"success": True, "teams": visible}
 
@@ -1287,6 +1310,9 @@ def get_my_team_workspace(team_id: str, user: CurrentUser = Depends(get_current_
     if not team_membership and organisation_role not in {"owner", "admin"}:
         raise HTTPException(403, "You are not a member of this team.")
     members = (supabase.table("organisation_team_members").select("id,user_id,role,status,joined_at").eq("team_id", team_id).eq("status", "active").order("joined_at").execute()).data or []
+    active_org_members = (supabase.table("organisation_members").select("user_id").eq("organisation_id", organisation_id).eq("status", "active").execute()).data or []
+    active_user_ids = {str(row["user_id"]) for row in active_org_members}
+    members = [row for row in members if str(row["user_id"]) in active_user_ids]
     user_ids = list({str(row["user_id"]) for row in members})
     users = (supabase.table("users").select("id,name").in_("id", user_ids).execute()).data or [] if user_ids else []
     user_map = {str(row["id"]): row for row in users}
