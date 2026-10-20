@@ -103,7 +103,7 @@ This sequence is intentionally additive and staged; exact migration filenames/ve
 3. **Tenant integrity migration:** add missing unique/composite keys where required, safe tenant consistency checks/triggers, and indexes supporting tenant-scoped joins. Run read-only orphan/conflict queries first. If conflicts exist, stop and report them for an explicit resolution plan.
 4. **Resource-scoped assignments:** add the smallest reusable table/constraints for team, cohort and programme responsibilities only if no equivalent is found in the repository or live schema.
 5. **Security hardening:** confirm table privileges and service-role use; maintain default-deny for direct clients unless specific least-privilege policies are designed. Fix mutable search paths for relevant functions.
-6. **Verification:** run SQL preflight/postflight checks, backend tests, tenant-boundary tests, capacity concurrency tests, quota concurrency tests and a smoke test against a non-production branch/database.
+6. **Verification:** run `verify_live_schema.sql` before migration and `verify_post_migration.sql` after migration, then run backend tests, tenant-boundary tests, capacity concurrency tests, quota concurrency tests and a smoke test against a non-production branch/database.
 7. **Rollout:** apply one reviewed migration at a time to the confirmed target, verify after each, then deploy backend code only after schema compatibility is confirmed. Rollback steps must be documented for each migration.
 
 ## 4. Backend workflow audit checklist
