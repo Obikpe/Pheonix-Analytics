@@ -51,10 +51,11 @@ class FakeQuery:
 
 
 class FakeSupabase:
-    def __init__(self, course_access=None, enrolments=None):
+    def __init__(self, course_access=None, enrolments=None, **tables):
         self.rows = {
             "course_access": course_access or [],
             "learnora_enrolments": enrolments or [],
+            **tables,
         }
 
     def table(self, name):
@@ -94,6 +95,47 @@ class CourseContentAccessTests(unittest.TestCase):
                 "id": "enrolment-1", "course_id": "course-1",
                 "user_id": "user-1", "organisation_id": "org-a", "status": "active",
             }],
+        )
+        with patch.object(course_content, "supabase", db):
+            course_content._check_course_view_access(context(role="learner"), course)
+
+    def test_team_assignment_requires_active_team_membership(self):
+        course = {"id": "course-1", "ownership": "learnora", "organisation_id": None}
+        db = FakeSupabase(
+            course_access=[{"id": "grant-1", "course_id": "course-1", "organisation_id": "org-a", "status": "active", "access_type": "scoped"}],
+            enrolments=[{"id": "enrolment-1", "course_id": "course-1", "user_id": "user-1", "organisation_id": "org-a", "status": "active", "source_type": "team_assignment"}],
+            organisation_members=[{"id": "org-member", "organisation_id": "org-a", "user_id": "user-1", "role": "learner", "status": "active"}],
+            organisation_team_members=[{"team_id": "team-a", "user_id": "user-1", "status": "active"}],
+            organisation_teams=[{"id": "team-a", "organisation_id": "org-a", "status": "active"}],
+            team_course_assignments=[{"id": "assignment-a", "team_id": "team-a", "course_id": "course-1", "status": "active"}],
+        )
+        with patch.object(course_content, "supabase", db):
+            course_content._check_course_view_access(context(role="learner"), course)
+
+    def test_removed_team_member_loses_scoped_course_access(self):
+        course = {"id": "course-1", "ownership": "learnora", "organisation_id": None}
+        db = FakeSupabase(
+            course_access=[{"id": "grant-1", "course_id": "course-1", "organisation_id": "org-a", "status": "active", "access_type": "scoped"}],
+            enrolments=[{"id": "enrolment-1", "course_id": "course-1", "user_id": "user-1", "organisation_id": "org-a", "status": "active", "source_type": "team_assignment"}],
+            organisation_members=[{"id": "org-member", "organisation_id": "org-a", "user_id": "user-1", "role": "learner", "status": "active"}],
+            organisation_team_members=[{"team_id": "team-a", "user_id": "user-1", "status": "inactive"}],
+            organisation_teams=[{"id": "team-a", "organisation_id": "org-a", "status": "active"}],
+            team_course_assignments=[{"id": "assignment-a", "team_id": "team-a", "course_id": "course-1", "status": "active"}],
+        )
+        with patch.object(course_content, "supabase", db):
+            with self.assertRaises(HTTPException) as raised:
+                course_content._check_course_view_access(context(role="learner"), course)
+        self.assertEqual(raised.exception.status_code, 403)
+
+    def test_cohort_assignment_requires_active_cohort_membership(self):
+        course = {"id": "course-1", "ownership": "learnora", "organisation_id": None}
+        db = FakeSupabase(
+            course_access=[{"id": "grant-1", "course_id": "course-1", "organisation_id": "org-a", "status": "active", "access_type": "scoped"}],
+            enrolments=[{"id": "enrolment-1", "course_id": "course-1", "user_id": "user-1", "organisation_id": "org-a", "status": "active", "source_type": "cohort_assignment", "cohort_id": "cohort-a"}],
+            organisation_members=[{"id": "org-member", "organisation_id": "org-a", "user_id": "user-1", "role": "learner", "status": "active"}],
+            cohort_members=[{"cohort_id": "cohort-a", "user_id": "user-1", "status": "active"}],
+            cohorts=[{"id": "cohort-a", "organisation_id": "org-a", "status": "active"}],
+            cohort_course_assignments=[{"id": "assignment-a", "cohort_id": "cohort-a", "course_id": "course-1", "status": "active"}],
         )
         with patch.object(course_content, "supabase", db):
             course_content._check_course_view_access(context(role="learner"), course)
