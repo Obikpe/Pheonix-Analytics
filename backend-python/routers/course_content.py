@@ -259,6 +259,96 @@ def _check_course_access(
         )
 
 
+def _check_course_view_access(
+    context: PermissionContext,
+    course: dict,
+):
+    """
+    Authorise reading course content without confusing ownership with access.
+
+    Platform admins may read globally. Organisation-owned content is limited
+    to its owning organisation. Learnora-owned content requires an active
+    organisation course-access grant or an active individual enrolment.
+    """
+    if context.is_platform_admin:
+        return
+
+    course_id = str(course.get("id") or "")
+    ownership = str(course.get("ownership") or "").strip().lower()
+    course_org = course.get("organisation_id")
+    organisation_id = context.organisation_id
+
+    # Organisation/creator-owned content must never cross an organisation
+    # boundary. A user with no organisation can only access an unscoped course
+    # through an individual enrolment below.
+    if ownership != "learnora":
+        if course_org is not None:
+            if organisation_id and str(course_org) == str(organisation_id):
+                return
+            raise HTTPException(
+                status_code=403,
+                detail="You do not have access to this course.",
+            )
+
+    # Learnora-owned catalogue content is available to an organisation only
+    # when that organisation has an active course-access record.
+    if ownership == "learnora" and organisation_id:
+        try:
+            access_result = (
+                supabase
+                .table("course_access")
+                .select("id")
+                .eq("course_id", course_id)
+                .eq("organisation_id", str(organisation_id))
+                .eq("status", "active")
+                .limit(1)
+                .execute()
+            )
+        except Exception:
+            # Fail closed if the access grant cannot be verified.
+            raise HTTPException(
+                status_code=503,
+                detail="Course access could not be verified.",
+            )
+
+        if access_result.data:
+            return
+
+    # Preserve individual course enrolments, including enrolments without an
+    # organisation. Never accept an enrolment scoped to a different tenant.
+    user_id = context.user_id
+    if user_id:
+        try:
+            enrolment_result = (
+                supabase
+                .table("learnora_enrolments")
+                .select("id,organisation_id")
+                .eq("course_id", course_id)
+                .eq("user_id", str(user_id))
+                .eq("status", "active")
+                .limit(20)
+                .execute()
+            )
+        except Exception:
+            raise HTTPException(
+                status_code=503,
+                detail="Course enrolment could not be verified.",
+            )
+
+        for enrolment in enrolment_result.data or []:
+            enrolment_org = enrolment.get("organisation_id")
+            if organisation_id:
+                if enrolment_org is None or str(enrolment_org) == str(organisation_id):
+                    return
+            elif enrolment_org is None:
+                return
+
+    raise HTTPException(
+        status_code=403,
+        detail="You do not have access to this course.",
+    )
+
+
 def _validate_module_status(status: str):
     if status not in MODULE_STATUSES:
         raise HTTPException(
@@ -311,6 +401,8 @@ def list_modules(
             detail="Course not found.",
         )
 
+    _check_course_view_access(context, course)
+
     try:
         result = (
             supabase
@@ -360,6 +452,14 @@ def get_module(
             status_code=404,
             detail="Module not found.",
         )
+
+    course = _get_course(str(module["course_id"]))
+    if not course:
+        raise HTTPException(
+            status_code=404,
+            detail="Course not found.",
+        )
+    _check_course_view_access(context, course)
 
     return {
         "success": True,
@@ -581,6 +681,14 @@ def list_lessons(
             detail="Module not found.",
         )
 
+    course = _get_course(str(module["course_id"]))
+    if not course:
+        raise HTTPException(
+            status_code=404,
+            detail="Course not found.",
+        )
+    _check_course_view_access(context, course)
+
     try:
         result = (
             supabase
@@ -635,6 +743,20 @@ def get_lesson(
             status_code=404,
             detail="Lesson not found.",
         )
+
+    module = _get_module(str(lesson["module_id"]))
+    if not module:
+        raise HTTPException(
+            status_code=404,
+            detail="Module not found.",
+        )
+    course = _get_course(str(module["course_id"]))
+    if not course:
+        raise HTTPException(
+            status_code=404,
+            detail="Course not found.",
+        )
+    _check_course_view_access(context, course)
 
     return {
         "success": True,
@@ -988,6 +1110,8 @@ def get_course_structure(
             status_code=404,
             detail="Course not found.",
         )
+
+    _check_course_view_access(context, course)
 
     try:
         # --------------------------------------------------------
