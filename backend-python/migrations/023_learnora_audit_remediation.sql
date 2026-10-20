@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS public.learnora_ai_quota_reservations (
     scope_type text NOT NULL,
     scope_id text NULL,
     limit_feature text NOT NULL,
+    usage_log_id uuid NULL UNIQUE REFERENCES public.ai_usage_logs(id) ON DELETE SET NULL,
     created_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS learnora_ai_quota_user_window_idx
@@ -50,6 +51,16 @@ CREATE INDEX IF NOT EXISTS learnora_ai_quota_org_window_idx
     ON public.learnora_ai_quota_reservations(organisation_id, created_at);
 CREATE INDEX IF NOT EXISTS learnora_ai_quota_scope_window_idx
     ON public.learnora_ai_quota_reservations(scope_type, scope_id, limit_feature, created_at);
+
+-- Carry existing usage forward so installing this migration does not reset quotas.
+INSERT INTO public.learnora_ai_quota_reservations
+    (user_id, organisation_id, feature, scope_type, scope_id, limit_feature, usage_log_id, created_at)
+SELECT l.user_id, l.organisation_id, COALESCE(l.feature, 'tutor'),
+       CASE WHEN l.organisation_id IS NULL THEN 'user' ELSE 'organisation' END,
+       COALESCE(l.organisation_id::text, l.user_id::text),
+       COALESCE(l.feature, 'tutor'), l.id, l.created_at
+FROM public.ai_usage_logs l
+ON CONFLICT (usage_log_id) DO NOTHING;
 
 -- Corporate/team learning assignments are distinct from cohort assignments.
 CREATE TABLE IF NOT EXISTS public.team_course_assignments (
