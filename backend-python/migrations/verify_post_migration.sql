@@ -38,7 +38,8 @@ FROM public.ai_usage_logs l
 LEFT JOIN public.learnora_ai_quota_reservations r ON r.usage_log_id = l.id
 WHERE l.user_id IS NOT NULL AND r.id IS NULL;
 
--- New tables should remain RLS-enabled, with no browser-role table grants.
+-- New organisation tables should remain RLS-enabled, with no browser-role
+-- table grants or policies; the FastAPI backend uses service_role.
 SELECT c.relname AS table_name,
        c.relrowsecurity AS rls_enabled,
        count(p.oid)::bigint AS policy_count
@@ -50,6 +51,8 @@ WHERE n.nspname = 'public'
 GROUP BY c.relname, c.relrowsecurity
 ORDER BY c.relname;
 
+-- These organisation/contract/AI/access tables must have no direct browser-role
+-- grants. Shared learner/catalogue/progress tables are deliberately excluded.
 SELECT grantee, table_name,
        string_agg(privilege_type, ', ' ORDER BY privilege_type) AS privileges
 FROM information_schema.role_table_grants
@@ -59,21 +62,24 @@ WHERE table_schema = 'public'
       'organisations','organisation_members','organisation_teams',
       'organisation_team_members','cohorts','cohort_members',
       'cohort_course_assignments','team_course_assignments','course_access',
-      'learnora_programmes','learnora_contracts','learnora_contract_entitlements',
-      'learnora_access_entitlements','learnora_ai_limits',
-      'learnora_ai_quota_reservations','learnora_enrolments',
-      'learnora_courses','learnora_creator_accounts','users',
-      'learnora_discussions','learnora_learning_paths','course_modules',
-      'learnora_lessons','learnora_lesson_progress','learner_lesson_notes',
-      'quizzes','quiz_questions','quiz_attempts','ai_usage_logs'
+      'learnora_programmes','learnora_programme_courses',
+      'learnora_contracts','learnora_contract_entitlements',
+      'learnora_contract_versions','learnora_access_entitlements',
+      'learnora_ai_limits','learnora_ai_quota_reservations',
+      'learnora_capacity_reservations','learnora_enrolments','ai_usage_logs'
   )
 GROUP BY grantee, table_name
 ORDER BY table_name, grantee;
 
+-- Security-definer routines should be callable only by service_role where
+-- required. Trigger routines must not be executable by browser roles.
 SELECT p.proname AS function_name,
        pg_get_function_identity_arguments(p.oid) AS arguments,
        p.prosecdef AS security_definer,
-       p.proconfig AS function_settings
+       p.proconfig AS function_settings,
+       has_function_privilege('anon', p.oid, 'EXECUTE') AS anon_can_execute,
+       has_function_privilege('authenticated', p.oid, 'EXECUTE') AS authenticated_can_execute,
+       has_function_privilege('service_role', p.oid, 'EXECUTE') AS service_role_can_execute
 FROM pg_proc p
 JOIN pg_namespace n ON n.oid = p.pronamespace
 WHERE n.nspname = 'public'
