@@ -250,6 +250,10 @@ DECLARE
     v_cohort uuid;
     v_cohort_limit integer;
     v_is_active boolean;
+    v_course_id uuid;
+    v_course_owner text;
+    v_course_org uuid;
+    v_resource_status text;
 BEGIN
     IF TG_TABLE_NAME = 'cohort_members' THEN
         IF NEW.status <> 'active' THEN RETURN NEW; END IF;
@@ -305,12 +309,38 @@ BEGIN
             WHERE c.id = NEW.course_id AND c.organisation_id = NEW.organisation_id
               AND c.ownership = 'organisation' AND c.status <> 'archived'
         ) THEN RETURN NEW; END IF;
-        v_org := NEW.organisation_id; v_key := 'courses';
+        v_org := NEW.organisation_id; v_key := 'courses'; v_course_id := NEW.course_id;
+    ELSIF TG_TABLE_NAME = 'team_course_assignments' THEN
+        IF NEW.status <> 'active' THEN RETURN NEW; END IF;
+        IF TG_OP = 'UPDATE' AND OLD.status = 'active' AND OLD.team_id = NEW.team_id AND OLD.course_id = NEW.course_id THEN RETURN NEW; END IF;
+        SELECT organisation_id, status INTO v_org, v_resource_status
+        FROM public.organisation_teams WHERE id = NEW.team_id;
+        IF NOT FOUND OR v_resource_status <> 'active' THEN
+            RAISE EXCEPTION 'Active team course assignments require an active team' USING ERRCODE = '23514';
+        END IF;
+        SELECT ownership, organisation_id INTO v_course_owner, v_course_org
+        FROM public.learnora_courses WHERE id = NEW.course_id;
+        IF NOT FOUND THEN RAISE EXCEPTION 'Course does not exist' USING ERRCODE = '23503'; END IF;
+        IF v_course_owner = 'organisation' AND v_course_org = v_org THEN RETURN NEW; END IF;
+        v_key := 'courses'; v_course_id := NEW.course_id;
+    ELSIF TG_TABLE_NAME = 'cohort_course_assignments' THEN
+        IF NEW.status <> 'active' THEN RETURN NEW; END IF;
+        IF TG_OP = 'UPDATE' AND OLD.status = 'active' AND OLD.cohort_id = NEW.cohort_id AND OLD.course_id = NEW.course_id THEN RETURN NEW; END IF;
+        SELECT organisation_id, status INTO v_org, v_resource_status
+        FROM public.cohorts WHERE id = NEW.cohort_id;
+        IF NOT FOUND OR v_resource_status NOT IN ('draft','upcoming','active') THEN
+            RAISE EXCEPTION 'Active cohort course assignments require an open cohort' USING ERRCODE = '23514';
+        END IF;
+        SELECT ownership, organisation_id INTO v_course_owner, v_course_org
+        FROM public.learnora_courses WHERE id = NEW.course_id;
+        IF NOT FOUND THEN RAISE EXCEPTION 'Course does not exist' USING ERRCODE = '23503'; END IF;
+        IF v_course_owner = 'organisation' AND v_course_org = v_org THEN RETURN NEW; END IF;
+        v_key := 'courses'; v_course_id := NEW.course_id;
     ELSIF TG_TABLE_NAME = 'learnora_courses' THEN
         IF NEW.ownership <> 'organisation' OR NEW.status = 'archived' OR NEW.organisation_id IS NULL THEN RETURN NEW; END IF;
         IF TG_OP = 'UPDATE' AND OLD.ownership = 'organisation' AND OLD.status <> 'archived'
            AND OLD.organisation_id = NEW.organisation_id THEN RETURN NEW; END IF;
-        v_org := NEW.organisation_id; v_key := 'courses';
+        v_org := NEW.organisation_id; v_key := 'courses'; v_course_id := NEW.id;
     ELSE
         RETURN NEW;
     END IF;
@@ -368,12 +398,23 @@ BEGIN
         SELECT count(*) INTO v_used FROM (
             SELECT id AS course_id FROM public.learnora_courses
             WHERE organisation_id = v_org AND ownership = 'organisation' AND status <> 'archived'
-              AND (TG_OP = 'INSERT' OR id <> NEW.id)
+              AND id <> v_course_id
             UNION
             SELECT course_id FROM public.course_access
             WHERE organisation_id = v_org AND status = 'active'
-              AND (TG_OP = 'INSERT' OR id <> NEW.id)
-              AND (TG_TABLE_NAME <> 'learnora_courses' OR course_id <> NEW.id)
+              AND course_id <> v_course_id
+            UNION
+            SELECT a.course_id
+            FROM public.team_course_assignments a
+            JOIN public.organisation_teams t ON t.id = a.team_id
+            WHERE t.organisation_id = v_org AND t.status = 'active'
+              AND a.status = 'active' AND a.course_id <> v_course_id
+            UNION
+            SELECT a.course_id
+            FROM public.cohort_course_assignments a
+            JOIN public.cohorts c ON c.id = a.cohort_id
+            WHERE c.organisation_id = v_org AND c.status IN ('draft','upcoming','active','ending')
+              AND a.status = 'active' AND a.course_id <> v_course_id
         ) scoped_courses;
     END IF;
 
@@ -399,6 +440,12 @@ CREATE TRIGGER learnora_programme_capacity BEFORE INSERT OR UPDATE ON public.lea
 FOR EACH ROW EXECUTE FUNCTION public.learnora_enforce_org_capacity();
 DROP TRIGGER IF EXISTS learnora_course_access_capacity ON public.course_access;
 CREATE TRIGGER learnora_course_access_capacity BEFORE INSERT OR UPDATE ON public.course_access
+FOR EACH ROW EXECUTE FUNCTION public.learnora_enforce_org_capacity();
+DROP TRIGGER IF EXISTS learnora_team_course_capacity ON public.team_course_assignments;
+CREATE TRIGGER learnora_team_course_capacity BEFORE INSERT OR UPDATE ON public.team_course_assignments
+FOR EACH ROW EXECUTE FUNCTION public.learnora_enforce_org_capacity();
+DROP TRIGGER IF EXISTS learnora_cohort_course_capacity ON public.cohort_course_assignments;
+CREATE TRIGGER learnora_cohort_course_capacity BEFORE INSERT OR UPDATE ON public.cohort_course_assignments
 FOR EACH ROW EXECUTE FUNCTION public.learnora_enforce_org_capacity();
 DROP TRIGGER IF EXISTS learnora_owned_course_capacity ON public.learnora_courses;
 CREATE TRIGGER learnora_owned_course_capacity BEFORE INSERT OR UPDATE ON public.learnora_courses
