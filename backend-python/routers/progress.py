@@ -73,6 +73,11 @@ def _enrolment(user_id: str, course_id: str):
     return result.data[0] if result.data else None
 
 
+def effective_passing_score(quiz: dict) -> float:
+    """A quiz's configured threshold may be stricter, never below 70%."""
+    return max(70.0, float(quiz.get("passing_score") or 70))
+
+
 def _module_for_lesson(lesson_id: str):
     result = (
         supabase.table("learnora_lessons")
@@ -358,7 +363,7 @@ def submit_quiz_attempt(quiz_id: str, body: QuizAttemptIn, user: CurrentUser = D
             "points_possible": points,
         })
     score = round((earned / total_points) * 100, 2) if total_points else 0
-    passing_score = max(70.0, float(quiz.get("passing_score") or 70))
+    passing_score = effective_passing_score(quiz)
     passed = score >= passing_score
     now = datetime.now(timezone.utc).isoformat()
     inserted = (supabase.table("quiz_attempts").insert({
