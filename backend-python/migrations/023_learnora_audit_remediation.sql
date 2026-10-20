@@ -51,6 +51,8 @@ CREATE INDEX IF NOT EXISTS learnora_ai_quota_org_window_idx
     ON public.learnora_ai_quota_reservations(organisation_id, created_at);
 CREATE INDEX IF NOT EXISTS learnora_ai_quota_scope_window_idx
     ON public.learnora_ai_quota_reservations(scope_type, scope_id, limit_feature, created_at);
+CREATE INDEX IF NOT EXISTS learnora_ai_quota_feature_window_idx
+    ON public.learnora_ai_quota_reservations(limit_feature, created_at);
 
 -- Carry existing usage forward so installing this migration does not reset quotas.
 INSERT INTO public.learnora_ai_quota_reservations
@@ -90,7 +92,7 @@ CREATE OR REPLACE FUNCTION public.reserve_learnora_ai_quota(
 ) RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = pg_catalog, public
 AS $$
 DECLARE
     v_now timestamptz := now();
@@ -189,7 +191,7 @@ CREATE OR REPLACE FUNCTION public.learnora_enforce_org_capacity()
 RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = pg_catalog, public
 AS $$
 DECLARE
     v_org uuid;
@@ -359,7 +361,7 @@ CREATE OR REPLACE FUNCTION public.learnora_validate_org_relationships()
 RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = pg_catalog, public
 AS $$
 DECLARE
     v_org uuid;
@@ -533,7 +535,7 @@ CREATE OR REPLACE FUNCTION public.learnora_sync_org_membership_status()
 RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = pg_catalog, public
 AS $
 BEGIN
     IF OLD.status = 'active'
