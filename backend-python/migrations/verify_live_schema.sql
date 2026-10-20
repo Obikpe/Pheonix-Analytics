@@ -166,4 +166,15 @@ FROM (
     WHERE status = 'active'
     GROUP BY team_id, user_id
     HAVING count(*) > 1
-) duplicate_memberships;
+) duplicate_memberships
+UNION ALL
+SELECT 'active_org_enrolments_without_active_learner_membership', count(*)
+FROM public.learnora_enrolments e
+LEFT JOIN public.organisation_members m
+  ON m.organisation_id = e.organisation_id
+ AND m.user_id = e.user_id
+ AND m.status = 'active'
+ AND m.role = 'learner'
+WHERE e.status = 'active'
+  AND e.organisation_id IS NOT NULL
+  AND m.id IS NULL;
