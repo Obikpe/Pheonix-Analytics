@@ -31,7 +31,7 @@ The repository's canonical numbered SQL chain is under `supabase/migrations/`. T
 
 The live schema lacks legacy tables `tracks`, `enrollments`, `user_progress`, `user_project_progress` and `community_qna` from `001_initial.sql`, while newer Learnora equivalents such as `learnora_learning_paths`, `learnora_enrolments`, `learnora_lesson_progress` and `learnora_discussions` exist. This may be intentional replacement, but the earlier scripts and data lineage still need an explicit applied/not-applied mapping. Do not manually mark migrations applied or replay older SQL by filename alone.
 
-## Proposed remediation migration contents
+## Applied remediation migration contents
 
 `023_learnora_audit_remediation.sql` was applied to Pheonix under live migration version `20261020230826`. The follow-up scope correction is recorded in `024_restore_shared_learner_grants_and_lock_trigger_routines.sql` and live version `20261020230906`. It:
 
