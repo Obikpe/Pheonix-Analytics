@@ -51,6 +51,20 @@ CREATE INDEX IF NOT EXISTS learnora_ai_quota_org_window_idx
 CREATE INDEX IF NOT EXISTS learnora_ai_quota_scope_window_idx
     ON public.learnora_ai_quota_reservations(scope_type, scope_id, limit_feature, created_at);
 
+-- Corporate/team learning assignments are distinct from cohort assignments.
+CREATE TABLE IF NOT EXISTS public.team_course_assignments (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    team_id uuid NOT NULL REFERENCES public.organisation_teams(id) ON DELETE CASCADE,
+    course_id uuid NOT NULL REFERENCES public.learnora_courses(id) ON DELETE CASCADE,
+    assigned_by uuid NULL REFERENCES public.users(id) ON DELETE SET NULL,
+    status text NOT NULL DEFAULT 'active' CHECK (status IN ('active','inactive')),
+    assigned_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (team_id, course_id)
+);
+CREATE INDEX IF NOT EXISTS team_course_assignments_team_status_idx
+    ON public.team_course_assignments(team_id, status);
+
 CREATE OR REPLACE FUNCTION public.reserve_learnora_ai_quota(
     p_user_id uuid,
     p_organisation_id uuid,
