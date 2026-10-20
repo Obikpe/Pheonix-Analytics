@@ -28,6 +28,7 @@ from .permissions import (
     get_permission_context,
     require_permission,
 )
+from services.capacity import entitlement_limit
 
 
 router = APIRouter(
@@ -259,6 +260,17 @@ def _check_course_access(
         )
 
 
+def _organisation_has_course_entitlement(organisation_id: str) -> bool:
+    """Fail closed when the tenant has no current course entitlement."""
+    try:
+        limit = entitlement_limit(organisation_id, "courses")
+    except HTTPException:
+        return False
+    except Exception:
+        raise HTTPException(503, "Organisation course entitlement could not be verified.")
+    return limit is None or int(limit) > 0
+
+
 def _has_active_scoped_course_source(user_id: str, organisation_id: str, course_id: str, enrolment: dict) -> bool:
     """Require a live, tenant-scoped source for organisation-scoped enrolments.
 
@@ -288,7 +300,7 @@ def _has_active_scoped_course_source(user_id: str, organisation_id: str, course_
         .limit(1)
         .execute()
     ).data or []
-    if not learner_membership:
+    if not learner_membership or not _organisation_has_course_entitlement(organisation_id):
         return False
 
     if str(enrolment.get("source_type") or "").strip().lower() == "individual_assignment":
@@ -435,6 +447,8 @@ def _check_course_view_access(
                     ).data or []
                     if not active_workspace or not active_learner:
                         raise HTTPException(403, "An active learner membership in an active organisation is required for this course.")
+                    if not _organisation_has_course_entitlement(str(organisation_id)):
+                        raise HTTPException(403, "The organisation does not have an active course entitlement.")
                 return
             if any(_has_active_scoped_course_source(str(context.user_id), str(organisation_id), course_id, row) for row in enrolments):
                 return
@@ -488,6 +502,8 @@ def _check_course_view_access(
                 ).data or []
                 if not active_workspace or not active_learner:
                     raise HTTPException(403, "An active learner membership in an active organisation is required for this course.")
+                if not _organisation_has_course_entitlement(str(organisation_id)):
+                    raise HTTPException(403, "The organisation does not have an active course entitlement.")
             return
 
     # Preserve individual course enrolments, including enrolments without an
