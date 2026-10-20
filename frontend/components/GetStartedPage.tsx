@@ -52,6 +52,7 @@ export default function GetStartedPage() {
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(typeof body.detail === "string" ? body.detail : "The organisation enquiry could not be submitted.");
       setSuccess(body);
+      setForm(old => ({ ...old, portal_password: "", confirm_password: "" }));
     } catch (e: any) {
       setError(e?.message || "Learnora could not be reached. Please try again.");
     } finally {
