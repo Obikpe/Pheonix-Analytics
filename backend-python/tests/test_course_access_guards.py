@@ -17,6 +17,7 @@ class FakeQuery:
     def __init__(self, rows):
         self.rows = rows
         self.filters = {}
+        self.single = False
 
     def select(self, *_args, **_kwargs):
         return self
@@ -26,6 +27,7 @@ class FakeQuery:
         return self
 
     def maybe_single(self):
+        self.single = True
         return self
 
     def limit(self, *_args, **_kwargs):
@@ -36,11 +38,7 @@ class FakeQuery:
             row for row in self.rows
             if all(str(row.get(key)) == value for key, value in self.filters.items())
         ]
-        return SimpleNamespace(data=matches[0] if self._single else matches)
-
-    @property
-    def _single(self):
-        return False
+        return SimpleNamespace(data=(matches[0] if matches else None) if self.single else matches)
 
 
 class FakeSupabase:
