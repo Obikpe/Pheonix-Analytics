@@ -119,11 +119,11 @@ BEGIN
     ELSIF p_scope_type = 'feature' THEN
         SELECT count(*)::integer INTO v_day_count
         FROM public.learnora_ai_quota_reservations r
-        WHERE r.feature = p_limit_feature
+        WHERE (p_limit_feature = '*' OR r.feature = p_limit_feature)
           AND r.created_at >= date_trunc('day', v_now);
         SELECT count(*)::integer INTO v_month_count
         FROM public.learnora_ai_quota_reservations r
-        WHERE r.feature = p_limit_feature
+        WHERE (p_limit_feature = '*' OR r.feature = p_limit_feature)
           AND r.created_at >= date_trunc('month', v_now);
     ELSE
         SELECT count(*)::integer INTO v_day_count
@@ -214,6 +214,12 @@ BEGIN
     ELSIF TG_TABLE_NAME = 'course_access' THEN
         IF NEW.status <> 'active' THEN RETURN NEW; END IF;
         IF TG_OP = 'UPDATE' AND OLD.status = 'active' THEN RETURN NEW; END IF;
+        -- An organisation-owned course already consumes one course slot.
+        IF EXISTS (
+            SELECT 1 FROM public.learnora_courses c
+            WHERE c.id = NEW.course_id AND c.organisation_id = NEW.organisation_id
+              AND c.ownership = 'organisation' AND c.status <> 'archived'
+        ) THEN RETURN NEW; END IF;
         v_org := NEW.organisation_id; v_key := 'courses';
     ELSIF TG_TABLE_NAME = 'learnora_courses' THEN
         IF NEW.ownership <> 'organisation' OR NEW.status = 'archived' OR NEW.organisation_id IS NULL THEN RETURN NEW; END IF;
