@@ -621,4 +621,4 @@ REVOKE ALL PRIVILEGES ON TABLE
     public.learnora_lessons,
     public.learnora_lesson_progress,
     public.learner_lesson_notes
-FROM anon, authenticated;
+FROM PUBLIC, anon, authenticated;
