@@ -29,7 +29,7 @@ export default function CoursesPreview() {
     return () => { active = false; };
   }, []);
 
-  return <section className="learnora-section learnora-section-soft">
+  return <section id="library" className="learnora-section learnora-section-soft">
     <div className="mx-auto max-w-[82rem] px-5 sm:px-8 lg:px-10">
       <div className="flex flex-wrap items-end justify-between gap-5"><div><p className="learnora-kicker">Published learning</p><h2 className="learnora-section-title mt-4">Find a useful next skill.</h2><p className="mt-4 max-w-2xl text-sm leading-7 text-slate-400">This preview is loaded from Learnora's published course catalogue, not a hard-coded marketing list.</p></div><a href="/courses" className="inline-flex items-center gap-2 text-sm font-semibold text-[#f2d477] hover:text-white">Browse all courses <ArrowRight size={16}/></a></div>
       {loading ? <div className="mt-9 grid gap-4 md:grid-cols-3">{[0,1,2].map(n=><div key={n} className="animate-pulse border border-white/[.08] bg-[#10151b] p-6"><div className="h-3 w-24 bg-white/[.07]"/><div className="mt-5 h-6 w-3/4 bg-white/[.07]"/><div className="mt-4 h-12 bg-white/[.04]"/></div>)}</div>
