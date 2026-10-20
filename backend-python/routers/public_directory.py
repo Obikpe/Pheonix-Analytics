@@ -47,11 +47,18 @@ def _public_course_payload(course: dict) -> dict:
         "ownership": course.get("ownership"),
         "thumbnail_url": course.get("thumbnail_url"),
         "estimated_hours": course.get("estimated_hours"),
+        "track": str(settings.get("track") or "").strip() or None,
         "created_at": course.get("created_at"),
         "settings": {
             "public_catalogue": True,
             "is_free": bool(is_free),
             "access_type": "free" if is_free else "restricted",
+            "track": str(settings.get("track") or "").strip() or None,
+            "topics": [
+                str(topic).strip()[:120]
+                for topic in (settings.get("topics") or [])
+                if str(topic).strip()
+            ][:30],
         },
     }
 
