@@ -47,12 +47,14 @@ WHERE n.nspname = 'public'
   AND c.relname IN (
       'organisations','organisation_members','organisation_teams',
       'organisation_team_members','cohorts','cohort_members',
-      'cohort_course_assignments','team_course_assignments',
-      'course_access','learnora_courses','learnora_creator_accounts','learnora_discussions',
-      'learnora_learning_paths','users','learnora_programmes','learnora_contracts',
-      'learnora_contract_entitlements','learnora_ai_limits',
-      'learnora_ai_quota_reservations','learnora_enrolments','learnora_courses',
-      'learnora_creator_accounts','learnora_discussions','learnora_learning_paths','users','quizzes'
+      'cohort_course_assignments','team_course_assignments','course_access',
+      'learnora_courses','learnora_creator_accounts','learnora_discussions',
+      'learnora_learning_paths','users','learnora_programmes','learnora_programme_courses',
+      'learnora_contracts','learnora_contract_entitlements','learnora_contract_versions',
+      'learnora_access_entitlements','learnora_ai_limits','learnora_capacity_reservations',
+      'learnora_ai_quota_reservations','ai_usage_logs','learnora_enrolments',
+      'course_modules','learnora_lessons','learnora_lesson_progress','learner_lesson_notes',
+      'quizzes','quiz_questions','quiz_attempts'
   )
 GROUP BY c.relname, c.relrowsecurity, c.relforcerowsecurity
 ORDER BY c.relname;
@@ -67,9 +69,13 @@ WHERE table_schema = 'public'
       'organisations','organisation_members','organisation_teams',
       'organisation_team_members','cohorts','cohort_members',
       'cohort_course_assignments','team_course_assignments','course_access',
-      'learnora_programmes','learnora_contracts','learnora_contract_entitlements',
-      'learnora_ai_limits','learnora_capacity_reservations',
-      'learnora_ai_quota_reservations','learnora_enrolments','quizzes'
+      'learnora_courses','learnora_creator_accounts','learnora_discussions',
+      'learnora_learning_paths','users','learnora_programmes','learnora_programme_courses',
+      'learnora_contracts','learnora_contract_entitlements','learnora_contract_versions',
+      'learnora_access_entitlements','learnora_ai_limits','learnora_capacity_reservations',
+      'learnora_ai_quota_reservations','ai_usage_logs','learnora_enrolments',
+      'course_modules','learnora_lessons','learnora_lesson_progress','learner_lesson_notes',
+      'quizzes','quiz_questions','quiz_attempts'
   )
 GROUP BY grantee, table_name
 ORDER BY table_name, grantee;
