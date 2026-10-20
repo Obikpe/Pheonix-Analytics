@@ -4,7 +4,7 @@
 
 Target database confirmed by the user: active Supabase project **Pheonix**, project reference `gihfupzvdpyrmynqgukz`.
 
-This is a proposed plan and verification record. It does not apply SQL, change data, merge a pull request, or deploy a service. The app's deployed Supabase URL/key has not been independently inspected from Vercel, so project selection is based on the user's confirmation. Before a production migration, verify the Vercel environment points at this project and take a restorable backup.
+This plan began as a proposal. On 2026-10-20, the user explicitly requested applying the migration to actual Pheonix. The SQL was dry-run inside a transaction and rolled back, then applied with the Supabase migration tool. Live migration versions `20261020230826` and `20261020230906` record the audit remediation and a follow-up scope/privilege correction. Post-migration verification passed the checks recorded below. The deployed Vercel backend's Supabase URL/key has not been independently inspected, so it remains unconfirmed whether the running deployment uses this project.
 
 Only customer-organisation workflows are in scope: organisation owner/manager, team, cohort, programme, tutor, learner, course access, contracts/entitlements, AI use and progression. Learnora's internal platform administrator and internal team-member workflows are out of scope.
 
@@ -25,7 +25,7 @@ The active project already contains the following structures; reuse them rather 
 | AI limits and usage | `learnora_ai_limits`, `ai_usage_logs` |
 | Assessment and progress | `quizzes`, `quiz_attempts`, `course_modules`, `learnora_lessons` |
 
-At inspection time, the live database had nine registered migration records (through `20261011051442`, `learner_onboarding_profiles`). The registered names for `learnora_organisation_portal` and migrations `017`–`022` align with repository files `016`–`022`, but the live registry does not contain matching entries for repository migrations `001`–`015`. The first live record is named `add_learnora_ai_profiles`, not `014_learnora_ai_foundation` or `015_learnora_ai_permissions`; the schema contains AI profile/provider tables, but that is not enough to prove the scripts were applied as-is. The live `learner_onboarding_profiles` record also has no matching numbered file among repository migrations `001`–`022`.
+Before applying this work, the live database had nine registered migration records (through `20261011051442`, `learner_onboarding_profiles`). The current live registry has eleven records after adding `20261020230826` (`learnora_audit_remediation`) and `20261020230906` (`restore_shared_learner_grants_and_lock_trigger_routines`). The registered names for `learnora_organisation_portal` and migrations `017`–`022` align with repository files `016`–`022`, but the live registry does not contain matching entries for repository migrations `001`–`015`. The first live record is named `add_learnora_ai_profiles`, not `014_learnora_ai_foundation` or `015_learnora_ai_permissions`; the schema contains AI profile/provider tables, but that is not enough to prove the scripts were applied as-is. The live `learner_onboarding_profiles` record also has no matching numbered file among repository migrations `001`–`022`.
 
 This is migration-history drift, not a safe basis for replaying SQL. The repository's normal numbered migration chain is under `supabase/migrations/`, while the proposed remediation remains in `backend-python/migrations/` as a review artifact until the registry is reconciled. Do not move it into the active migration chain or run the Supabase CLI against the directory until the earlier scripts have an explicit applied/not-applied mapping; otherwise old migrations may be replayed. Do not infer that a numbered script is already applied solely because it exists in GitHub.
 
@@ -35,7 +35,7 @@ The live object inventory also does not contain the legacy tables `tracks`, `enr
 
 ### A. Tenant integrity is mostly enforced in application code
 
-The current foreign keys prove that a team, cohort, course, or user exists, but by themselves they do not prove the linked records belong to the same organisation. The organisation API now validates active membership before team/cohort enrolment and filters stale team/cohort memberships before creating enrolments. The proposed migration adds database-side validation because backend checks alone cannot protect future write paths.
+The current foreign keys prove that a team, cohort, course, or user exists, but by themselves they do not prove the linked records belong to the same organisation. The organisation API now validates active membership before team/cohort enrolment and filters stale team/cohort memberships before creating enrolments. The applied migration adds database-side validation because backend checks alone cannot protect future write paths.
 
 **Proposed database protection:** add database-side integrity checks for:
 - active team membership → active membership in the same organisation as the team;
@@ -52,7 +52,7 @@ The team endpoints previously upserted a user into `organisation_team_members` a
 
 ### C. Team course assignments are missing
 
-The live schema has cohort course assignments, but no `team_course_assignments` table. A team-first corporate workflow needs an explicit relation rather than pretending team assignments are cohort assignments. Proposed migration 023 introduces this table; review it for tenant/course ownership checks and verify it against the live schema before applying.
+The live schema has cohort course assignments, but no `team_course_assignments` table. A team-first corporate workflow needs an explicit relation rather than pretending team assignments are cohort assignments. Migration 023 introduced this table on Pheonix; post-apply checks confirm it exists.
 
 ### D. Scoped course assignments were being treated as organisation-wide access
 
@@ -66,17 +66,17 @@ The organisation, team and cohort assignment routes also scope enrolment de-dupl
 
 The current `services/capacity.py` reads current counts and then the route writes a new row. Concurrent requests can both pass that check. The live schema also contains `learnora_capacity_reservations` with resource type, quantity, used quantity, status and expiry, but the inspected capacity service reads live table counts and contract entitlements rather than using that table; no live capacity trigger/routine was found. Before deciding whether that table represents reserved contract allocation or should participate in enforcement, inspect its writers and contract workflow. Do not double-count its quantities alongside live member/course counts.
 
-The proposed SQL capacity trigger in migration 023 serialises capacity checks with transaction-scoped advisory locks. It covers organisation membership, teams, cohorts, programmes, organisation-owned courses, organisation course grants, team course assignments and cohort course assignments. Course slots are counted as distinct courses across these access paths, avoiding double-counting when the same course is assigned to multiple teams/cohorts or is already organisation-owned. Its update fast paths have been hardened so moving an active record between organisations or changing a course cannot bypass the destination capacity check. The Python check remains for friendly errors; the database is the concurrency authority once the migration is reviewed and applied.
+The SQL capacity trigger applied in migration 023 serialises capacity checks with transaction-scoped advisory locks. It covers organisation membership, teams, cohorts, programmes, organisation-owned courses, organisation course grants, team course assignments and cohort course assignments. Course slots are counted as distinct courses across these access paths, avoiding double-counting when the same course is assigned to multiple teams/cohorts or is already organisation-owned. Its update fast paths have been hardened so moving an active record between organisations or changing a course cannot bypass the destination capacity check. The Python check remains for friendly errors; the database is the concurrency authority once the migration is reviewed and applied.
 
-Cohort member capacity is enforced in the same transaction as insertion/reactivation. Lowering a cohort capacity below current active membership is rejected; it must not silently remove learners. The proposed migration also adds validated checks for positive learner capacity, non-negative instructor capacity, and valid cohort/programme date ranges; the current read-only preflight found zero violations for these checks.
+Cohort member capacity is enforced in the same transaction as insertion/reactivation. Lowering a cohort capacity below current active membership is rejected; it must not silently remove learners. The migration also adds validated checks for positive learner capacity, non-negative instructor capacity, and valid cohort/programme date ranges; post-apply checks found zero violations.
 
 ### F. AI quota reservations are missing
 
-The live schema has `learnora_ai_limits` and `ai_usage_logs`, but no `learnora_ai_quota_reservations` or `reserve_learnora_ai_quota` routine at inspection time. The proposed migration backfills usage logs and adds atomic reservations. Before applying, test quota identity/lock-key consistency, daily/monthly boundaries, per-user versus organisation aggregation, failed AI requests, and duplicate retries. Reservation must be recorded before calling the provider, and failures must follow an explicit policy so retries cannot evade limits.
+The live schema has `learnora_ai_limits` and `ai_usage_logs`, but no `learnora_ai_quota_reservations` or `reserve_learnora_ai_quota` routine at inspection time. The applied migration backfilled three existing usage-log records into atomic reservations and added the quota RPC. Quota identity/lock-key consistency, daily/monthly boundaries, per-user versus organisation aggregation, failed AI requests, and duplicate retries still need dedicated concurrency/integration tests. Reservation must be recorded before calling the provider, and failures must follow an explicit policy so retries cannot evade limits.
 
 ### G. RLS enabled with no table-specific policies
 
-The Security Advisor reported numerous tables with RLS enabled but no policies, including organisation tables. A read-only grant audit confirmed that `anon` and `authenticated` currently have broad table privileges (including SELECT/INSERT/UPDATE/DELETE) on the inspected organisation, cohort, course-access, contract, enrolment and AI-limit tables. With RLS enabled and no policies, these roles are currently default-denied at the row-policy layer; this is not proof of current row exposure. However, broad grants create a latent risk if a policy is added later. The backend uses a privileged Supabase client, so RLS does not replace application tenant checks for backend requests. Do not add broad `USING (true)` policies. The proposed migration revokes table privileges from `PUBLIC`, `anon` and `authenticated` for the organisation, course catalogue/creator, contract, enrolment, AI quota, course mapping, discussion/learning-path and assessment/progress tables, while retaining the backend's server-side `service_role` access. The inspected tables had no `PUBLIC` table grants, so the PUBLIC revoke is defensive hardening rather than remediation of an observed PUBLIC grant. The inspected RLS policy count is zero, so browser roles are already denied by RLS; the revokes remove the latent broad-grant risk if someone later adds a policy. Any future direct-client path must be deliberately designed with narrow grants and RLS policies rather than relying on the current broad defaults.
+The Security Advisor reported numerous tables with RLS enabled but no policies, including organisation tables. A read-only grant audit confirmed that `anon` and `authenticated` currently have broad table privileges (including SELECT/INSERT/UPDATE/DELETE) on the inspected organisation, cohort, course-access, contract, enrolment and AI-limit tables. With RLS enabled and no policies, these roles are currently default-denied at the row-policy layer; this is not proof of current row exposure. However, broad grants create a latent risk if a policy is added later. The backend uses a privileged Supabase client, so RLS does not replace application tenant checks for backend requests. Do not add broad `USING (true)` policies. Migration 023 revoked table privileges from `PUBLIC`, `anon` and `authenticated` for the organisation, course catalogue/creator, contract, enrolment, AI quota, course mapping, discussion/learning-path and assessment/progress tables, while retaining server-side `service_role` access. Because the catalogue/creator, discussion/learning-path and assessment/progress tables were outside the requested organisation-only permission scope, migration 024 restored their prior `anon`/`authenticated` table grants while keeping RLS enabled and adding no policies. Organisation/contract/AI/access tables remain denied to browser roles by grants, and the four SECURITY DEFINER routines have no browser-role EXECUTE grants. The inspected tables had no `PUBLIC` table grants, so the PUBLIC revoke is defensive hardening rather than remediation of an observed PUBLIC grant. The inspected RLS policy count is zero, so browser roles are already denied by RLS; the revokes remove the latent broad-grant risk if someone later adds a policy. Any future direct-client path must be deliberately designed with narrow grants and RLS policies rather than relying on the current broad defaults.
 
 Reference: https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy
 
@@ -128,13 +128,15 @@ This sequence is intentionally additive and staged; exact migration filenames/ve
 - The expanded read-only live-data preflight returned **zero issues across 15 checks** covering active team/cohort membership integrity, cohort/programme tenant alignment, foreign-organisation course assignments/access, team manager membership, supported organisation types, quiz passing-score bounds, cohort capacity, duplicate active team memberships, active organisation enrolments, and cohort/programme capacity/date validity. Team-course-assignment checks are in verify_post_migration.sql because that table does not yet exist in the live schema. These are point-in-time counts and do not prevent future invalid writes without the proposed guards.
 - The snapshot contained one organisation (`academy`), one global AI limit row (`scope_type=global`, wildcard feature), no quiz rows, and no rows in `learnora_capacity_reservations`. The zero quiz/reservation counts do not mean those features are unused in future; they only describe this inspection snapshot.
 - `learnora_capacity_reservations` exists and must be reconciled with the actual contract-capacity workflow before any migration or runtime refactor.
-- No SQL migration has been applied and no production data has been changed.
-- Remaining gate before any migration: reconcile the complete numbered repository migration set with the live timestamped migration records and verify the deployed backend's Supabase project reference.
+- Production migrations 023 and 024 were applied and are recorded in the live migration registry.
+- Post-apply read-only checks confirmed: both new tables exist; four routines exist; 17 new triggers are present; three AI usage reservations were backfilled; zero active team/cohort membership tenant violations; zero cohorts over capacity; zero quiz passing-score violations; zero browser-role grants on organisation/contract/AI/access tables; and no browser EXECUTE grants on the four SECURITY DEFINER routines.
+- The Security Advisor still reports 92 RLS-enabled tables without policies across the project and two mutable-search-path warnings on out-of-scope functions (`set_updated_at`, `update_admins_updated_at`). The no-policy findings are broader platform debt, not fixed by this organisation migration.
+- Remaining work: reconcile historical repository migrations 001–015 by exact object-level evidence; run concurrent quota/capacity and end-to-end tenant tests; verify the deployed backend points to Pheonix; finish CI checks before merge/deployment.
 
 
 ## 8. Migration reconciliation decision ledger (read-only inspection)
 
-The live Supabase migration registry was re-read during this audit. It contains exactly these nine records:
+The live Supabase migration registry originally contained nine records. After applying this work, it contains those nine plus the two new records below:
 
 | Live version | Live name | Repository candidate | Decision |
 |---|---|---|---|
@@ -147,12 +149,15 @@ The live Supabase migration registry was re-read during this audit. It contains 
 | `20261009231754` | `cohort_course_assignments` | `021_cohort_course_assignments.sql` | Name/topic match; confirm SQL hash/effects. |
 | `20261009232328` | `community_discussions` | `022_community_discussions.sql` | Name/topic match; confirm SQL hash/effects. |
 | `20261011051442` | `learner_onboarding_profiles` | No numbered file among `001`–`022` | **Unresolved.** Find the original SQL/commit or inspect the object definition and provenance; do not fabricate a replacement migration. |
+| `20261020230826` | `learnora_audit_remediation` | `backend-python/migrations/023_learnora_audit_remediation.sql` | Applied; SQL dry-run and post-migration checks completed. |
+| `20261020230906` | `restore_shared_learner_grants_and_lock_trigger_routines` | `backend-python/migrations/024_restore_shared_learner_grants_and_lock_trigger_routines.sql` | Applied; restores prior shared learner/course/progression grants and removes browser EXECUTE on internal SECURITY DEFINER routines. |
 
 ### Repository files without a corresponding live registry row
 
 - `001_initial.sql` through `013_learnora_lifecycle_constraints.sql): no matching registry rows were returned. This does **not** prove they were never applied; live objects may have been created manually, through another migration path, or by later scripts.
 - `014_learnora_ai_foundation.sql` and `015_learnora_ai_permissions.sql`: no exact registry entries. The live `add_learnora_ai_profiles` row is not proof that either file ran.
-- `023_learnora_audit_remediation.sql`: proposed audit patch only; deliberately absent from the live registry and must remain unapplied until validation is complete.
+- `023_learnora_audit_remediation.sql`: applied to Pheonix as live version `20261020230826`.
+- `024_restore_shared_learner_grants_and_lock_trigger_routines.sql`: applied to Pheonix as live version `20261020230906`.
 
 ### Reconciliation rule
 
@@ -164,11 +169,11 @@ Before production rollout, build a per-file evidence record with: (1) the exact 
 
 Read-only validation confirms that the existing organisation-related base tables and referenced course/assessment tables exist, while the proposed `team_course_assignments`, `learnora_ai_quota_reservations` and three new routines are not present yet. This is expected for a proposal. It is **not** proof that the SQL parses or executes successfully.
 
-The migration has not been run against a disposable PostgreSQL/Supabase branch. Before approval, run it in an isolated database matching Pheonix's schema, run all migration statements to completion, and test:
+Although the SQL transaction dry-run and production application succeeded, no isolated production-like branch or concurrency harness has been used. Still test:
 - duplicate/retry behaviour and AI quota daily/monthly boundaries under concurrent requests;
 - concurrent last-slot capacity claims, membership moves/suspensions, and cohort capacity reductions;
 - tenant mismatch attempts for team/cohort/course assignments and enrolments;
 - existing usage-log backfill and constraint validation against a representative data copy;
 - grants/RLS after the migration, including a non-organisation learner regression check.
 
-The last known GitHub runs were still in progress on the newest branch head when inspected; the immediately preceding backend regression run passed, but the newest commit is not yet fully verified. Production migration, merge, and any additional deployment remain separate approval gates.
+The last known GitHub runs were still in progress on the newest branch head when inspected; the immediately preceding backend regression run passed, but the newest commit is not yet fully verified. The production database migration is complete. Merge and any additional deployment remain separate approval gates.
