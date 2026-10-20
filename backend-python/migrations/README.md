@@ -39,7 +39,9 @@ It is deliberately **not** executed by this change. Confirm the target project, 
 
 ## Verification queries
 
-Run `verify_live_schema.sql` against the confirmed target project to record the registered migration history, expected tables/columns, organisation type constraint, quiz threshold default, and installed trigger/function definitions. Save its output with the deployment change record.
+Run `verify_live_schema.sql` against the confirmed target project to record the registered migration history, expected tables/columns, organisation type constraint, quiz threshold default, installed trigger/function definitions, RLS/policy status and tenant-integrity preflight counts. The script is safe before or after the proposed migration (missing optional tables return no rows). Save its output with the deployment change record.
+
+The detailed Step 4 inventory, gap analysis and staged additive migration plan is in `STEP_4_ORGANISATION_DATA_MODEL_PLAN.md`.
 
 ## Automated tests
 
