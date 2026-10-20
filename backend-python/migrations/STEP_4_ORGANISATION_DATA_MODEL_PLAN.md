@@ -82,7 +82,7 @@ Reference: https://supabase.com/docs/guides/database/database-linter?lint=0008_r
 
 ### H. Mutable search path warnings
 
-The Security Advisor reported three functions with mutable `search_path`. The proposed migration pins `learnora_set_updated_at`, which is used by organisation and Learnora course/cohort records, plus the new security-definer functions. The other two findings (`set_updated_at`, also used by internal staff/team tables, and `update_admins_updated_at`, used by internal administrator records) remain outside this organisation-workspace scope. Re-run the Security Advisor after migration to confirm the remaining findings are understood and tracked.
+The Security Advisor reported three functions with mutable `search_path`. Migration 023 pins `learnora_set_updated_at`, which is used by organisation and Learnora course/cohort records, plus the new security-definer functions. Migration 024 revokes browser EXECUTE on the four SECURITY DEFINER routines. The other two findings (`set_updated_at`, also used by internal staff/team tables, and `update_admins_updated_at`, used by internal administrator records) remain outside this organisation-workspace scope. Re-run the Security Advisor after migration to confirm the remaining findings are understood and tracked.
 
 ### I. Resource-scoped roles need a representation
 
@@ -94,17 +94,17 @@ The organisation membership role check currently represents `owner`, `admin`, `i
 
 Only nine timestamped migration records were registered in the live project. An initial mapping found exact registered-name matches for the organisation portal and migrations 017–022, while 001–015 and the learner-onboarding record remain unresolved against the repository chain. The live schema also lacks five legacy tables from 001 while newer Learnora equivalents exist. This mismatch is documented, but a complete applied/not-applied mapping still requires reviewing each older script and its data lineage. Do not manually mark a migration applied or replay an old SQL file blindly. Verify the Vercel backend project reference before production rollout.
 
-## 3. Proposed migration sequence
+## 3. Migration execution record and remaining work
 
-This sequence is intentionally additive and staged; exact migration filenames/versions must be aligned with the repository's deployment convention after reconciliation. The migration includes explicit revokes for `PUBLIC`, `anon` and `authenticated` on the listed organisation/learning tables. Before applying it, confirm that the app uses the server-side backend for these paths; any direct-client flow is already blocked by the current no-policy RLS state and would need a separate least-privilege design.
+Migrations 023 and 024 are applied to the confirmed Pheonix project and recorded as live versions `20261020230826` and `20261020230906`. The first migration added tenant/capacity/quota enforcement, team course assignments, quiz threshold constraints and organisation-table grant hardening. The follow-up restored pre-existing browser-role grants on shared learner/catalogue/progress tables outside the organisation-only scope and removed browser EXECUTE on the SECURITY DEFINER routines. No RLS policies were added.
 
-1. **Preflight/report only:** export live migration history, current definitions, constraints, triggers, grants, policies, row counts and integrity-check results. Back up the database and test restore.
-2. **Repair existing proposed migration 023 before any execution:** fix trigger update fast paths; verify SQL references against the live schema; verify module/quiz association, the 70–100 non-null passing-score constraint and score backfill; test quota reservation semantics; validate team assignment ownership; avoid broad RLS policies.
-3. **Tenant integrity migration:** add missing unique/composite keys where required, safe tenant consistency checks/triggers, and indexes supporting tenant-scoped joins. Run read-only orphan/conflict queries first. If conflicts exist, stop and report them for an explicit resolution plan.
-4. **Resource-scoped assignments:** add the smallest reusable table/constraints for team, cohort and programme responsibilities only if no equivalent is found in the repository or live schema.
-5. **Security hardening:** confirm table privileges and service-role use; maintain default-deny for direct clients unless specific least-privilege policies are designed. Fix mutable search paths for relevant functions.
-6. **Verification:** run `verify_live_schema.sql` before migration and `verify_post_migration.sql` after migration, then run backend tests, tenant-boundary tests, capacity concurrency tests, quota concurrency tests and a smoke test against a non-production branch/database.
-7. **Rollout:** apply one reviewed migration at a time to the confirmed target, verify after each, then deploy backend code only after schema compatibility is confirmed. Rollback steps must be documented for each migration.
+1. **Completed — preflight and dry run:** read-only schema/history inspection, tenant/capacity/date preflight, then transaction-wrapped SQL dry run with rollback before applying.
+2. **Completed — production migration:** both migration records are present; post-apply checks confirm the new tables/routines/triggers and no current tenant/capacity/quiz-threshold violations.
+3. **Still required — workflow regression tests:** exercise tenant mismatch rejection, inactive memberships, cross-tenant course access and published-course enforcement through actual backend routes.
+4. **Still required — concurrency tests:** concurrent last-slot capacity claims, cohort capacity reductions, daily/monthly AI quota boundaries, retry semantics and failed provider calls.
+5. **Still required — deployment alignment:** verify the deployed Vercel backend's Supabase project reference, finish CI checks, and deploy compatible backend code only after that confirmation.
+6. **Still required — historical migration reconciliation:** prove applied/not-applied status of repository migrations 001–015 from exact SQL/object evidence. Do not replay them or fabricate history rows based on names alone.
+7. **Future design — resource-scoped role assignments:** implement the proposed role assignment table only when Step 3's role-resolution workflow is wired end-to-end; this was not part of migrations 023/024.
 
 ## 4. Backend workflow audit checklist
 
