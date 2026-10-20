@@ -482,6 +482,28 @@ def earnings(user: CurrentUser = Depends(get_current_user)):
     return {"success": True, "ledger": result.data or []}
 
 
+@router.get("/admin/applications")
+def list_creator_applications(
+    status: str | None = None,
+    limit: int = 50,
+    context: PermissionContext = Depends(require_permission("users.update")),
+):
+    """Platform-staff queue for reviewing independent creator applications."""
+    if status is not None and status not in {"submitted", "under_review", "approved", "declined"}:
+        raise HTTPException(400, "Invalid application status.")
+    limit = max(1, min(int(limit), 100))
+    query = (
+        supabase.table("learnora_creator_applications")
+        .select("id,user_id,application_data,status,created_at,reviewed_at,reviewed_by")
+        .order("created_at", desc=True)
+        .limit(limit)
+    )
+    if status:
+        query = query.eq("status", status)
+    result = query.execute()
+    return {"success": True, "count": len(result.data or []), "applications": result.data or []}
+
+
 @router.post("/admin/applications/{application_id}/review")
 def review_application(
     application_id: str,
