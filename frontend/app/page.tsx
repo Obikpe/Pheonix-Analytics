@@ -9,7 +9,6 @@ import {
   ArrowRight,
   BarChart3,
   BookOpen,
-  BriefcaseBusiness,
   Check,
   ChevronRight,
   Code2,
@@ -22,7 +21,6 @@ import {
   ShieldCheck,
   Sparkles,
   Target,
-  Users,
 } from "lucide-react";
 
 const stages = [
