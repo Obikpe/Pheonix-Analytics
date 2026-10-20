@@ -333,7 +333,7 @@ export default function OrganisationWorkspace() {
             <div className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
               <StatCard label="People in workspace" value={summary.total ?? members.length} />
               <StatCard label="Active members" value={summary.active ?? members.filter((m) => m.status === "active").length} />
-              <StatCard label="Tutors / instructors" value={summary.instructors ?? members.filter((m) => m.role === "instructor").length} />
+              {capabilities.instructor_led && <StatCard label="Tutors / instructors" value={summary.instructors ?? members.filter((m) => m.role === "instructor").length} />}
               <StatCard label="Learners" value={summary.learners ?? members.filter((m) => m.role === "learner").length} />
             </div>
 
