@@ -124,4 +124,43 @@ def health():
 
 @app.get("/api/health")
 def api_health():
-    return {"status": "healthy", "version": "2.0.0"}
+    # Liveness only: confirms that the FastAPI process is serving requests.
+    return {"status": "ok", "service": "learnora-backend", "version": "2.0.0"}
+
+
+@app.get("/api/ready")
+def api_ready():
+    """Readiness probe for deployment checks; never returns credentials or raw DB errors."""
+    configured = bool(
+        getattr(auth, "SUPABASE_URL", "")
+        and getattr(auth, "SUPABASE_KEY", "")
+        and getattr(auth, "JWT_SECRET", "")
+    )
+    if not configured:
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "not_ready",
+                "checks": {"configuration": "missing"},
+            },
+        )
+
+    try:
+        # auth.py owns the shared service-role client and uses public.users
+        # as the canonical learner account table.
+        auth.supabase.table("users").select("id").limit(1).execute()
+    except Exception as exc:
+        # Keep the response safe; detailed provider errors can contain internals.
+        print(f"Readiness database probe failed: {type(exc).__name__}")
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "not_ready",
+                "checks": {"configuration": "ok", "database": "unavailable"},
+            },
+        )
+
+    return {
+        "status": "ready",
+        "checks": {"configuration": "ok", "database": "reachable"},
+    }
