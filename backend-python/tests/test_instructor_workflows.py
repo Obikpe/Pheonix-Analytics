@@ -109,6 +109,7 @@ class InstructorAssessmentJourneyTests(unittest.TestCase):
                 "id": "assignment-1", "course_id": "course-1",
                 "title": "Data task", "max_score": 20,
             }],
+            "course_access": [{"id": "access-1", "course_id": "course-1", "organisation_id": "org-1", "access_type": "assigned", "status": "active"}],
             "learnora_creator_applications": [{"id": "application-1", "user_id": "creator-user", "application_data": {"display_name": "Creator"}, "status": "submitted", "created_at": "2026-10-20T09:00:00+00:00", "reviewed_at": None, "reviewed_by": None}],
             "learnora_creator_payouts": [{"id": "payout-1", "creator_id": "creator-1", "amount_minor": 2500, "currency": "NGN", "status": "requested", "requested_at": "2026-10-20T09:00:00+00:00", "processed_at": None}],
             "assignment_submissions": [{
@@ -160,6 +161,15 @@ class InstructorAssessmentJourneyTests(unittest.TestCase):
         self.assertEqual(submission["status"], "graded")
         self.assertIn("outlier threshold", submission["feedback"])
         self.assertIsNotNone(submission["graded_at"])
+
+    def test_instructor_can_review_learnora_course_assigned_to_their_org(self):
+        self.store["learnora_courses"][0]["ownership"] = "learnora"
+        self.store["learnora_courses"][0]["organisation_id"] = None
+        response = self.client.patch(
+            "/api/instructor/submissions/submission-1/review",
+            json={"score": 18, "feedback": "Good work."},
+        )
+        self.assertEqual(response.status_code, 200)
 
     def test_instructor_cannot_review_another_organisation_course(self):
         self.context = context_for(organisation_id="org-2")
