@@ -74,7 +74,7 @@ Reference: https://supabase.com/docs/guides/database/database-linter?lint=0008_r
 
 ### G. Mutable search path warnings
 
-The Security Advisor reported three functions with mutable `search_path`. The proposed migration pins the two shared timestamp-trigger functions used by organisation/course records to `pg_catalog, public` and pins the new security-definer functions as well. The remaining `update_admins_updated_at` function is specific to internal administrator records and remains outside this organisation-workspace scope. Re-run the Security Advisor after migration to confirm the remaining finding is understood and tracked.
+The Security Advisor reported three functions with mutable `search_path`. The proposed migration pins `learnora_set_updated_at`, which is used by organisation and Learnora course/cohort records, plus the new security-definer functions. The other two findings (`set_updated_at`, also used by internal staff/team tables, and `update_admins_updated_at`, used by internal administrator records) remain outside this organisation-workspace scope. Re-run the Security Advisor after migration to confirm the remaining findings are understood and tracked.
 
 ### H. Resource-scoped roles need a representation
 
