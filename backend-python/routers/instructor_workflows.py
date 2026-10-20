@@ -74,7 +74,7 @@ def _course_for_instructor(course_id: str, user: CurrentUser, context: Permissio
 @router.get("/submissions")
 def list_submissions(
     course_id: Optional[str] = Query(default=None),
-    status: Optional[str] = Query(default=None, pattern="^(submitted|reviewed|returned)$"),
+    status: Optional[str] = Query(default=None, pattern="^(submitted|reviewed|returned|graded)$"),
     user: CurrentUser = Depends(get_current_user),
     context: PermissionContext = Depends(get_permission_context),
 ):
