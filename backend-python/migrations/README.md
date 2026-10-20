@@ -76,3 +76,39 @@ A code review of the AI quota path found a live-path defect: the Python limit re
 - Read-only post-apply verification confirmed the deployed function permits a `NULL` monthly limit while requiring a daily limit, remains `SECURITY DEFINER`, denies EXECUTE to `anon` and `authenticated`, and grants EXECUTE to `service_role`.
 - On PR head `49b67f707d9cdcb84a4e7a13d425684d3b07e88b`, backend regression tests, quality checks, backend verification and frontend CI all completed successfully. These runs are evidence for that commit only; rerun after any further changes.
 - No Vercel deployment was created.
+
+## Step 6 — final production verification and release gates
+
+Read-only verification was rerun against the confirmed active Pheonix project `gihfupzvdpyrmynqgukz` on 2026-10-21.
+
+### Confirmed against the live database
+
+- Supabase reports the project as `ACTIVE_HEALTHY` on PostgreSQL 17.
+- The live migration registry contains all three remediation versions: `20261020230826` (`learnora_audit_remediation`), `20261020230906` (`restore_shared_learner_grants_and_lock_trigger_routines`) and `20261020232148` (`allow_unlimited_monthly_ai_quota`).
+- `team_course_assignments`, `learnora_ai_quota_reservations` and `reserve_learnora_ai_quota` exist.
+- Read-only integrity counts returned zero active team memberships without an active organisation membership, zero active cohort memberships without an active organisation membership, and zero over-capacity cohorts.
+- The quota reservation RPC remains `SECURITY DEFINER`; `anon` and `authenticated` cannot execute it directly, while `service_role` can.
+- The audited organisation, contract, team-course-assignment and AI-quota tables have zero direct `anon`/`authenticated` table-grant rows.
+
+These are point-in-time checks of the database schema and existing rows. They do not substitute for exercising authenticated HTTP requests or race conditions.
+
+### CI on the latest branch head
+
+For commit `6a9b7e60238571d1f14fddd1a842cb3df971fdd9`, all four GitHub Actions workflows completed successfully:
+
+- [Learnora backend regression tests](https://github.com/Obikpe/Pheonix-Analytics/actions/runs/39515762112)
+- [Learnora Backend Verification](https://github.com/Obikpe/Pheonix-Analytics/actions/runs/39515762532)
+- [Learnora frontends](https://github.com/Obikpe/Pheonix-Analytics/actions/runs/39515762204)
+- [Learnora quality checks](https://github.com/Obikpe/Pheonix-Analytics/actions/runs/39515762081)
+
+The backend verification workflow passed compilation, import validation, static undefined-name/syntax checks, application import and API smoke test. Both configured frontend builds also passed.
+
+### Remaining release blockers
+
+1. **Legacy migration reconciliation:** live history still has no matching records for repository migrations 001–015, and several legacy tables are absent while newer equivalents exist. Map each legacy migration to live objects/data lineage before marking it applied, replaying it or claiming full history reconciliation.
+2. **Deployed backend target:** Vercel production and preview environment metadata contains `SUPABASE_URL`, but the value was not returned by the available non-decrypting environment inspection. Therefore, the running backend's connection to this Pheonix project is still unverified.
+3. **End-to-end security tests:** run authenticated tests for tenant boundary failures, organisation deactivation, membership removal/revocation, course assignment revocation, contract/feature entitlement changes and assessment gating.
+4. **Concurrency/failure tests:** test simultaneous capacity claims and AI quota reservations, provider failures/retries, and idempotency against a disposable test tenant or staging environment.
+5. **Security Advisor:** 92 RLS-enabled tables without policies and two mutable-search-path warnings remain reported. The organisation tables audited above have no browser grants, but the project-wide findings require a separately scoped review.
+
+**Release decision:** do not merge or deploy on the strength of CI alone. The draft PR remains open; no Vercel deployment was created as part of Step 6.
