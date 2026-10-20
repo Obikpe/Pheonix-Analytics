@@ -16,6 +16,35 @@ ALTER TABLE public.organisations
         'nonprofit','custom','community'
     ]::text[]));
 
+-- Data-shape checks for capacities and programme/cohort dates. The live-data
+-- preflight found no current violations; NOT VALID keeps the add and validate
+-- phases explicit for safe review and predictable locking.
+DO $
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'cohorts_capacity_positive' AND conrelid = 'public.cohorts'::regclass) THEN
+        ALTER TABLE public.cohorts ADD CONSTRAINT cohorts_capacity_positive
+            CHECK (capacity IS NULL OR capacity >= 1) NOT VALID;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'cohorts_instructor_capacity_nonnegative' AND conrelid = 'public.cohorts'::regclass) THEN
+        ALTER TABLE public.cohorts ADD CONSTRAINT cohorts_instructor_capacity_nonnegative
+            CHECK (instructor_capacity IS NULL OR instructor_capacity >= 0) NOT VALID;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'cohorts_date_range_valid' AND conrelid = 'public.cohorts'::regclass) THEN
+        ALTER TABLE public.cohorts ADD CONSTRAINT cohorts_date_range_valid
+            CHECK (start_date IS NULL OR end_date IS NULL OR start_date <= end_date) NOT VALID;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'learnora_programmes_date_range_valid' AND conrelid = 'public.learnora_programmes'::regclass) THEN
+        ALTER TABLE public.learnora_programmes ADD CONSTRAINT learnora_programmes_date_range_valid
+            CHECK (start_date IS NULL OR end_date IS NULL OR start_date <= end_date) NOT VALID;
+    END IF;
+END;
+$;
+
+ALTER TABLE public.cohorts VALIDATE CONSTRAINT cohorts_capacity_positive;
+ALTER TABLE public.cohorts VALIDATE CONSTRAINT cohorts_instructor_capacity_nonnegative;
+ALTER TABLE public.cohorts VALIDATE CONSTRAINT cohorts_date_range_valid;
+ALTER TABLE public.learnora_programmes VALIDATE CONSTRAINT learnora_programmes_date_range_valid;
+
 -- Explicit module association makes module-level progression enforceable.
 ALTER TABLE public.quizzes
     ADD COLUMN IF NOT EXISTS module_id uuid NULL
