@@ -74,6 +74,11 @@ def context(organisation_id="org-a", user_id="user-1", platform_admin=False, rol
 
 
 class CourseContentAccessTests(unittest.TestCase):
+    def setUp(self):
+        entitlement = patch.object(course_content, "_organisation_has_course_entitlement", return_value=True)
+        entitlement.start()
+        self.addCleanup(entitlement.stop)
+
     def test_scoped_course_assignment_does_not_grant_access_to_every_organisation_learner(self):
         course = {"id": "course-1", "ownership": "learnora", "organisation_id": None}
         db = FakeSupabase(course_access=[{
@@ -105,11 +110,25 @@ class CourseContentAccessTests(unittest.TestCase):
         with patch.object(course_content, "supabase", db):
             course_content._check_course_view_access(context(role="learner"), course)
 
+    def test_scoped_enrolment_is_denied_when_contract_has_expired(self):
+        course = {"id": "course-1", "ownership": "learnora", "organisation_id": None}
+        db = FakeSupabase(
+            course_access=[{"id": "grant-1", "course_id": "course-1", "organisation_id": "org-a", "status": "active", "access_type": "scoped"}],
+            enrolments=[{"id": "enrolment-1", "course_id": "course-1", "user_id": "user-1", "organisation_id": "org-a", "status": "active", "source_type": "individual_assignment"}],
+            organisations=[{"id": "org-a", "is_active": True, "settings": {}}],
+            organisation_members=[{"id": "member-1", "organisation_id": "org-a", "user_id": "user-1", "role": "learner", "status": "active"}],
+        )
+        with patch.object(course_content, "supabase", db), patch.object(course_content, "_organisation_has_course_entitlement", return_value=False):
+            with self.assertRaises(HTTPException) as raised:
+                course_content._check_course_view_access(context(role="learner"), course)
+        self.assertEqual(raised.exception.status_code, 403)
+
     def test_team_assignment_requires_active_team_membership(self):
         course = {"id": "course-1", "ownership": "learnora", "organisation_id": None}
         db = FakeSupabase(
             course_access=[{"id": "grant-1", "course_id": "course-1", "organisation_id": "org-a", "status": "active", "access_type": "scoped"}],
             enrolments=[{"id": "enrolment-1", "course_id": "course-1", "user_id": "user-1", "organisation_id": "org-a", "status": "active", "source_type": "team_assignment"}],
+            organisations=[{"id": "org-a", "is_active": True, "settings": {"pilot_mode": True}}],
             organisation_members=[{"id": "org-member", "organisation_id": "org-a", "user_id": "user-1", "role": "learner", "status": "active"}],
             organisation_team_members=[{"team_id": "team-a", "user_id": "user-1", "status": "active"}],
             organisation_teams=[{"id": "team-a", "organisation_id": "org-a", "status": "active"}],
@@ -172,6 +191,7 @@ class CourseContentAccessTests(unittest.TestCase):
                 "id": "grant-1", "course_id": "course-1",
                 "organisation_id": "org-a", "status": "active", "access_type": "assigned",
             }],
+            organisations=[{"id": "org-a", "is_active": True, "settings": {"pilot_mode": True}}],
             organisation_members=[{
                 "id": "member-1", "organisation_id": "org-a", "user_id": "user-1",
                 "role": "learner", "status": "active",
