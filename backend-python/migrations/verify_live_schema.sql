@@ -31,7 +31,7 @@ WHERE n.nspname = 'public'
       'organisations','organisation_members','organisation_teams',
       'organisation_team_members','cohorts','cohort_members',
       'cohort_course_assignments','team_course_assignments',
-      'course_access','learnora_programmes','learnora_enrolments','quizzes'
+      'course_access','learnora_courses','learnora_programmes','learnora_enrolments','quizzes'
   )
 ORDER BY c.relname, con.conname;
 
@@ -48,9 +48,11 @@ WHERE n.nspname = 'public'
       'organisations','organisation_members','organisation_teams',
       'organisation_team_members','cohorts','cohort_members',
       'cohort_course_assignments','team_course_assignments',
-      'course_access','learnora_programmes','learnora_contracts',
+      'course_access','learnora_courses','learnora_creator_accounts','learnora_discussions',
+      'learnora_learning_paths','users','learnora_programmes','learnora_contracts',
       'learnora_contract_entitlements','learnora_ai_limits',
-      'learnora_ai_quota_reservations','learnora_enrolments','quizzes'
+      'learnora_ai_quota_reservations','learnora_enrolments','learnora_courses',
+      'learnora_creator_accounts','learnora_discussions','learnora_learning_paths','users','quizzes'
   )
 GROUP BY c.relname, c.relrowsecurity, c.relforcerowsecurity
 ORDER BY c.relname;
@@ -151,7 +153,7 @@ WHERE organisation_type IS NULL OR organisation_type NOT IN (
 UNION ALL
 SELECT 'quizzes_with_invalid_passing_score', count(*)
 FROM public.quizzes
-WHERE passing_score IS NULL OR passing_score < 70 OR passing_score > 100 OR passing_score > 100
+WHERE passing_score IS NULL OR passing_score < 70 OR passing_score > 100
 UNION ALL
 SELECT 'cohorts_over_current_capacity', count(*)
 FROM public.cohorts c
