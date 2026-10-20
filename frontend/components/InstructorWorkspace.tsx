@@ -24,7 +24,8 @@ const nav: { id: Tab; label: string; icon: LucideIcon; group: string }[] = [
 const inputClass = 'w-full rounded-lg border border-white/10 bg-[#080b0f] px-3 py-2.5 text-sm text-white outline-none placeholder:text-slate-600 focus:border-[#d7ad35]/50';
 const buttonClass = 'inline-flex items-center justify-center gap-2 rounded-lg bg-[#d7ad35] px-4 py-2.5 text-xs font-bold text-[#111827] hover:bg-[#f2d477] disabled:cursor-not-allowed disabled:opacity-50';
 async function api<T = any>(path: string, token: string, init: RequestInit = {}): Promise<T> {
-  const response = await fetch(API + path, { ...init, cache: 'no-store', headers: { Accept: 'application/json', Authorization: 'Bearer ' + token, ...(init.body ? { 'Content-Type': 'application/json' } : {}), ...(init.headers || {}) } });
+  const organisationId = typeof window !== 'undefined' ? (localStorage.getItem('phx_organisation_id') || localStorage.getItem('phx_organization_id') || localStorage.getItem('phx_org_id') || '') : '';
+  const response = await fetch(API + path, { ...init, cache: 'no-store', headers: { Accept: 'application/json', Authorization: 'Bearer ' + token, ...(organisationId ? { 'X-Organisation-ID': organisationId } : {}), ...(init.body ? { 'Content-Type': 'application/json' } : {}), ...(init.headers || {}) } });
   const body = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(typeof body.detail === 'string' ? body.detail : typeof body.error === 'string' ? body.error : 'The request could not be completed.');
   return body as T;
@@ -41,6 +42,7 @@ export default function InstructorWorkspace() {
   const router = useRouter();
   const [token, setToken] = useState('');
   const [user, setUser] = useState<User>({});
+  const [organisationId, setOrganisationId] = useState('');
   const [authLoading, setAuthLoading] = useState(true);
   const [tab, setTab] = useState<Tab>('overview');
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -119,6 +121,7 @@ export default function InstructorWorkspace() {
     if (!stored) { router.replace('/login'); return; }
     setToken(stored);
     setUser({ name: localStorage.getItem('phx_name') || '', email: localStorage.getItem('phx_email') || '', role: localStorage.getItem('phx_role') || '' });
+    setOrganisationId(localStorage.getItem('phx_organisation_id') || localStorage.getItem('phx_organization_id') || localStorage.getItem('phx_org_id') || '');
     setAuthLoading(false);
     void loadCourses(stored);
   }, [router, loadCourses]);
@@ -130,7 +133,11 @@ export default function InstructorWorkspace() {
   const createCourse = async (event: FormEvent) => {
     event.preventDefault(); if (!token || !courseForm.title.trim()) return; setBusy(true); setNotice(null);
     try {
-      const body = await api<any>('/api/courses', token, { method: 'POST', body: JSON.stringify({ title: courseForm.title.trim(), slug: slugify(courseForm.title), short_description: courseForm.short_description.trim(), description: courseForm.description.trim(), level: courseForm.level, track: courseForm.track.trim() || null, estimated_hours: Number(courseForm.estimated_hours) || null, status: 'draft', ownership: 'creator' }) });
+      const platformRole = ['super_admin', 'staff_admin', 'admin', 'owner'].includes(String(user.role || '').toLowerCase());
+      if (!organisationId && !platformRole) throw new Error('The current backend requires an organisation context for instructor course authoring. Ask your organisation administrator to connect this workspace, or have independent creator authoring enabled for your account.');
+      const ownership = organisationId ? 'organisation' : 'learnora';
+      const payload = { title: courseForm.title.trim(), slug: slugify(courseForm.title), short_description: courseForm.short_description.trim(), description: courseForm.description.trim(), level: courseForm.level, track: courseForm.track.trim() || null, estimated_hours: Number(courseForm.estimated_hours) || null, status: 'draft', ownership, ...(organisationId ? { organisation_id: organisationId } : {}) };
+      const body = await api<any>('/api/courses', token, { method: 'POST', body: JSON.stringify(payload) });
       const course = body.course as Course;
       setCourses(current => [course, ...current.filter(c => c.id !== course.id)]); setSelectedCourseId(course.id); setShowCourseForm(false); setCourseForm({ title: '', short_description: '', description: '', level: 'beginner', track: '', estimated_hours: '4' }); setTab('curriculum');
       setNotice({ kind: 'success', text: 'Course draft created. Add a module and lessons before publishing.' });
