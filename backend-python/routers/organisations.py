@@ -478,7 +478,7 @@ def add_cohort_member(
     assignments = supabase.table("cohort_course_assignments").select("course_id").eq("cohort_id", cohort_id).eq("status", "active").execute()
     created_enrolments = 0
     for assignment in assignments.data or []:
-        existing_enrolment = supabase.table("learnora_enrolments").select("id").eq("user_id", body.user_id).eq("course_id", assignment["course_id"]).in_("status", ["active", "completed"]).limit(1).execute()
+        existing_enrolment = supabase.table("learnora_enrolments").select("id").eq("user_id", body.user_id).eq("course_id", assignment["course_id"]).eq("organisation_id", organisation_id).in_("status", ["active", "completed"]).limit(1).execute()
         if existing_enrolment.data:
             continue
         enrolment = supabase.table("learnora_enrolments").insert({
@@ -822,7 +822,7 @@ def assign_course_to_cohort(organisation_id: str, cohort_id: str, body: dict, co
     cohort_members = [row for row in cohort_members if str(row["user_id"]) in active_learner_ids]
     created = 0
     for cohort_member in cohort_members:
-        existing_enrolment = (supabase.table("learnora_enrolments").select("id").eq("user_id", cohort_member["user_id"]).eq("course_id", course_id).in_("status", ["active", "completed"]).limit(1).execute()).data
+        existing_enrolment = (supabase.table("learnora_enrolments").select("id").eq("user_id", cohort_member["user_id"]).eq("course_id", course_id).eq("organisation_id", organisation_id).in_("status", ["active", "completed"]).limit(1).execute()).data
         if existing_enrolment:
             continue
         enrolled = supabase.table("learnora_enrolments").insert({
