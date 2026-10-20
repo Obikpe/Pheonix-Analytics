@@ -387,6 +387,29 @@ def payouts(
     return {"success": True, "payouts": result.data or []}
 
 
+@router.get("/admin/payouts")
+def list_payout_requests(
+    status: str | None = None,
+    limit: int = 50,
+    context: PermissionContext = Depends(require_permission("users.update")),
+):
+    """Platform-staff queue for creator payout operations."""
+    allowed_statuses = {"requested", "processing", "paid", "failed", "cancelled"}
+    if status is not None and status not in allowed_statuses:
+        raise HTTPException(400, "Invalid payout status.")
+    limit = max(1, min(int(limit), 100))
+    query = (
+        supabase.table("learnora_creator_payouts")
+        .select("id,creator_id,amount_minor,currency,status,requested_at,processed_at")
+        .order("requested_at", desc=True)
+        .limit(limit)
+    )
+    if status:
+        query = query.eq("status", status)
+    result = query.execute()
+    return {"success": True, "count": len(result.data or []), "payouts": result.data or []}
+
+
 @router.post("/admin/payouts/{payout_id}/process")
 def process_payout(
     payout_id: str,
