@@ -72,10 +72,10 @@ CREATE TABLE IF NOT EXISTS public.learnora_ai_quota_reservations (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id uuid NOT NULL,
     organisation_id uuid NULL REFERENCES public.organisations(id) ON DELETE CASCADE,
-    feature text NOT NULL,
-    scope_type text NOT NULL,
+    feature text NOT NULL CHECK (length(btrim(feature)) > 0),
+    scope_type text NOT NULL CHECK (scope_type IN ('user','organisation','global','feature')),
     scope_id text NULL,
-    limit_feature text NOT NULL,
+    limit_feature text NOT NULL CHECK (length(btrim(limit_feature)) > 0),
     usage_log_id uuid NULL UNIQUE REFERENCES public.ai_usage_logs(id) ON DELETE SET NULL,
     created_at timestamptz NOT NULL DEFAULT now()
 );
