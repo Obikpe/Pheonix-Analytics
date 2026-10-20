@@ -987,6 +987,7 @@ def assign_course_to_team(
         supabase.table("organisation_members")
         .select("user_id")
         .eq("organisation_id", organisation_id)
+        .eq("role", "learner")
         .eq("status", "active")
         .execute()
     ).data or []
