@@ -60,7 +60,7 @@ The current `services/capacity.py` reads current counts and then the route write
 
 The proposed SQL capacity trigger in migration 023 serialises capacity checks with transaction-scoped advisory locks. Its update fast paths have been hardened so moving an active record between organisations or changing a course cannot bypass the destination capacity check. The Python check remains for friendly errors; the database is the concurrency authority once the migration is reviewed and applied.
 
-Cohort member capacity is enforced in the same transaction as insertion/reactivation. Lowering a cohort capacity below current active membership is rejected; it must not silently remove learners.
+Cohort member capacity is enforced in the same transaction as insertion/reactivation. Lowering a cohort capacity below current active membership is rejected; it must not silently remove learners. The proposed migration also adds validated checks for positive learner capacity, non-negative instructor capacity, and valid cohort/programme date ranges; the current read-only preflight found zero violations for these checks.
 
 ### E. AI quota reservations are missing
 
