@@ -259,6 +259,95 @@ def _check_course_access(
         )
 
 
+def _has_active_scoped_course_source(user_id: str, organisation_id: str, course_id: str, enrolment: dict) -> bool:
+    """Require a live, tenant-scoped source for organisation-scoped enrolments.
+
+    Organisation-wide grants are handled separately by course_access.access_type
+    == 'assigned'. Explicit individual assignments remain valid; team/cohort
+    enrolments remain valid only while the learner has a matching active
+    membership and the team/cohort still has this course assigned.
+    """
+    if str(enrolment.get("source_type") or "").strip().lower() == "individual_assignment":
+        return True
+
+    learner_membership = (
+        supabase.table("organisation_members")
+        .select("id")
+        .eq("organisation_id", organisation_id)
+        .eq("user_id", user_id)
+        .eq("role", "learner")
+        .eq("status", "active")
+        .limit(1)
+        .execute()
+    ).data or []
+    if not learner_membership:
+        return False
+
+    cohort_memberships = (
+        supabase.table("cohort_members")
+        .select("cohort_id")
+        .eq("user_id", user_id)
+        .eq("status", "active")
+        .execute()
+    ).data or []
+    cohort_ids = list({str(row["cohort_id"]) for row in cohort_memberships if row.get("cohort_id")})
+    if cohort_ids:
+        valid_cohorts = (
+            supabase.table("cohorts")
+            .select("id")
+            .eq("organisation_id", organisation_id)
+            .in_("id", cohort_ids)
+            .in_("status", ["draft", "upcoming", "active", "ending"])
+            .execute()
+        ).data or []
+        valid_cohort_ids = [str(row["id"]) for row in valid_cohorts]
+        if valid_cohort_ids:
+            cohort_assignments = (
+                supabase.table("cohort_course_assignments")
+                .select("id")
+                .in_("cohort_id", valid_cohort_ids)
+                .eq("course_id", course_id)
+                .eq("status", "active")
+                .limit(1)
+                .execute()
+            ).data or []
+            if cohort_assignments:
+                return True
+
+    team_memberships = (
+        supabase.table("organisation_team_members")
+        .select("team_id")
+        .eq("user_id", user_id)
+        .eq("status", "active")
+        .execute()
+    ).data or []
+    team_ids = list({str(row["team_id"]) for row in team_memberships if row.get("team_id")})
+    if team_ids:
+        valid_teams = (
+            supabase.table("organisation_teams")
+            .select("id")
+            .eq("organisation_id", organisation_id)
+            .eq("status", "active")
+            .in_("id", team_ids)
+            .execute()
+        ).data or []
+        valid_team_ids = [str(row["id"]) for row in valid_teams]
+        if valid_team_ids:
+            team_assignments = (
+                supabase.table("team_course_assignments")
+                .select("id")
+                .in_("team_id", valid_team_ids)
+                .eq("course_id", course_id)
+                .eq("status", "active")
+                .limit(1)
+                .execute()
+            ).data or []
+            if team_assignments:
+                return True
+
+    return False
+
+
 def _check_course_view_access(
     context: PermissionContext,
     course: dict,
@@ -299,17 +388,19 @@ def _check_course_view_access(
                 .limit(1)
                 .execute()
             ).data or []
-            enrolment = (
+            enrolments = (
                 supabase.table("learnora_enrolments")
-                .select("id")
+                .select("id,source_type,cohort_id,organisation_id,status")
                 .eq("course_id", course_id)
                 .eq("user_id", str(context.user_id))
                 .eq("organisation_id", str(organisation_id))
                 .in_("status", ["active", "completed"])
-                .limit(1)
+                .limit(20)
                 .execute()
             ).data or []
-            if grant or enrolment:
+            if grant:
+                return
+            if any(_has_active_scoped_course_source(str(context.user_id), str(organisation_id), course_id, row) for row in enrolments):
                 return
             raise HTTPException(403, "You are not enrolled in or assigned to this course.")
 
@@ -346,10 +437,10 @@ def _check_course_view_access(
             enrolment_result = (
                 supabase
                 .table("learnora_enrolments")
-                .select("id,organisation_id")
+                .select("id,organisation_id,source_type,cohort_id,status")
                 .eq("course_id", course_id)
                 .eq("user_id", str(user_id))
-                .eq("status", "active")
+                .in_("status", ["active", "completed"])
                 .limit(20)
                 .execute()
             )
@@ -362,7 +453,11 @@ def _check_course_view_access(
         for enrolment in enrolment_result.data or []:
             enrolment_org = enrolment.get("organisation_id")
             if organisation_id:
-                if enrolment_org is None or str(enrolment_org) == str(organisation_id):
+                if enrolment_org is None:
+                    return
+                if str(enrolment_org) == str(organisation_id) and _has_active_scoped_course_source(
+                    str(user_id), str(organisation_id), course_id, enrolment
+                ):
                     return
             elif enrolment_org is None:
                 return
