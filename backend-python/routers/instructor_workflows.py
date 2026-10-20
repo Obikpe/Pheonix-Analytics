@@ -66,8 +66,26 @@ def _course_for_instructor(course_id: str, user: CurrentUser, context: Permissio
             raise HTTPException(403, "Permission required: courses.view")
         return course
 
-    # Learnora-owned global courses must not become editable simply because
-    # someone has a generic instructor role.
+    # Learnora-owned courses can be assigned to an organisation through the
+    # course_access relationship. Require an active assignment in the selected
+    # tenant rather than treating catalogue visibility as teaching permission.
+    if (
+        context.organisation_id
+        and context.organisation_role in {"instructor", "admin", "owner"}
+        and context.has_permission("courses.view")
+    ):
+        access = (
+            supabase.table("course_access")
+            .select("id,course_id,organisation_id,access_type,status")
+            .eq("course_id", course_id)
+            .eq("organisation_id", context.organisation_id)
+            .eq("status", "active")
+            .limit(1)
+            .execute()
+        )
+        if access.data:
+            return course
+
     raise HTTPException(403, "You are not assigned to teach this course.")
 
 
