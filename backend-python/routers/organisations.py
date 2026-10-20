@@ -647,7 +647,17 @@ def assign_course_to_member(
         .execute()
     ).data or []
     if existing:
-        return {"success": True, "enrolment": existing[0], "created": False}
+        existing_row = existing[0]
+        if existing_row.get("source_type") != "individual_assignment":
+            updated = (
+                supabase.table("learnora_enrolments")
+                .update({"source_type": "individual_assignment"})
+                .eq("id", existing_row["id"])
+                .execute()
+            ).data or []
+            if updated:
+                existing_row = updated[0]
+        return {"success": True, "enrolment": existing_row, "created": False}
     inserted = supabase.table("learnora_enrolments").insert({
         "user_id": user_id, "course_id": course_id,
         "organisation_id": organisation_id, "status": "active",
@@ -689,11 +699,12 @@ def assign_course_to_organisation(organisation_id: str, body: dict, context: Per
         creator = (supabase.table("learnora_creator_accounts").select("id,status").eq("id", course.get("creator_id")).limit(1).execute()).data
         if not creator or creator[0].get("status") not in {"approved", "active"}:
             raise HTTPException(403, "This creator is not approved for course distribution.")
-    access = (supabase.table("course_access").select("id,status").eq("organisation_id", organisation_id).eq("course_id", course_id).limit(1).execute()).data
+    access = (supabase.table("course_access").select("id,status,access_type").eq("organisation_id", organisation_id).eq("course_id", course_id).limit(1).execute()).data
     now = datetime.now(timezone.utc).isoformat()
-    if not access or access[0].get("status") != "active":
-        if course.get("ownership") != "organisation":
-            ensure_org_capacity(organisation_id, "courses")
+    has_active_access = bool(access and access[0].get("status") == "active")
+    if not has_active_access and course.get("ownership") != "organisation":
+        ensure_org_capacity(organisation_id, "courses")
+    if not has_active_access or access[0].get("access_type") != "assigned":
         if access:
             access_result = supabase.table("course_access").update({"status": "active", "access_type": "assigned", "assigned_by": context.user_id, "assigned_at": now}).eq("id", access[0]["id"]).execute()
             access_row = (access_result.data or access)[0]
