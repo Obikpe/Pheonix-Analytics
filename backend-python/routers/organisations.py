@@ -1491,8 +1491,16 @@ def create_organisation(
     """
     Create a new Learnora organisation.
 
-    Only users with organisations.create may perform this action.
+    Organisation provisioning is a platform-level operation. Tenant-scoped
+    organisation permissions must never allow a customer to create another
+    tenant.
     """
+
+    if not context.is_platform_admin:
+        raise HTTPException(
+            status_code=403,
+            detail="Only an authorised platform provisioning identity can create organisations.",
+        )
 
     name = payload.name.strip()
     slug = _normalise_slug(payload.slug)
@@ -1699,6 +1707,11 @@ def update_organisation(
         )
 
     if payload.is_active is not None:
+        if not context.is_platform_admin:
+            raise HTTPException(
+                status_code=403,
+                detail="Only an authorised platform provisioning identity can change organisation activation status.",
+            )
         updates["is_active"] = payload.is_active
 
     if not updates:
