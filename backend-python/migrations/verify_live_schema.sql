@@ -149,9 +149,9 @@ WHERE organisation_type IS NULL OR organisation_type NOT IN (
     'academy','corporate','university','school','bootcamp','nonprofit','custom','community'
 )
 UNION ALL
-SELECT 'quizzes_below_70_percent_or_missing_score', count(*)
+SELECT 'quizzes_with_invalid_passing_score', count(*)
 FROM public.quizzes
-WHERE passing_score IS NULL OR passing_score < 70
+WHERE passing_score IS NULL OR passing_score < 70 OR passing_score > 100
 UNION ALL
 SELECT 'cohorts_over_current_capacity', count(*)
 FROM public.cohorts c
