@@ -54,7 +54,15 @@ The team endpoints previously upserted a user into `organisation_team_members` a
 
 The live schema has cohort course assignments, but no `team_course_assignments` table. A team-first corporate workflow needs an explicit relation rather than pretending team assignments are cohort assignments. Proposed migration 023 introduces this table; review it for tenant/course ownership checks and verify it against the live schema before applying.
 
-### D. Capacity checks are race-prone in Python alone
+### D. Scoped course assignments were being treated as organisation-wide access
+
+The backend used the same active course_access row for organisation-wide, individual, team and cohort assignments. Course-content reads treated any active row as an organisation-wide grant, so a team/cohort assignment could grant every learner in that organisation access to the course. This is a real authorisation gap, even though the current live snapshot has no organisation enrolments.
+
+The backend now distinguishes course_access.access_type = 'assigned' (explicit organisation-wide access) from access_type = 'scoped' (licence/access record supporting individual/team/cohort assignments). Course-content reads do not treat scoped rows as organisation-wide grants. Scoped access requires an active learner membership plus a valid individual assignment, or a matching active cohort/team membership and course assignment. A removed/suspended team/cohort membership therefore no longer authorises content just because an enrolment row remains. Explicit organisation-wide assignment upgrades a scoped record to assigned; scoped workflows do not downgrade an existing organisation-wide grant.
+
+The organisation, team and cohort assignment routes also scope enrolment de-duplication to the same organisation. A user enrolled in the same course under a different tenant no longer prevents creation of the correct tenant-specific enrolment. Tests cover scoped grants, team/cohort membership requirements and inactive learner membership.
+
+### E. Capacity checks are race-prone in Python alone
 
 The current `services/capacity.py` reads current counts and then the route writes a new row. Concurrent requests can both pass that check. The live schema also contains `learnora_capacity_reservations` with resource type, quantity, used quantity, status and expiry, but the inspected capacity service reads live table counts and contract entitlements rather than using that table; no live capacity trigger/routine was found. Before deciding whether that table represents reserved contract allocation or should participate in enforcement, inspect its writers and contract workflow. Do not double-count its quantities alongside live member/course counts.
 
@@ -62,27 +70,27 @@ The proposed SQL capacity trigger in migration 023 serialises capacity checks wi
 
 Cohort member capacity is enforced in the same transaction as insertion/reactivation. Lowering a cohort capacity below current active membership is rejected; it must not silently remove learners. The proposed migration also adds validated checks for positive learner capacity, non-negative instructor capacity, and valid cohort/programme date ranges; the current read-only preflight found zero violations for these checks.
 
-### E. AI quota reservations are missing
+### F. AI quota reservations are missing
 
 The live schema has `learnora_ai_limits` and `ai_usage_logs`, but no `learnora_ai_quota_reservations` or `reserve_learnora_ai_quota` routine at inspection time. The proposed migration backfills usage logs and adds atomic reservations. Before applying, test quota identity/lock-key consistency, daily/monthly boundaries, per-user versus organisation aggregation, failed AI requests, and duplicate retries. Reservation must be recorded before calling the provider, and failures must follow an explicit policy so retries cannot evade limits.
 
-### F. RLS enabled with no table-specific policies
+### G. RLS enabled with no table-specific policies
 
-The Security Advisor reported numerous tables with RLS enabled but no policies, including organisation tables. A read-only grant audit confirmed that `anon` and `authenticated` currently have broad table privileges (including SELECT/INSERT/UPDATE/DELETE) on the inspected organisation, cohort, course-access, contract, enrolment and AI-limit tables. With RLS enabled and no policies, these roles are currently default-denied at the row-policy layer; this is not proof of current row exposure. However, broad grants create a latent risk if a policy is added later. The backend uses a privileged Supabase client, so RLS does not replace application tenant checks for backend requests. Do not add broad `USING (true)` policies. The proposed migration now explicitly revokes table privileges from `PUBLIC`, `anon` and `authenticated` for the organisation, contract, enrolment, AI quota, course mapping and assessment/progress tables, while retaining the backend's server-side `service_role` access. The inspected RLS policy count is zero, so browser roles are already denied by RLS; the revokes remove the latent broad-grant risk if someone later adds a policy. Any future direct-client path must be deliberately designed with narrow grants and RLS policies rather than relying on the current broad defaults.
+The Security Advisor reported numerous tables with RLS enabled but no policies, including organisation tables. A read-only grant audit confirmed that `anon` and `authenticated` currently have broad table privileges (including SELECT/INSERT/UPDATE/DELETE) on the inspected organisation, cohort, course-access, contract, enrolment and AI-limit tables. With RLS enabled and no policies, these roles are currently default-denied at the row-policy layer; this is not proof of current row exposure. However, broad grants create a latent risk if a policy is added later. The backend uses a privileged Supabase client, so RLS does not replace application tenant checks for backend requests. Do not add broad `USING (true)` policies. The proposed migration explicitly revokes table privileges from `anon` and `authenticated` for the organisation, course catalogue/creator, contract, enrolment, AI quota, course mapping, discussion/learning-path and assessment/progress tables, while retaining the backend's server-side `service_role` access. The inspected tables had no `PUBLIC` table grants; the migration does not claim to revoke grants that were not present. The inspected RLS policy count is zero, so browser roles are already denied by RLS; the revokes remove the latent broad-grant risk if someone later adds a policy. Any future direct-client path must be deliberately designed with narrow grants and RLS policies rather than relying on the current broad defaults.
 
 Reference: https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy
 
-### G. Mutable search path warnings
+### H. Mutable search path warnings
 
 The Security Advisor reported three functions with mutable `search_path`. The proposed migration pins `learnora_set_updated_at`, which is used by organisation and Learnora course/cohort records, plus the new security-definer functions. The other two findings (`set_updated_at`, also used by internal staff/team tables, and `update_admins_updated_at`, used by internal administrator records) remain outside this organisation-workspace scope. Re-run the Security Advisor after migration to confirm the remaining findings are understood and tracked.
 
-### H. Resource-scoped roles need a representation
+### I. Resource-scoped roles need a representation
 
 The organisation membership role check currently represents `owner`, `admin`, `instructor`, and `learner`. Team manager, cohort manager and programme manager should not become tenant-wide admin roles just to grant local responsibility. No equivalent customer-organisation resource-role assignment table was found; the existing `learnora_staff_role_assignments` is for internal staff and is out of scope.
 
 **Proposed additive table for the role/permission implementation step:** `learnora_organisation_resource_assignments` with `id uuid primary key`, `organisation_id uuid not null references organisations(id)`, `resource_type text` constrained to `team|cohort|programme`, `resource_id uuid not null`, `user_id uuid not null references users(id)`, `resource_role text` constrained by resource type (`team: lead|manager`; `cohort: tutor|manager`; `programme: tutor|manager`), `status active|inactive`, `created_by`, `created_at`, and `updated_at`; unique key `(organisation_id, resource_type, resource_id, user_id, resource_role)`. Add an index on `(organisation_id, resource_type, resource_id, status)` and `(user_id, status)`. A trigger must prove the resource belongs to `organisation_id` and the assignee is an active member of that same organisation. Keep inactive assignments for audit/history; reactivation updates the existing unique row. Backend permission resolution must read this table in the workflow implementation step before these roles are treated as authorising any action. Keep contract entitlements separate from permissions.
 
-### I. Migration history and deployment target need reconciliation
+### J. Migration history and deployment target need reconciliation
 
 Only nine timestamped migration records were registered in the live project. An initial mapping found exact registered-name matches for the organisation portal and migrations 017–022, while 001–015 and the learner-onboarding record remain unresolved against the repository chain. The live schema also lacks five legacy tables from 001 while newer Learnora equivalents exist. This mismatch is documented, but a complete applied/not-applied mapping still requires reviewing each older script and its data lineage. Do not manually mark a migration applied or replay an old SQL file blindly. Verify the Vercel backend project reference before production rollout.
 
