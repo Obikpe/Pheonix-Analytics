@@ -646,6 +646,11 @@ FOR EACH ROW EXECUTE FUNCTION public.learnora_sync_org_membership_status();
 REVOKE ALL PRIVILEGES ON TABLE
     public.organisations,
     public.organisation_members,
+    public.users,
+    public.learnora_courses,
+    public.learnora_creator_accounts,
+    public.learnora_discussions,
+    public.learnora_learning_paths,
     public.organisation_teams,
     public.organisation_team_members,
     public.cohorts,
