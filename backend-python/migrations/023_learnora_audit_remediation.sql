@@ -574,7 +574,7 @@ BEGIN
     IF OLD.status = 'active'
        AND (NEW.status <> 'active' OR NEW.organisation_id <> OLD.organisation_id) THEN
         UPDATE public.cohort_members cm
-        SET status = 'inactive'
+        SET status = 'withdrawn'
         FROM public.cohorts c
         WHERE cm.cohort_id = c.id
           AND c.organisation_id = OLD.organisation_id
@@ -593,17 +593,29 @@ BEGIN
         SET manager_user_id = NULL
         WHERE organisation_id = OLD.organisation_id
           AND manager_user_id = OLD.user_id;
+
+        UPDATE public.learnora_enrolments
+        SET status = 'suspended'
+        WHERE organisation_id = OLD.organisation_id
+          AND user_id = OLD.user_id
+          AND status = 'active';
     ELSIF OLD.status = 'active'
        AND NEW.status = 'active'
        AND OLD.role = 'learner'
        AND NEW.role <> 'learner' THEN
         UPDATE public.cohort_members cm
-        SET status = 'inactive'
+        SET status = 'withdrawn'
         FROM public.cohorts c
         WHERE cm.cohort_id = c.id
           AND c.organisation_id = OLD.organisation_id
           AND cm.user_id = OLD.user_id
           AND cm.status = 'active';
+
+        UPDATE public.learnora_enrolments
+        SET status = 'suspended'
+        WHERE organisation_id = OLD.organisation_id
+          AND user_id = OLD.user_id
+          AND status = 'active';
     END IF;
     RETURN NEW;
 END;
