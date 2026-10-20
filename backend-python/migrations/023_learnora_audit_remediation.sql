@@ -549,10 +549,13 @@ BEGIN
         IF NEW.status = 'active' AND NOT COALESCE(v_workspace_active, false) THEN
             RAISE EXCEPTION 'Inactive organisations cannot receive active cohort course assignments' USING ERRCODE = '23514';
         END IF;
-        SELECT ownership, organisation_id INTO v_course_owner, v_course_org
+        SELECT ownership, organisation_id, status INTO v_course_owner, v_course_org, v_resource_status
         FROM public.learnora_courses WHERE id = NEW.course_id;
         IF NOT FOUND THEN
             RAISE EXCEPTION 'Course does not exist' USING ERRCODE = '23503';
+        END IF;
+        IF NEW.status = 'active' AND v_resource_status <> 'published' THEN
+            RAISE EXCEPTION 'Only published courses can be actively assigned' USING ERRCODE = '23514';
         END IF;
         IF v_course_owner = 'organisation' AND v_course_org <> v_org THEN
             RAISE EXCEPTION 'Organisation-owned course cannot be assigned across organisations'
@@ -570,20 +573,32 @@ BEGIN
         IF NEW.status = 'active' AND NOT COALESCE(v_workspace_active, false) THEN
             RAISE EXCEPTION 'Inactive organisations cannot receive active team course assignments' USING ERRCODE = '23514';
         END IF;
-        SELECT ownership, organisation_id INTO v_course_owner, v_course_org
+        SELECT ownership, organisation_id, status INTO v_course_owner, v_course_org, v_resource_status
         FROM public.learnora_courses WHERE id = NEW.course_id;
         IF NOT FOUND THEN
             RAISE EXCEPTION 'Course does not exist' USING ERRCODE = '23503';
+        END IF;
+        IF NEW.status = 'active' AND v_resource_status <> 'published' THEN
+            RAISE EXCEPTION 'Only published courses can be actively assigned' USING ERRCODE = '23514';
         END IF;
         IF v_course_owner = 'organisation' AND v_course_org <> v_org THEN
             RAISE EXCEPTION 'Organisation-owned course cannot be assigned across organisations'
                 USING ERRCODE = '23514';
         END IF;
     ELSIF TG_TABLE_NAME = 'course_access' THEN
-        SELECT ownership, organisation_id INTO v_course_owner, v_course_org
+        SELECT ownership, organisation_id, status INTO v_course_owner, v_course_org, v_resource_status
         FROM public.learnora_courses WHERE id = NEW.course_id;
         IF NOT FOUND THEN
             RAISE EXCEPTION 'Course does not exist' USING ERRCODE = '23503';
+        END IF;
+        IF NEW.status = 'active' AND v_resource_status <> 'published' THEN
+            RAISE EXCEPTION 'Only published courses can be actively assigned' USING ERRCODE = '23514';
+        END IF;
+        IF NEW.status = 'active' THEN
+            SELECT is_active INTO v_workspace_active FROM public.organisations WHERE id = NEW.organisation_id;
+            IF NOT COALESCE(v_workspace_active, false) THEN
+                RAISE EXCEPTION 'Inactive organisations cannot receive active course access' USING ERRCODE = '23514';
+            END IF;
         END IF;
         IF v_course_owner = 'organisation' AND v_course_org <> NEW.organisation_id THEN
             RAISE EXCEPTION 'Organisation-owned course access must stay within its owning organisation'
