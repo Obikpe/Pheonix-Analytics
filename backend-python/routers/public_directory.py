@@ -6,6 +6,7 @@ to be discoverable.
 """
 from fastapi import APIRouter, HTTPException
 from urllib.parse import urlparse
+from uuid import UUID
 
 from .auth import supabase
 
@@ -33,6 +34,7 @@ def _is_public_course(course: dict, organisation_map: dict, creator_map: dict) -
 
 def _public_course_payload(course: dict) -> dict:
     settings = course.get("settings") or {}
+    topics = settings.get("topics") if isinstance(settings.get("topics"), list) else []
     is_free = settings.get("is_free") is True or settings.get("access_type") == "free" or settings.get("price") == 0
     return {
         "id": course.get("id"),
@@ -47,23 +49,23 @@ def _public_course_payload(course: dict) -> dict:
         "ownership": course.get("ownership"),
         "thumbnail_url": course.get("thumbnail_url"),
         "estimated_hours": course.get("estimated_hours"),
-        "track": str(settings.get("track") or "").strip() or None,
         "created_at": course.get("created_at"),
         "settings": {
             "public_catalogue": True,
             "is_free": bool(is_free),
             "access_type": "free" if is_free else "restricted",
-            "track": str(settings.get("track") or "").strip() or None,
-            "topics": [
-                str(topic).strip()[:120]
-                for topic in (settings.get("topics") or [])
-                if str(topic).strip()
-            ][:30],
         },
     }
 
 
 def _public_course_lookup(course_id: str) -> dict:
+    # Course primary keys are UUIDs. Legacy local identifiers such as "ws_03"
+    # are not database IDs and should return a clean 404, not a Postgres 500.
+    try:
+        UUID(course_id)
+    except (ValueError, TypeError, AttributeError):
+        raise HTTPException(404, "Course not found.") from None
+
     result = (
         supabase.table("learnora_courses")
         .select("id,organisation_id,creator_id,title,slug,short_description,description,level,status,ownership,thumbnail_url,estimated_hours,settings,created_at")
