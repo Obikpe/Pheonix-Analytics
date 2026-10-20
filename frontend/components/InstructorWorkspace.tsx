@@ -11,12 +11,15 @@ type Lesson = { id: string; module_id: string; title: string; slug?: string; des
 type Module = { id: string; course_id: string; title: string; description?: string; order_index?: number; status?: string; lessons: Lesson[] };
 type VideoRecord = { id: string; provider?: string; title?: string; external_video_id?: string; status?: string };
 type ResourceRecord = { id: string; title: string; resource_type?: string; external_url?: string; storage_path?: string };
-type Tab = 'overview' | 'courses' | 'curriculum' | 'review' | 'ai' | 'creator';
+type Cohort = { id: string; name: string; description?: string; status?: string; start_date?: string; end_date?: string; capacity?: number };
+type CohortMember = { id?: string; user_id?: string; name?: string; full_name?: string; email?: string; status?: string; role?: string };
+type Tab = 'overview' | 'courses' | 'curriculum' | 'cohorts' | 'review' | 'ai' | 'creator';
 type Notice = { kind: 'success' | 'error'; text: string };
 const nav: { id: Tab; label: string; icon: LucideIcon; group: string }[] = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard, group: 'Teaching' },
   { id: 'courses', label: 'My courses', icon: LibraryBig, group: 'Teaching' },
   { id: 'curriculum', label: 'Curriculum studio', icon: Layers3, group: 'Teaching' },
+  { id: 'cohorts', label: 'Cohorts & learners', icon: UsersRound, group: 'Teaching' },
   { id: 'review', label: 'Learner review', icon: ClipboardCheck, group: 'Teaching' },
   { id: 'ai', label: 'AI teaching assistant', icon: Sparkles, group: 'Tools' },
   { id: 'creator', label: 'Creator studio', icon: GraduationCap, group: 'Tools' },
@@ -48,6 +51,11 @@ export default function InstructorWorkspace() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [courses, setCourses] = useState<Course[]>([]);
+  const [cohorts, setCohorts] = useState<Cohort[]>([]);
+  const [cohortMembers, setCohortMembers] = useState<CohortMember[]>([]);
+  const [selectedCohortId, setSelectedCohortId] = useState('');
+  const [showCohortForm, setShowCohortForm] = useState(false);
+  const [cohortForm, setCohortForm] = useState({ name: '', description: '', start_date: '', end_date: '', capacity: '' });
   const [selectedCourseId, setSelectedCourseId] = useState('');
   const [modules, setModules] = useState<Module[]>([]);
   const [selectedLessonId, setSelectedLessonId] = useState('');
@@ -71,6 +79,7 @@ export default function InstructorWorkspace() {
   const [aiMode, setAiMode] = useState<'instructor' | 'content_generation'>('instructor');
 
   const selectedCourse = useMemo(() => courses.find(c => c.id === selectedCourseId) || null, [courses, selectedCourseId]);
+  const selectedCohort = useMemo(() => cohorts.find(c => c.id === selectedCohortId) || null, [cohorts, selectedCohortId]);
   const selectedLesson = useMemo(() => modules.flatMap(m => m.lessons || []).find(l => l.id === selectedLessonId) || null, [modules, selectedLessonId]);
   const selectedLessonModule = useMemo(() => modules.find(m => m.lessons.some(l => l.id === selectedLessonId)) || modules[0] || null, [modules, selectedLessonId]);
   const targetModule = useMemo(() => modules.find(m => m.id === newLessonModuleId) || selectedLessonModule, [modules, newLessonModuleId, selectedLessonModule]);
@@ -92,6 +101,30 @@ export default function InstructorWorkspace() {
       setCourses([]);
       setNotice({ kind: 'error', text: error instanceof Error ? error.message : 'Courses could not be loaded. Check your instructor permissions.' });
     } finally { setLoading(false); }
+  }, []);
+
+  const loadCohorts = useCallback(async (authToken: string, orgId: string) => {
+    if (!orgId) { setCohorts([]); setCohortMembers([]); setSelectedCohortId(''); return; }
+    try {
+      const body = await api<any>('/api/organisations/' + encodeURIComponent(orgId) + '/cohorts', authToken);
+      const result = rows<Cohort>(body, 'cohorts');
+      setCohorts(result);
+      setSelectedCohortId(current => current && result.some(c => c.id === current) ? current : result[0]?.id || '');
+    } catch (error) {
+      setCohorts([]); setCohortMembers([]);
+      setNotice({ kind: 'error', text: error instanceof Error ? error.message : 'Cohorts could not be loaded for this organisation.' });
+    }
+  }, []);
+
+  const loadCohortMembers = useCallback(async (authToken: string, orgId: string, cohortId: string) => {
+    if (!orgId || !cohortId) { setCohortMembers([]); return; }
+    try {
+      const body = await api<any>('/api/organisations/' + encodeURIComponent(orgId) + '/cohorts/' + encodeURIComponent(cohortId) + '/members', authToken);
+      setCohortMembers(rows<CohortMember>(body, 'members'));
+    } catch (error) {
+      setCohortMembers([]);
+      setNotice({ kind: 'error', text: error instanceof Error ? error.message : 'Learner memberships could not be loaded.' });
+    }
   }, []);
 
   const loadStructure = useCallback(async (authToken: string, courseId: string) => {
@@ -124,8 +157,11 @@ export default function InstructorWorkspace() {
     setOrganisationId(localStorage.getItem('phx_organisation_id') || localStorage.getItem('phx_organization_id') || localStorage.getItem('phx_org_id') || '');
     setAuthLoading(false);
     void loadCourses(stored);
-  }, [router, loadCourses]);
+    const orgId = localStorage.getItem('phx_organisation_id') || localStorage.getItem('phx_organization_id') || localStorage.getItem('phx_org_id') || '';
+    if (orgId) void loadCohorts(stored, orgId);
+  }, [router, loadCourses, loadCohorts]);
   useEffect(() => { if (token && selectedCourseId) void loadStructure(token, selectedCourseId); else setModules([]); }, [token, selectedCourseId, loadStructure]);
+  useEffect(() => { if (token && organisationId && selectedCohortId) void loadCohortMembers(token, organisationId, selectedCohortId); else setCohortMembers([]); }, [token, organisationId, selectedCohortId, loadCohortMembers]);
   useEffect(() => { if (token && selectedLessonId) void loadMedia(token, selectedLessonId); else { setVideos([]); setResources([]); } }, [token, selectedLessonId, loadMedia]);
 
   const refresh = () => { if (token) void loadCourses(token); if (token && selectedCourseId) void loadStructure(token, selectedCourseId); };
@@ -142,6 +178,19 @@ export default function InstructorWorkspace() {
       setCourses(current => [course, ...current.filter(c => c.id !== course.id)]); setSelectedCourseId(course.id); setShowCourseForm(false); setCourseForm({ title: '', short_description: '', description: '', level: 'beginner', track: '', estimated_hours: '4' }); setTab('curriculum');
       setNotice({ kind: 'success', text: 'Course draft created. Add a module and lessons before publishing.' });
     } catch (error) { setNotice({ kind: 'error', text: error instanceof Error ? error.message : 'Course creation failed. Your account may not have creator permissions.' }); }
+    finally { setBusy(false); }
+  };
+  const createCohort = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!token || !organisationId || !cohortForm.name.trim()) return;
+    setBusy(true);
+    try {
+      const body = await api<any>('/api/organisations/' + encodeURIComponent(organisationId) + '/cohorts', token, { method: 'POST', body: JSON.stringify({ name: cohortForm.name.trim(), description: cohortForm.description.trim(), start_date: cohortForm.start_date || null, end_date: cohortForm.end_date || null, capacity: cohortForm.capacity ? Number(cohortForm.capacity) : null, status: 'upcoming' }) });
+      const cohort = body.cohort as Cohort;
+      setCohorts(current => [cohort, ...current.filter(c => c.id !== cohort.id)]);
+      setSelectedCohortId(cohort.id); setShowCohortForm(false); setCohortForm({ name: '', description: '', start_date: '', end_date: '', capacity: '' });
+      setNotice({ kind: 'success', text: 'Cohort created.' });
+    } catch (error) { setNotice({ kind: 'error', text: error instanceof Error ? error.message : 'Cohort creation failed. Your role may not have organisation-update permission.' }); }
     finally { setBusy(false); }
   };
   const createModule = async (event: FormEvent) => {
@@ -225,12 +274,20 @@ export default function InstructorWorkspace() {
     </div>}
   </div>;
 
+  const cohortsView = <div><Heading eyebrow="Programme delivery" title="Cohorts & learners" detail="View the cohorts in your organisation, inspect membership records, and start a new cohort when your permissions allow it." action="Create cohort" onAction={() => setShowCohortForm(true)}/>
+    {!organisationId ? <Empty icon={UsersRound} title="Organisation context not available" detail="Cohort records are tenant-scoped. This account has no organisation ID in its current session context, so the page will not guess which learners it should display."/> : <>
+      {showCohortForm && <form onSubmit={createCohort} className="mb-5 rounded-2xl border border-[#d7ad35]/25 bg-[#0e1319] p-5"><h2 className="text-sm font-semibold text-white">Create a cohort</h2><p className="mt-1 text-xs leading-5 text-slate-500">The backend enforces organisation scope, capacity and permissions.</p><div className="mt-4 grid gap-3 md:grid-cols-2"><Field label="Cohort name"><input required minLength={2} maxLength={150} value={cohortForm.name} onChange={e => setCohortForm(s => ({...s, name:e.target.value}))} className={inputClass}/></Field><Field label="Capacity (optional)"><input type="number" min="1" value={cohortForm.capacity} onChange={e => setCohortForm(s => ({...s, capacity:e.target.value}))} className={inputClass}/></Field><Field label="Start date"><input type="date" value={cohortForm.start_date} onChange={e => setCohortForm(s => ({...s, start_date:e.target.value}))} className={inputClass}/></Field><Field label="End date"><input type="date" min={cohortForm.start_date || undefined} value={cohortForm.end_date} onChange={e => setCohortForm(s => ({...s, end_date:e.target.value}))} className={inputClass}/></Field><div className="md:col-span-2"><Field label="Description"><textarea rows={2} value={cohortForm.description} onChange={e => setCohortForm(s => ({...s, description:e.target.value}))} className={inputClass}/></Field></div></div><div className="mt-4 flex justify-end gap-2"><button type="button" onClick={() => setShowCohortForm(false)} className="border border-white/10 px-4 py-2.5 text-xs text-slate-300">Cancel</button><button disabled={busy} className={buttonClass}>Create cohort <Plus size={13}/></button></div></form>}
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,.8fr)_minmax(0,1.2fr)]"><section className="rounded-2xl border border-white/[.09] bg-[#0e1319] p-4"><div className="mb-3 flex items-center justify-between"><h2 className="text-sm font-semibold text-white">Cohort records</h2><button onClick={() => void loadCohorts(token, organisationId)} className="text-xs text-[#f2d477]">Refresh</button></div>{cohorts.length ? <div className="space-y-2">{cohorts.map(cohort => <button key={cohort.id} onClick={() => setSelectedCohortId(cohort.id)} className={'w-full rounded-xl border p-4 text-left ' + (cohort.id === selectedCohortId ? 'border-[#d7ad35]/40 bg-[#d7ad35]/[.06]' : 'border-white/[.08] hover:border-white/20')}><div className="flex items-start justify-between gap-2"><span className="text-sm font-semibold text-slate-200">{cohort.name}</span><Status value={cohort.status}/></div><p className="mt-2 text-[10px] leading-5 text-slate-500">{cohort.start_date ? dateLabel(cohort.start_date) : 'Start date not set'}{cohort.end_date ? ' – ' + dateLabel(cohort.end_date) : ''}</p><p className="mt-1 text-[10px] text-slate-600">{cohort.capacity ? 'Capacity: ' + cohort.capacity : 'Capacity not specified'}</p></button>)}</div> : <p className="py-6 text-xs leading-5 text-slate-500">No cohorts were returned for this organisation. Create one if your role permits it, or ask the organisation administrator for access.</p>}</section>
+      <section className="rounded-2xl border border-white/[.09] bg-[#0e1319] p-4 sm:p-5"><div className="flex items-center justify-between gap-3"><div><p className="text-[10px] uppercase tracking-[.14em] text-[#f2d477]">Selected cohort</p><h2 className="mt-2 text-base font-semibold text-white">{selectedCohort?.name || 'Select a cohort'}</h2></div>{selectedCohort && <Status value={selectedCohort.status}/>}</div>{selectedCohort ? cohortMembers.length ? <div className="mt-4 divide-y divide-white/[.07]">{cohortMembers.map((member, i) => <div key={member.id || member.user_id || i} className="flex items-center gap-3 py-3"><span className="grid size-9 place-items-center rounded-full bg-white/[.05] text-xs font-semibold text-[#f2d477]">{(member.name || member.full_name || member.email || 'L').charAt(0).toUpperCase()}</span><div className="min-w-0 flex-1"><p className="truncate text-xs font-semibold text-slate-200">{member.name || member.full_name || 'Cohort member'}</p><p className="mt-1 truncate text-[10px] text-slate-500">{member.email || member.user_id || 'Member identity not returned'}</p></div><Status value={member.status || member.role}/></div>)}</div> : <p className="mt-5 text-xs leading-5 text-slate-500">No member records were returned for this cohort, or the membership list is still loading.</p> : <p className="mt-5 text-xs leading-5 text-slate-500">Choose a cohort to inspect its actual membership records.</p>}</section></div>
+    </>}
+  </div>;
+
   const reviewView = <div><Heading eyebrow="Assessment and feedback" title="Learner review" detail="Review submissions, provide actionable feedback, and support demonstrated skill development."/><Empty icon={MessageSquareText} title="Submission review needs a backend endpoint" detail="The current backend exposes learner assignment submission, but no instructor-scoped list of submissions or grading/feedback write endpoint was found in the routes inspected for this task. I have not invented submissions or used an unsafe direct database read. Once permission-checked endpoints exist, this section can list pending work, show evidence, and save scores and feedback."/></div>;
   const aiView = <div><Heading eyebrow="AI-assisted teaching" title="AI teaching assistant" detail="Plan lessons, clarify learning outcomes, draft rubrics, and prepare teaching resources for human review."/><div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_300px]"><section className="rounded-2xl border border-white/[.09] bg-[#0e1319] p-5 sm:p-6"><div className="flex flex-wrap gap-2">{[{id:'instructor' as const,label:'Instructor support',detail:'Teaching plans and learner support'},{id:'content_generation' as const,label:'Content generation',detail:'Lesson and assessment drafts'}].map(m=><button key={m.id} onClick={()=>{setAiMode(m.id);setAiOutput('');}} className={'rounded-xl border px-4 py-3 text-left '+(aiMode===m.id?'border-[#d7ad35]/40 bg-[#d7ad35]/10':'border-white/10 bg-[#080b0f]')}><span className={'block text-xs font-semibold '+(aiMode===m.id?'text-[#f2d477]':'text-slate-200')}>{m.label}</span><span className="mt-1 block text-[10px] text-slate-500">{m.detail}</span></button>)}</div><form onSubmit={askAi} className="mt-5"><Field label="What are you preparing?"><textarea required rows={5} maxLength={12000} value={aiPrompt} onChange={e=>setAiPrompt(e.target.value)} className={inputClass} placeholder="Describe the topic, learner level, learning objective and output you need…"/></Field><div className="mt-3 flex flex-wrap items-center justify-between gap-3"><p className="max-w-lg text-[10px] leading-5 text-slate-500">AI output is a draft, not verified course content. Review accuracy, accessibility and assessment fairness before sharing.</p><button disabled={aiBusy||!aiPrompt.trim()} className={buttonClass}>{aiBusy?'Preparing…':'Generate draft'}<Send size={14}/></button></div></form>{aiOutput&&<div className="mt-5 rounded-xl border border-[#d7ad35]/20 bg-[#080b0f] p-4"><div className="mb-3 flex items-center justify-between gap-3"><h3 className="text-sm font-semibold text-white">Generated draft</h3><button type="button" onClick={()=>navigator.clipboard?.writeText(aiOutput)} className="text-xs text-[#f2d477]">Copy text</button></div><pre className="whitespace-pre-wrap break-words font-sans text-sm leading-6 text-slate-300">{aiOutput}</pre></div>}</section><aside className="h-fit rounded-2xl border border-white/[.09] bg-[#0e1319] p-5"><Sparkles size={20} className="text-[#f2d477]"/><h2 className="mt-3 text-sm font-semibold text-white">Useful starting prompts</h2><div className="mt-3 space-y-2">{['Create measurable learning outcomes for this topic.','Draft a lesson plan with examples and a short knowledge check.','Build a marking rubric that rewards reasoning and evidence.','Create differentiated practice for beginner and intermediate learners.','Review this assignment brief for ambiguity and accessibility.'].map(p=><button key={p} onClick={()=>setAiPrompt(p)} className="w-full rounded-lg border border-white/[.07] p-3 text-left text-xs leading-5 text-slate-300 hover:border-[#d7ad35]/30">{p}</button>)}</div></aside></div></div>;
   const creatorView = <div><Heading eyebrow="Independent creator tools" title="Creator studio" detail="Independent publishing and creator finance are separate from ordinary instructor access and depend on creator approval and payment infrastructure."/><div className="grid gap-4 md:grid-cols-2"><section className="rounded-2xl border border-white/[.09] bg-[#0e1319] p-6"><GraduationCap size={22} className="text-[#f2d477]"/><h2 className="mt-4 text-base font-semibold text-white">Creator approval and products</h2><p className="mt-2 text-sm leading-6 text-slate-400">The product document defines application, review, approval, product creation and publication. No creator-application status endpoint was found in the routes inspected for this page.</p><button onClick={()=>setTab('courses')} className="mt-5 inline-flex items-center gap-2 border border-white/10 px-4 py-2.5 text-xs font-semibold text-slate-200 hover:border-[#d7ad35]/40">Return to courses <ArrowRight size={14}/></button></section><section className="rounded-2xl border border-white/[.09] bg-[#0e1319] p-6"><Activity size={22} className="text-[#f2d477]"/><h2 className="mt-4 text-base font-semibold text-white">Earnings and payouts</h2><p className="mt-2 text-sm leading-6 text-slate-400">No creator earnings or payout API was found in the routes inspected. Sales and payout totals will not be fabricated; this needs authoritative transaction-backed endpoints.</p></section></div></div>;
 
   const activeLabel = nav.find(n=>n.id===tab)?.label||'Overview';
-  const content: Record<Tab, ReactNode> = { overview, courses: courseList, curriculum, review: reviewView, ai: aiView, creator: creatorView };
+  const content: Record<Tab, ReactNode> = { overview, courses: courseList, curriculum, cohorts: cohortsView, review: reviewView, ai: aiView, creator: creatorView };
   const sidebar = <><div className="flex h-[76px] items-center gap-3 border-b border-white/[.08] px-5"><span className="grid size-10 place-items-center rounded-xl border border-[#d7ad35]/25 bg-[#d7ad35]/10 text-[#f2d477]"><GraduationCap size={21}/></span><div><p className="font-serif text-base text-white">Learnora <span className="text-[#f2d477]">ME</span></p><p className="mt-0.5 text-[9px] uppercase tracking-[.15em] text-slate-500">Instructor workspace</p></div></div><nav className="flex-1 overflow-y-auto px-3 py-5">{['Teaching','Tools'].map(group=><div key={group} className="mb-6"><p className="px-3 pb-2 text-[9px] font-bold uppercase tracking-[.15em] text-slate-600">{group}</p><div className="space-y-1">{nav.filter(n=>n.group===group).map(n=><button key={n.id} onClick={()=>{setTab(n.id);setMobileOpen(false);}} className={'flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-xs font-medium transition '+(tab===n.id?'bg-[#d7ad35]/10 text-[#f2d477]':'text-slate-400 hover:bg-white/[.04] hover:text-white')}><n.icon size={16}/><span>{n.label}</span></button>)}</div></div>)}</nav><div className="border-t border-white/[.08] p-3"><div className="flex items-center gap-3 px-2 py-2"><span className="grid size-9 place-items-center rounded-full bg-white/[.06] text-xs font-semibold text-[#f2d477]">{(user.name||user.email||'I').charAt(0).toUpperCase()}</span><div className="min-w-0 flex-1"><p className="truncate text-xs font-semibold text-slate-200">{user.name||'Instructor'}</p><p className="truncate text-[10px] text-slate-600">{user.email||'Signed-in account'}</p></div><button aria-label="Log out" onClick={logout} className="p-2 text-slate-500 hover:text-white"><LogOut size={15}/></button></div></div></>;
   if (authLoading) return <div className="grid min-h-screen place-items-center bg-[#07090c] text-sm text-slate-400">Opening instructor workspace…</div>;
   return <div className="min-h-screen bg-[#07090c] text-slate-100">
