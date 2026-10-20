@@ -154,14 +154,14 @@ ORGANISATION_TYPES = {
     "nonprofit", "custom", "community",
 }
 ORGANISATION_CAPABILITIES = {
-    "academy": {"instructor_led": True, "cohorts": True, "teams": True, "individual_course_assignment": True, "team_course_assignment": True},
-    "bootcamp": {"instructor_led": True, "cohorts": True, "teams": True, "individual_course_assignment": True, "team_course_assignment": True},
-    "community": {"instructor_led": True, "cohorts": True, "teams": True, "individual_course_assignment": True, "team_course_assignment": True},
-    "corporate": {"instructor_led": False, "cohorts": False, "teams": True, "individual_course_assignment": True, "team_course_assignment": True},
-    "university": {"instructor_led": True, "cohorts": True, "teams": True, "individual_course_assignment": True, "team_course_assignment": True},
-    "school": {"instructor_led": True, "cohorts": True, "teams": True, "individual_course_assignment": True, "team_course_assignment": True},
-    "nonprofit": {"instructor_led": True, "cohorts": True, "teams": True, "individual_course_assignment": True, "team_course_assignment": True},
-    "custom": {"instructor_led": True, "cohorts": True, "teams": True, "individual_course_assignment": True, "team_course_assignment": True},
+    "academy": {"instructor_led": True, "programmes": True, "cohorts": True, "teams": True, "individual_course_assignment": True, "team_course_assignment": True},
+    "bootcamp": {"instructor_led": True, "programmes": True, "cohorts": True, "teams": True, "individual_course_assignment": True, "team_course_assignment": True},
+    "community": {"instructor_led": True, "programmes": True, "cohorts": True, "teams": True, "individual_course_assignment": True, "team_course_assignment": True},
+    "corporate": {"instructor_led": False, "programmes": False, "cohorts": False, "teams": True, "individual_course_assignment": True, "team_course_assignment": True},
+    "university": {"instructor_led": True, "programmes": True, "cohorts": True, "teams": True, "individual_course_assignment": True, "team_course_assignment": True},
+    "school": {"instructor_led": True, "programmes": True, "cohorts": True, "teams": True, "individual_course_assignment": True, "team_course_assignment": True},
+    "nonprofit": {"instructor_led": True, "programmes": True, "cohorts": True, "teams": True, "individual_course_assignment": True, "team_course_assignment": True},
+    "custom": {"instructor_led": True, "programmes": True, "cohorts": True, "teams": True, "individual_course_assignment": True, "team_course_assignment": True},
 }
 
 
