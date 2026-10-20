@@ -64,7 +64,7 @@ The live schema has `learnora_ai_limits` and `ai_usage_logs`, but no `learnora_a
 
 ### F. RLS enabled with no table-specific policies
 
-The Security Advisor reported numerous tables with RLS enabled but no policies, including organisation tables. This is default-deny for roles subject to RLS; it is not proof that rows are exposed. The backend uses a privileged Supabase client, so RLS does not replace application tenant checks for backend requests. Do not add broad `USING (true)` policies. Confirm table grants and whether any browser/mobile client accesses these tables directly; then either keep intentional service-role-only access and explicitly limit grants, or write least-privilege policies for each required direct-client path.
+The Security Advisor reported numerous tables with RLS enabled but no policies, including organisation tables. A read-only grant audit confirmed that `anon` and `authenticated` currently have broad table privileges (including SELECT/INSERT/UPDATE/DELETE) on the inspected organisation, cohort, course-access, contract, enrolment and AI-limit tables. With RLS enabled and no policies, these roles are currently default-denied at the row-policy layer; this is not proof of current row exposure. However, broad grants create a latent risk if a policy is added later. The backend uses a privileged Supabase client, so RLS does not replace application tenant checks for backend requests. Do not add broad `USING (true)` policies. Before migration, audit all frontend paths for direct table access. If those tables are API-only, revoke table privileges from `anon` and `authenticated` and retain least-privilege server access; if a direct-client path is intentional, write narrow policies and grant only the exact operations it requires.
 
 Reference: https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy
 
@@ -82,7 +82,7 @@ Only nine timestamped migration records were registered in the live project, whi
 
 ## 3. Proposed migration sequence
 
-This sequence is intentionally additive and staged; exact migration filenames/versions must be aligned with the repository's deployment convention after reconciliation.
+This sequence is intentionally additive and staged; exact migration filenames/versions must be aligned with the repository's deployment convention after reconciliation. The RLS/grant hardening must not be applied until the direct-client audit confirms that the organisation tables are API-only; if they are, include explicit revokes for `anon` and `authenticated` in the reviewed migration.
 
 1. **Preflight/report only:** export live migration history, current definitions, constraints, triggers, grants, policies, row counts and integrity-check results. Back up the database and test restore.
 2. **Repair existing proposed migration 023 before any execution:** fix trigger update fast paths; verify SQL references against the live schema; verify module/quiz association and score backfill; test quota reservation semantics; validate team assignment ownership; avoid broad RLS policies.
