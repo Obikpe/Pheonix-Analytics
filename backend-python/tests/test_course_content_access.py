@@ -166,12 +166,32 @@ class CourseContentAccessTests(unittest.TestCase):
 
     def test_learner_can_read_organisation_owned_course_with_active_grant(self):
         course = {"id": "course-1", "ownership": "organisation", "organisation_id": "org-a"}
-        db = FakeSupabase(course_access=[{
-            "id": "grant-1", "course_id": "course-1",
-            "organisation_id": "org-a", "status": "active", "access_type": "assigned",
-        }])
+        db = FakeSupabase(
+            course_access=[{
+                "id": "grant-1", "course_id": "course-1",
+                "organisation_id": "org-a", "status": "active", "access_type": "assigned",
+            }],
+            organisation_members=[{
+                "id": "member-1", "organisation_id": "org-a", "user_id": "user-1",
+                "role": "learner", "status": "active",
+            }],
+        )
         with patch.object(course_content, "supabase", db):
             course_content._check_course_view_access(context(role="learner"), course)
+
+    def test_organisation_wide_grant_does_not_bypass_inactive_learner_membership(self):
+        course = {"id": "course-1", "ownership": "learnora", "organisation_id": None}
+        db = FakeSupabase(
+            course_access=[{
+                "id": "grant-1", "course_id": "course-1",
+                "organisation_id": "org-a", "status": "active", "access_type": "assigned",
+            }],
+            organisation_members=[],
+        )
+        with patch.object(course_content, "supabase", db):
+            with self.assertRaises(HTTPException) as raised:
+                course_content._check_course_view_access(context(role="learner"), course)
+        self.assertEqual(raised.exception.status_code, 403)
 
     def test_learnora_course_requires_active_organisation_grant_or_enrolment(self):
         course = {"id": "course-1", "ownership": "learnora", "organisation_id": None}
