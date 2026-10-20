@@ -651,3 +651,5 @@ REVOKE ALL PRIVILEGES ON TABLE
     public.learnora_lesson_progress,
     public.learner_lesson_notes
 FROM PUBLIC, anon, authenticated;
+
+GRANT ALL PRIVILEGES ON TABLE public.team_course_assignments, public.learnora_ai_quota_reservations TO service_role;
