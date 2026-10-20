@@ -433,8 +433,11 @@ def add_cohort_member(
     now = datetime.now(timezone.utc).isoformat()
     if existing.data:
         if existing.data[0].get("status") != "active":
+            ensure_cohort_capacity(cohort_id)
             membership = supabase.table("cohort_members").update({"status": "active", "joined_at": now}).eq("id", existing.data[0]["id"]).execute()
-            member_row = (membership.data or [existing.data[0]])[0]
+            if not membership.data:
+                raise HTTPException(500, "Cohort membership could not be reactivated.")
+            member_row = membership.data[0]
         else:
             member_row = existing.data[0]
     else:
@@ -477,15 +480,59 @@ def update_cohort_member(
     body: StructureStatusUpdate,
     context: PermissionContext = Depends(require_permission("organisations.members")),
 ):
-    _assert_organisation_scope(context, organisation_id)
+    organisation = _assert_organisation_scope(context, organisation_id)
     if body.status not in {"active", "completed", "withdrawn"}:
         raise HTTPException(400, "Invalid cohort membership status.")
-    cohort = supabase.table("cohorts").select("id").eq("id", cohort_id).eq("organisation_id", organisation_id).limit(1).execute()
-    if not cohort.data:
+    cohort = (
+        supabase.table("cohorts")
+        .select("id,status")
+        .eq("id", cohort_id)
+        .eq("organisation_id", organisation_id)
+        .limit(1)
+        .execute()
+    ).data or []
+    if not cohort:
         raise HTTPException(404, "Cohort not found.")
-    result = supabase.table("cohort_members").update({"status": body.status}).eq("id", membership_id).eq("cohort_id", cohort_id).execute()
-    if not result.data:
+
+    membership = (
+        supabase.table("cohort_members")
+        .select("id,user_id,status")
+        .eq("id", membership_id)
+        .eq("cohort_id", cohort_id)
+        .limit(1)
+        .execute()
+    ).data or []
+    if not membership:
         raise HTTPException(404, "Cohort membership not found.")
+
+    if body.status == "active":
+        _require_active_organisation(organisation)
+        if cohort[0].get("status") not in {"draft", "upcoming", "active"}:
+            raise HTTPException(409, "This cohort is closed to new members.")
+        active_learner = (
+            supabase.table("organisation_members")
+            .select("id")
+            .eq("organisation_id", organisation_id)
+            .eq("user_id", membership[0]["user_id"])
+            .eq("role", "learner")
+            .eq("status", "active")
+            .limit(1)
+            .execute()
+        ).data or []
+        if not active_learner:
+            raise HTTPException(400, "Only active learners in this organisation can be active cohort members.")
+        if membership[0].get("status") != "active":
+            ensure_cohort_capacity(cohort_id)
+
+    result = (
+        supabase.table("cohort_members")
+        .update({"status": body.status})
+        .eq("id", membership_id)
+        .eq("cohort_id", cohort_id)
+        .execute()
+    )
+    if not result.data:
+        raise HTTPException(500, "Cohort membership update failed.")
     return {"success": True, "member": result.data[0]}
 
 
@@ -949,7 +996,8 @@ def create_organisation_team(
     _require_active_organisation(organisation)
     if body.status not in {"active", "inactive"}:
         raise HTTPException(400, "A new team must be active or inactive.")
-    ensure_org_capacity(organisation_id, "teams")
+    if body.status == "active":
+        ensure_org_capacity(organisation_id, "teams")
     slug = _normalise_slug(body.slug or body.name)
     existing = supabase.table("organisation_teams").select("id").eq("organisation_id", organisation_id).eq("slug", slug).limit(1).execute()
     if existing.data:
@@ -990,6 +1038,18 @@ def update_organisation_team(
         raise HTTPException(400, "No supported team fields were supplied.")
     if "status" in changes and changes["status"] not in {"active", "inactive", "archived"}:
         raise HTTPException(400, "Invalid team status.")
+    existing_team = (
+        supabase.table("organisation_teams")
+        .select("id,status")
+        .eq("id", team_id)
+        .eq("organisation_id", organisation_id)
+        .limit(1)
+        .execute()
+    ).data or []
+    if not existing_team:
+        raise HTTPException(404, "Team not found.")
+    if changes.get("status") == "active" and existing_team[0].get("status") != "active":
+        ensure_org_capacity(organisation_id, "teams")
     if changes.get("manager_user_id"):
         manager = supabase.table("organisation_members").select("id").eq("organisation_id", organisation_id).eq("user_id", changes["manager_user_id"]).eq("status", "active").limit(1).execute()
         if not manager.data:
@@ -1024,9 +1084,11 @@ def add_team_member(
 ):
     organisation = _assert_organisation_scope(context, organisation_id)
     _require_active_organisation(organisation)
-    team = supabase.table("organisation_teams").select("id").eq("id", team_id).eq("organisation_id", organisation_id).limit(1).execute()
+    team = supabase.table("organisation_teams").select("id,status").eq("id", team_id).eq("organisation_id", organisation_id).limit(1).execute()
     if not team.data:
         raise HTTPException(404, "Team not found.")
+    if team.data[0].get("status") != "active":
+        raise HTTPException(409, "This team is inactive and cannot accept members.")
     if body.role not in {"member", "lead", "manager"}:
         raise HTTPException(400, "Invalid team role.")
     member = supabase.table("organisation_members").select("id").eq("organisation_id", organisation_id).eq("user_id", body.user_id).eq("status", "active").limit(1).execute()
@@ -1060,7 +1122,7 @@ def update_team_member(
     body: dict,
     context: PermissionContext = Depends(require_permission("organisations.members")),
 ):
-    _assert_organisation_scope(context, organisation_id)
+    organisation = _assert_organisation_scope(context, organisation_id)
     changes = {key: value for key, value in body.items() if key in {"role", "status"}}
     if not changes:
         raise HTTPException(400, "No supported team membership fields were supplied.")
@@ -1068,9 +1130,34 @@ def update_team_member(
         raise HTTPException(400, "Invalid team role.")
     if "status" in changes and changes["status"] not in {"active", "inactive"}:
         raise HTTPException(400, "Invalid team membership status.")
-    team = supabase.table("organisation_teams").select("id").eq("id", team_id).eq("organisation_id", organisation_id).limit(1).execute()
+    team = supabase.table("organisation_teams").select("id,status").eq("id", team_id).eq("organisation_id", organisation_id).limit(1).execute()
     if not team.data:
         raise HTTPException(404, "Team not found.")
+    existing_member = (
+        supabase.table("organisation_team_members")
+        .select("id,user_id,status")
+        .eq("id", membership_id)
+        .eq("team_id", team_id)
+        .limit(1)
+        .execute()
+    ).data or []
+    if not existing_member:
+        raise HTTPException(404, "Team membership not found.")
+    if changes.get("status") == "active":
+        _require_active_organisation(organisation)
+        if team.data[0].get("status") != "active":
+            raise HTTPException(409, "An inactive team cannot accept active memberships.")
+        active_member = (
+            supabase.table("organisation_members")
+            .select("id")
+            .eq("organisation_id", organisation_id)
+            .eq("user_id", existing_member[0]["user_id"])
+            .eq("status", "active")
+            .limit(1)
+            .execute()
+        ).data or []
+        if not active_member:
+            raise HTTPException(400, "Team members must be active members of this organisation.")
     result = supabase.table("organisation_team_members").update(changes).eq("id", membership_id).eq("team_id", team_id).execute()
     if not result.data:
         raise HTTPException(404, "Team membership not found.")
@@ -1082,6 +1169,8 @@ def add_member_from_team_workspace(team_id: str, body: TeamMemberCreate, user: C
     workspace = get_my_team_workspace(team_id, user)
     if not workspace.get("can_manage_team"):
         raise HTTPException(403, "Only team leads, team managers or organisation administrators can manage this team.")
+    if body.role not in {"member", "lead", "manager"}:
+        raise HTTPException(400, "Invalid team role.")
     organisation_id = str(workspace["team"]["organisation_id"])
     if workspace.get("organisation_role") not in {"owner", "admin"} and body.role != "member":
         raise HTTPException(403, "Team leads can add members but cannot grant lead or manager roles.")
@@ -1202,7 +1291,11 @@ def get_my_team_workspace(team_id: str, user: CurrentUser = Depends(get_current_
         "team": team,
         "organisation_role": organisation_role,
         "team_membership": team_membership[0] if team_membership else None,
-        "can_manage_team": bool(team_membership and team_membership[0].get("role") in {"lead", "manager"}) or organisation_role in {"owner", "admin"},
+        "can_manage_team": (
+            bool(team_membership and team_membership[0].get("role") in {"lead", "manager"})
+            or str(team.get("manager_user_id") or "") == str(user.id)
+            or organisation_role in {"owner", "admin"}
+        ),
         "members": enriched_members,
     }
 
