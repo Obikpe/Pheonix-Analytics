@@ -267,9 +267,6 @@ def _has_active_scoped_course_source(user_id: str, organisation_id: str, course_
     enrolments remain valid only while the learner has a matching active
     membership and the team/cohort still has this course assigned.
     """
-    if str(enrolment.get("source_type") or "").strip().lower() == "individual_assignment":
-        return True
-
     learner_membership = (
         supabase.table("organisation_members")
         .select("id")
@@ -282,6 +279,9 @@ def _has_active_scoped_course_source(user_id: str, organisation_id: str, course_
     ).data or []
     if not learner_membership:
         return False
+
+    if str(enrolment.get("source_type") or "").strip().lower() == "individual_assignment":
+        return True
 
     cohort_memberships = (
         supabase.table("cohort_members")
