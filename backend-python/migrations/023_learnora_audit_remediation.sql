@@ -18,7 +18,7 @@ ALTER TABLE public.organisations
 -- Data-shape checks for capacities and programme/cohort dates. The live-data
 -- preflight found no current violations; NOT VALID keeps the add and validate
 -- phases explicit for safe review and predictable locking.
-DO $
+DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'cohorts_capacity_positive' AND conrelid = 'public.cohorts'::regclass) THEN
         ALTER TABLE public.cohorts ADD CONSTRAINT cohorts_capacity_positive
@@ -37,7 +37,7 @@ BEGIN
             CHECK (start_date IS NULL OR end_date IS NULL OR start_date <= end_date) NOT VALID;
     END IF;
 END;
-$;
+$$;
 
 ALTER TABLE public.cohorts VALIDATE CONSTRAINT cohorts_capacity_positive;
 ALTER TABLE public.cohorts VALIDATE CONSTRAINT cohorts_instructor_capacity_nonnegative;
@@ -569,7 +569,7 @@ RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = pg_catalog, public
-AS $
+AS $$
 BEGIN
     IF OLD.status = 'active'
        AND (NEW.status <> 'active' OR NEW.organisation_id <> OLD.organisation_id) THEN
@@ -619,7 +619,7 @@ BEGIN
     END IF;
     RETURN NEW;
 END;
-$;
+$$;
 
 DROP TRIGGER IF EXISTS learnora_sync_org_membership_status ON public.organisation_members;
 CREATE TRIGGER learnora_sync_org_membership_status
