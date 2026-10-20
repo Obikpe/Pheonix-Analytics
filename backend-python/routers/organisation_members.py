@@ -42,6 +42,10 @@ def _org(org_id):
     if not r.data: raise HTTPException(404,"Organisation not found.")
     return r.data[0]
 
+def _require_active_org(org):
+    if not org.get("is_active"):
+        raise HTTPException(409,"This organisation workspace is inactive.")
+
 def _member(org_id,member_id):
     r=supabase.table("organisation_members").select("id,organisation_id,user_id,role,status,joined_at").eq("id",member_id).eq("organisation_id",org_id).limit(1).execute()
     return r.data[0] if r.data else None
@@ -72,7 +76,7 @@ def get_member(organisation_id:UUID,member_id:UUID,context:PermissionContext=Dep
 
 @router.post("/{organisation_id}/members")
 def add_member(organisation_id:UUID,payload:AddOrganisationMember,context:PermissionContext=Depends(require_permission("organisations.members"))):
-    oid=_scope(context,organisation_id); _org(oid); role=_role(payload.role); uid=str(payload.user_id)
+    oid=_scope(context,organisation_id); org=_org(oid); _require_active_org(org); role=_role(payload.role); uid=str(payload.user_id)
     u=_user(uid)
     if not u:raise HTTPException(404,"User not found.")
     existing=supabase.table("organisation_members").select("id,organisation_id,user_id,role,status,joined_at").eq("organisation_id",oid).eq("user_id",uid).limit(1).execute()
@@ -92,7 +96,7 @@ def add_member(organisation_id:UUID,payload:AddOrganisationMember,context:Permis
 
 @router.patch("/{organisation_id}/members/{member_id}")
 def update_member(organisation_id:UUID,member_id:UUID,payload:UpdateOrganisationMember,context:PermissionContext=Depends(require_permission("organisations.members"))):
-    oid=_scope(context,organisation_id); _org(oid); m=_member(oid,str(member_id))
+    oid=_scope(context,organisation_id); org=_org(oid); m=_member(oid,str(member_id))
     if not m:raise HTTPException(404,"Organisation member not found.")
     updates={}
     if payload.role is not None:updates["role"]=_role(payload.role)
@@ -101,8 +105,17 @@ def update_member(organisation_id:UUID,member_id:UUID,payload:UpdateOrganisation
     if m["role"]=="owner" and (updates.get("role") not in (None,"owner") or updates.get("status") in {"suspended"}):
         owners=supabase.table("organisation_members").select("id").eq("organisation_id",oid).eq("role","owner").eq("status","active").execute().data or []
         if len(owners)<=1:raise HTTPException(400,"The organisation must retain at least one active owner.")
-    if updates.get("role") in {"learner","instructor"} and updates.get("role")!=m["role"] and m["status"]=="active":
-        ensure_org_capacity(oid,"learners" if updates["role"]=="learner" else "instructors",1)
+    target_role=updates.get("role",m["role"])
+    target_status=updates.get("status",m["status"])
+    if not org.get("is_active") and (
+        target_status == "active"
+        or (m["status"] == "active" and target_role != m["role"])
+    ):
+        raise HTTPException(409,"An inactive organisation cannot grant or change active memberships.")
+    if target_status == "active" and target_role in {"learner","instructor"} and (
+        m["status"] != "active" or target_role != m["role"]
+    ):
+        ensure_org_capacity(oid,"learners" if target_role=="learner" else "instructors",1)
     r=supabase.table("organisation_members").update(updates).eq("id",str(member_id)).eq("organisation_id",oid).execute()
     if not r.data:raise HTTPException(500,"Failed to update organisation membership.")
     updated=r.data[0]; audit(actor_user_id=context.user_id,action="organisation_member_updated",resource_type="organisation_member",resource_id=member_id,organisation_id=oid,metadata={"changes":updates})
