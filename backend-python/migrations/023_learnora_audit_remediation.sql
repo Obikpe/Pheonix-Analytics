@@ -61,6 +61,16 @@ UPDATE public.quizzes
 SET passing_score = GREATEST(COALESCE(passing_score, 70), 70)
 WHERE passing_score IS NULL OR passing_score < 70;
 
+DO $
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'quizzes_passing_score_valid' AND conrelid = 'public.quizzes'::regclass) THEN
+        ALTER TABLE public.quizzes ADD CONSTRAINT quizzes_passing_score_valid
+            CHECK (passing_score IS NOT NULL AND passing_score >= 70 AND passing_score <= 100) NOT VALID;
+    END IF;
+END;
+$;
+ALTER TABLE public.quizzes VALIDATE CONSTRAINT quizzes_passing_score_valid;
+
 CREATE INDEX IF NOT EXISTS quizzes_module_published_idx
     ON public.quizzes(module_id, is_published);
 CREATE INDEX IF NOT EXISTS quiz_attempts_user_quiz_passed_idx
