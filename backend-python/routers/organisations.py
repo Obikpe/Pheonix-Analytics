@@ -387,10 +387,33 @@ def update_organisation_cohort(
         raise HTTPException(400, "No supported cohort fields were supplied.")
     if "status" in changes and changes["status"] not in {"draft", "upcoming", "active", "ending", "completed", "expired", "closed", "archived"}:
         raise HTTPException(400, "Invalid cohort status.")
-    if changes.get("programme_id"):
-        programme = supabase.table("learnora_programmes").select("id").eq("id", changes["programme_id"]).eq("organisation_id", organisation_id).limit(1).execute()
-        if not programme.data:
-            raise HTTPException(400, "The selected programme does not belong to this organisation.")
+    if "capacity" in changes and changes["capacity"] is not None:
+        try:
+            changes["capacity"] = int(changes["capacity"])
+        except (TypeError, ValueError):
+            raise HTTPException(400, "Cohort capacity must be a positive integer.")
+        if changes["capacity"] < 1:
+            raise HTTPException(400, "Cohort capacity must be a positive integer.")
+        active_members = (
+            supabase.table("cohort_members").select("id")
+            .eq("cohort_id", cohort_id).eq("status", "active").execute()
+        ).data or []
+        if len(active_members) > changes["capacity"]:
+            raise HTTPException(409, "Cohort capacity cannot be lower than its current active membership.")
+    if "instructor_capacity" in changes and changes["instructor_capacity"] is not None:
+        try:
+            changes["instructor_capacity"] = int(changes["instructor_capacity"])
+        except (TypeError, ValueError):
+            raise HTTPException(400, "Instructor capacity must be a non-negative integer.")
+        if changes["instructor_capacity"] < 0:
+            raise HTTPException(400, "Instructor capacity must be a non-negative integer.")
+    if "programme_id" in changes:
+        programme_id = changes["programme_id"]
+        changes["programme_id"] = str(programme_id).strip() if programme_id and str(programme_id).strip() else None
+        if changes["programme_id"]:
+            programme = supabase.table("learnora_programmes").select("id").eq("id", changes["programme_id"]).eq("organisation_id", organisation_id).limit(1).execute()
+            if not programme.data:
+                raise HTTPException(400, "The selected programme does not belong to this organisation.")
     changes["updated_at"] = datetime.now(timezone.utc).isoformat()
     result = supabase.table("cohorts").update(changes).eq("id", cohort_id).eq("organisation_id", organisation_id).execute()
     if not result.data:
@@ -669,7 +692,8 @@ def assign_course_to_organisation(organisation_id: str, body: dict, context: Per
     access = (supabase.table("course_access").select("id,status").eq("organisation_id", organisation_id).eq("course_id", course_id).limit(1).execute()).data
     now = datetime.now(timezone.utc).isoformat()
     if not access or access[0].get("status") != "active":
-        ensure_org_capacity(organisation_id, "courses")
+        if course.get("ownership") != "organisation":
+            ensure_org_capacity(organisation_id, "courses")
         if access:
             access_result = supabase.table("course_access").update({"status": "active", "access_type": "assigned", "assigned_by": context.user_id, "assigned_at": now}).eq("id", access[0]["id"]).execute()
             access_row = (access_result.data or access)[0]
@@ -764,7 +788,8 @@ def assign_course_to_cohort(organisation_id: str, cohort_id: str, body: dict, co
 
     access = (supabase.table("course_access").select("id,status").eq("organisation_id", organisation_id).eq("course_id", course_id).limit(1).execute()).data
     if not access or access[0].get("status") != "active":
-        ensure_org_capacity(organisation_id, "courses")
+        if course.get("ownership") != "organisation":
+            ensure_org_capacity(organisation_id, "courses")
         if access:
             supabase.table("course_access").update({"status": "active", "access_type": "assigned"}).eq("id", access[0]["id"]).execute()
         else:
@@ -917,7 +942,8 @@ def assign_course_to_team(
             .execute()
         ).data or []
         if not access or access[0].get("status") != "active":
-            ensure_org_capacity(organisation_id, "courses")
+            if course.get("ownership") != "organisation":
+                ensure_org_capacity(organisation_id, "courses")
             if access:
                 supabase.table("course_access").update({
                     "status": "active", "access_type": "assigned",
