@@ -32,7 +32,7 @@ The live schema lacks legacy tables `tracks`, `enrollments`, `user_progress`, `u
 The proposed `023_learnora_audit_remediation.sql` is **not applied**. It:
 
 - permits the `community` organisation type already accepted by the API;
-- backfills quiz-to-module associations and enforces the 70% passing-score minimum;
+- backfills quiz-to-module associations, sets a 70% default and validates a non-null passing score between 70 and 100;
 - adds a team-course assignment relation and persistent AI quota reservations with a transaction-locked RPC;
 - validates team, cohort, course-access and enrolment tenant relationships at the database boundary;
 - deactivates team/cohort memberships and clears a team-manager assignment when organisation membership is suspended or moved;
