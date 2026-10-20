@@ -54,6 +54,8 @@ def _public_course_payload(course: dict) -> dict:
             "public_catalogue": True,
             "is_free": bool(is_free),
             "access_type": "free" if is_free else "restricted",
+            "track": str(settings.get("track") or "").strip() or None,
+            "topics": [topic.strip()[:100] for topic in topics if isinstance(topic, str) and topic.strip()][:20],
         },
     }
 
