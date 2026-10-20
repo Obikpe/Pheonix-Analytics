@@ -1303,7 +1303,7 @@ def create_organisation(
             detail="Organisation creation failed.",
         )
 
-    organisation = response.data[0]
+    organisation = _with_capabilities(response.data[0])
 
     log_audit_event(
         action="organisation_created",
@@ -1470,7 +1470,7 @@ def update_organisation(
             detail="Organisation update failed.",
         )
 
-    organisation = response.data[0]
+    organisation = _with_capabilities(response.data[0])
 
     log_audit_event(
         action="organisation_updated",
