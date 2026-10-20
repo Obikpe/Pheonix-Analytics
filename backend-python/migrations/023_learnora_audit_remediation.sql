@@ -209,24 +209,33 @@ BEGIN
 
     IF TG_TABLE_NAME = 'organisation_members' THEN
         IF NEW.status <> 'active' OR NEW.role NOT IN ('learner','instructor') THEN RETURN NEW; END IF;
-        IF TG_OP = 'UPDATE' AND OLD.status = 'active' AND OLD.role = NEW.role THEN RETURN NEW; END IF;
+        IF TG_OP = 'UPDATE' AND OLD.status = 'active' AND OLD.role = NEW.role AND OLD.organisation_id = NEW.organisation_id THEN RETURN NEW; END IF;
         v_org := NEW.organisation_id;
         v_key := CASE NEW.role WHEN 'learner' THEN 'learners' ELSE 'instructors' END;
     ELSIF TG_TABLE_NAME = 'cohorts' THEN
         IF NEW.status NOT IN ('draft','upcoming','active','ending') THEN RETURN NEW; END IF;
-        IF TG_OP = 'UPDATE' AND OLD.status IN ('draft','upcoming','active','ending') THEN RETURN NEW; END IF;
+        IF TG_OP = 'UPDATE' AND OLD.status IN ('draft','upcoming','active','ending') AND OLD.organisation_id = NEW.organisation_id THEN
+            IF NEW.capacity IS NOT NULL THEN
+                SELECT count(*) INTO v_used FROM public.cohort_members WHERE cohort_id = NEW.id AND status = 'active';
+                IF v_used > NEW.capacity THEN
+                    RAISE EXCEPTION 'Cohort capacity cannot be lower than its active membership (capacity %, active members %)', NEW.capacity, v_used
+                        USING ERRCODE = '23514';
+                END IF;
+            END IF;
+            RETURN NEW;
+        END IF;
         v_org := NEW.organisation_id; v_key := 'cohorts';
     ELSIF TG_TABLE_NAME = 'organisation_teams' THEN
         IF NEW.status <> 'active' THEN RETURN NEW; END IF;
-        IF TG_OP = 'UPDATE' AND OLD.status = 'active' THEN RETURN NEW; END IF;
+        IF TG_OP = 'UPDATE' AND OLD.status = 'active' AND OLD.organisation_id = NEW.organisation_id THEN RETURN NEW; END IF;
         v_org := NEW.organisation_id; v_key := 'teams';
     ELSIF TG_TABLE_NAME = 'learnora_programmes' THEN
         IF NEW.status = 'archived' THEN RETURN NEW; END IF;
-        IF TG_OP = 'UPDATE' AND OLD.status <> 'archived' THEN RETURN NEW; END IF;
+        IF TG_OP = 'UPDATE' AND OLD.status <> 'archived' AND OLD.organisation_id = NEW.organisation_id THEN RETURN NEW; END IF;
         v_org := NEW.organisation_id; v_key := 'programmes';
     ELSIF TG_TABLE_NAME = 'course_access' THEN
         IF NEW.status <> 'active' THEN RETURN NEW; END IF;
-        IF TG_OP = 'UPDATE' AND OLD.status = 'active' THEN RETURN NEW; END IF;
+        IF TG_OP = 'UPDATE' AND OLD.status = 'active' AND OLD.organisation_id = NEW.organisation_id AND OLD.course_id = NEW.course_id THEN RETURN NEW; END IF;
         -- An organisation-owned course already consumes one course slot.
         IF EXISTS (
             SELECT 1 FROM public.learnora_courses c
@@ -329,3 +338,178 @@ FOR EACH ROW EXECUTE FUNCTION public.learnora_enforce_org_capacity();
 DROP TRIGGER IF EXISTS learnora_cohort_member_capacity ON public.cohort_members;
 CREATE TRIGGER learnora_cohort_member_capacity BEFORE INSERT OR UPDATE ON public.cohort_members
 FOR EACH ROW EXECUTE FUNCTION public.learnora_enforce_org_capacity();
+
+
+-- Validate tenant/resource relationships at the database boundary as well as
+-- in FastAPI. These triggers preserve existing rows and guard future writes.
+CREATE OR REPLACE FUNCTION public.learnora_validate_org_relationships()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+    v_org uuid;
+    v_course_owner text;
+    v_course_org uuid;
+    v_member_role text;
+    v_member_status text;
+BEGIN
+    IF TG_TABLE_NAME = 'organisation_teams' THEN
+        IF NEW.manager_user_id IS NOT NULL THEN
+            SELECT role, status INTO v_member_role, v_member_status
+            FROM public.organisation_members
+            WHERE organisation_id = NEW.organisation_id
+              AND user_id = NEW.manager_user_id
+            LIMIT 1;
+            IF NOT FOUND OR v_member_status <> 'active' THEN
+                RAISE EXCEPTION 'Team manager must be an active member of the same organisation'
+                    USING ERRCODE = '23514';
+            END IF;
+        END IF;
+    ELSIF TG_TABLE_NAME = 'organisation_team_members' THEN
+        IF NEW.status = 'active' THEN
+            SELECT organisation_id INTO v_org
+            FROM public.organisation_teams
+            WHERE id = NEW.team_id AND status = 'active';
+            IF NOT FOUND THEN
+                RAISE EXCEPTION 'Team must exist and be active before adding members'
+                    USING ERRCODE = '23514';
+            END IF;
+            SELECT status INTO v_member_status
+            FROM public.organisation_members
+            WHERE organisation_id = v_org AND user_id = NEW.user_id
+            LIMIT 1;
+            IF NOT FOUND OR v_member_status <> 'active' THEN
+                RAISE EXCEPTION 'Team member must be an active member of the same organisation'
+                    USING ERRCODE = '23514';
+            END IF;
+        END IF;
+    ELSIF TG_TABLE_NAME = 'cohorts' THEN
+        IF NEW.programme_id IS NOT NULL THEN
+            PERFORM 1 FROM public.learnora_programmes
+            WHERE id = NEW.programme_id AND organisation_id = NEW.organisation_id;
+            IF NOT FOUND THEN
+                RAISE EXCEPTION 'Cohort programme must belong to the same organisation'
+                    USING ERRCODE = '23514';
+            END IF;
+        END IF;
+    ELSIF TG_TABLE_NAME = 'cohort_members' THEN
+        IF NEW.status = 'active' THEN
+            SELECT organisation_id INTO v_org FROM public.cohorts WHERE id = NEW.cohort_id;
+            IF NOT FOUND THEN
+                RAISE EXCEPTION 'Cohort does not exist' USING ERRCODE = '23503';
+            END IF;
+            SELECT role, status INTO v_member_role, v_member_status
+            FROM public.organisation_members
+            WHERE organisation_id = v_org AND user_id = NEW.user_id
+            LIMIT 1;
+            IF NOT FOUND OR v_member_status <> 'active' OR v_member_role <> 'learner' THEN
+                RAISE EXCEPTION 'Active cohort members must be active learners in the same organisation'
+                    USING ERRCODE = '23514';
+            END IF;
+        END IF;
+    ELSIF TG_TABLE_NAME = 'cohort_course_assignments' THEN
+        SELECT organisation_id INTO v_org FROM public.cohorts WHERE id = NEW.cohort_id;
+        IF NOT FOUND THEN
+            RAISE EXCEPTION 'Cohort does not exist' USING ERRCODE = '23503';
+        END IF;
+        SELECT ownership, organisation_id INTO v_course_owner, v_course_org
+        FROM public.learnora_courses WHERE id = NEW.course_id;
+        IF NOT FOUND THEN
+            RAISE EXCEPTION 'Course does not exist' USING ERRCODE = '23503';
+        END IF;
+        IF v_course_owner = 'organisation' AND v_course_org <> v_org THEN
+            RAISE EXCEPTION 'Organisation-owned course cannot be assigned across organisations'
+                USING ERRCODE = '23514';
+        END IF;
+    ELSIF TG_TABLE_NAME = 'team_course_assignments' THEN
+        SELECT organisation_id INTO v_org FROM public.organisation_teams WHERE id = NEW.team_id;
+        IF NOT FOUND THEN
+            RAISE EXCEPTION 'Team does not exist' USING ERRCODE = '23503';
+        END IF;
+        SELECT ownership, organisation_id INTO v_course_owner, v_course_org
+        FROM public.learnora_courses WHERE id = NEW.course_id;
+        IF NOT FOUND THEN
+            RAISE EXCEPTION 'Course does not exist' USING ERRCODE = '23503';
+        END IF;
+        IF v_course_owner = 'organisation' AND v_course_org <> v_org THEN
+            RAISE EXCEPTION 'Organisation-owned course cannot be assigned across organisations'
+                USING ERRCODE = '23514';
+        END IF;
+    ELSIF TG_TABLE_NAME = 'course_access' THEN
+        SELECT ownership, organisation_id INTO v_course_owner, v_course_org
+        FROM public.learnora_courses WHERE id = NEW.course_id;
+        IF NOT FOUND THEN
+            RAISE EXCEPTION 'Course does not exist' USING ERRCODE = '23503';
+        END IF;
+        IF v_course_owner = 'organisation' AND v_course_org <> NEW.organisation_id THEN
+            RAISE EXCEPTION 'Organisation-owned course access must stay within its owning organisation'
+                USING ERRCODE = '23514';
+        END IF;
+    ELSIF TG_TABLE_NAME = 'learnora_enrolments' THEN
+        IF NEW.status = 'active' AND NEW.organisation_id IS NOT NULL THEN
+            SELECT role, status INTO v_member_role, v_member_status
+            FROM public.organisation_members
+            WHERE organisation_id = NEW.organisation_id AND user_id = NEW.user_id
+            LIMIT 1;
+            IF NOT FOUND OR v_member_status <> 'active' THEN
+                RAISE EXCEPTION 'Active organisation enrolment requires active organisation membership'
+                    USING ERRCODE = '23514';
+            END IF;
+            IF NEW.cohort_id IS NOT NULL THEN
+                PERFORM 1 FROM public.cohorts
+                WHERE id = NEW.cohort_id AND organisation_id = NEW.organisation_id;
+                IF NOT FOUND THEN
+                    RAISE EXCEPTION 'Enrolment cohort must belong to the same organisation'
+                        USING ERRCODE = '23514';
+                END IF;
+            END IF;
+        END IF;
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS learnora_validate_team_manager ON public.organisation_teams;
+CREATE TRIGGER learnora_validate_team_manager
+BEFORE INSERT OR UPDATE OF organisation_id, manager_user_id ON public.organisation_teams
+FOR EACH ROW EXECUTE FUNCTION public.learnora_validate_org_relationships();
+
+DROP TRIGGER IF EXISTS learnora_validate_team_member_tenant ON public.organisation_team_members;
+CREATE TRIGGER learnora_validate_team_member_tenant
+BEFORE INSERT OR UPDATE ON public.organisation_team_members
+FOR EACH ROW EXECUTE FUNCTION public.learnora_validate_org_relationships();
+
+DROP TRIGGER IF EXISTS learnora_validate_cohort_programme_tenant ON public.cohorts;
+CREATE TRIGGER learnora_validate_cohort_programme_tenant
+BEFORE INSERT OR UPDATE OF organisation_id, programme_id ON public.cohorts
+FOR EACH ROW EXECUTE FUNCTION public.learnora_validate_org_relationships();
+
+DROP TRIGGER IF EXISTS learnora_validate_cohort_member_tenant ON public.cohort_members;
+CREATE TRIGGER learnora_validate_cohort_member_tenant
+BEFORE INSERT OR UPDATE ON public.cohort_members
+FOR EACH ROW EXECUTE FUNCTION public.learnora_validate_org_relationships();
+
+DROP TRIGGER IF EXISTS learnora_validate_cohort_course_tenant ON public.cohort_course_assignments;
+CREATE TRIGGER learnora_validate_cohort_course_tenant
+BEFORE INSERT OR UPDATE ON public.cohort_course_assignments
+FOR EACH ROW EXECUTE FUNCTION public.learnora_validate_org_relationships();
+
+DROP TRIGGER IF EXISTS learnora_validate_team_course_tenant ON public.team_course_assignments;
+CREATE TRIGGER learnora_validate_team_course_tenant
+BEFORE INSERT OR UPDATE ON public.team_course_assignments
+FOR EACH ROW EXECUTE FUNCTION public.learnora_validate_org_relationships();
+
+DROP TRIGGER IF EXISTS learnora_validate_course_access_tenant ON public.course_access;
+CREATE TRIGGER learnora_validate_course_access_tenant
+BEFORE INSERT OR UPDATE ON public.course_access
+FOR EACH ROW EXECUTE FUNCTION public.learnora_validate_org_relationships();
+
+DROP TRIGGER IF EXISTS learnora_validate_enrolment_tenant ON public.learnora_enrolments;
+CREATE TRIGGER learnora_validate_enrolment_tenant
+BEFORE INSERT OR UPDATE ON public.learnora_enrolments
+FOR EACH ROW EXECUTE FUNCTION public.learnora_validate_org_relationships();
+
+ALTER TABLE public.team_course_assignments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.learnora_ai_quota_reservations ENABLE ROW LEVEL SECURITY;
