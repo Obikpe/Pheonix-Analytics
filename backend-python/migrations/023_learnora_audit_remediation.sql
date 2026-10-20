@@ -526,3 +526,56 @@ FOR EACH ROW EXECUTE FUNCTION public.learnora_validate_org_relationships();
 
 ALTER TABLE public.team_course_assignments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.learnora_ai_quota_reservations ENABLE ROW LEVEL SECURITY;
+
+-- Keep memberships from granting stale access after an organisation member is
+-- suspended, moved to another tenant, or changes from learner to another role.
+CREATE OR REPLACE FUNCTION public.learnora_sync_org_membership_status()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $
+BEGIN
+    IF OLD.status = 'active'
+       AND (NEW.status <> 'active' OR NEW.organisation_id <> OLD.organisation_id) THEN
+        UPDATE public.cohort_members cm
+        SET status = 'inactive'
+        FROM public.cohorts c
+        WHERE cm.cohort_id = c.id
+          AND c.organisation_id = OLD.organisation_id
+          AND cm.user_id = OLD.user_id
+          AND cm.status = 'active';
+
+        UPDATE public.organisation_team_members tm
+        SET status = 'inactive'
+        FROM public.organisation_teams t
+        WHERE tm.team_id = t.id
+          AND t.organisation_id = OLD.organisation_id
+          AND tm.user_id = OLD.user_id
+          AND tm.status = 'active';
+
+        UPDATE public.organisation_teams
+        SET manager_user_id = NULL
+        WHERE organisation_id = OLD.organisation_id
+          AND manager_user_id = OLD.user_id;
+    ELSIF OLD.status = 'active'
+       AND NEW.status = 'active'
+       AND OLD.role = 'learner'
+       AND NEW.role <> 'learner' THEN
+        UPDATE public.cohort_members cm
+        SET status = 'inactive'
+        FROM public.cohorts c
+        WHERE cm.cohort_id = c.id
+          AND c.organisation_id = OLD.organisation_id
+          AND cm.user_id = OLD.user_id
+          AND cm.status = 'active';
+    END IF;
+    RETURN NEW;
+END;
+$;
+
+DROP TRIGGER IF EXISTS learnora_sync_org_membership_status ON public.organisation_members;
+CREATE TRIGGER learnora_sync_org_membership_status
+AFTER UPDATE OF status, organisation_id, role ON public.organisation_members
+FOR EACH ROW EXECUTE FUNCTION public.learnora_sync_org_membership_status();
+
