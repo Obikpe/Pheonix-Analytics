@@ -33,6 +33,7 @@ def _is_public_course(course: dict, organisation_map: dict, creator_map: dict) -
 
 def _public_course_payload(course: dict) -> dict:
     settings = course.get("settings") or {}
+    topics = settings.get("topics") if isinstance(settings.get("topics"), list) else []
     is_free = settings.get("is_free") is True or settings.get("access_type") == "free" or settings.get("price") == 0
     return {
         "id": course.get("id"),
