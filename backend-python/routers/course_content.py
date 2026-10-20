@@ -267,6 +267,17 @@ def _has_active_scoped_course_source(user_id: str, organisation_id: str, course_
     enrolments remain valid only while the learner has a matching active
     membership and the team/cohort still has this course assigned.
     """
+    active_workspace = (
+        supabase.table("organisations")
+        .select("id")
+        .eq("id", organisation_id)
+        .eq("is_active", True)
+        .limit(1)
+        .execute()
+    ).data or []
+    if not active_workspace:
+        return False
+
     learner_membership = (
         supabase.table("organisation_members")
         .select("id")
@@ -404,6 +415,14 @@ def _check_course_view_access(
             )
             if grant:
                 if is_learner:
+                    active_workspace = (
+                        supabase.table("organisations")
+                        .select("id")
+                        .eq("id", str(organisation_id))
+                        .eq("is_active", True)
+                        .limit(1)
+                        .execute()
+                    ).data or []
                     active_learner = (
                         supabase.table("organisation_members")
                         .select("id")
@@ -414,8 +433,8 @@ def _check_course_view_access(
                         .limit(1)
                         .execute()
                     ).data or []
-                    if not active_learner:
-                        raise HTTPException(403, "An active learner membership is required for this organisation course.")
+                    if not active_workspace or not active_learner:
+                        raise HTTPException(403, "An active learner membership in an active organisation is required for this course.")
                 return
             if any(_has_active_scoped_course_source(str(context.user_id), str(organisation_id), course_id, row) for row in enrolments):
                 return
@@ -449,6 +468,14 @@ def _check_course_view_access(
                 or str(getattr(context.user, "role", "") or "").strip().lower() in {"normal", "witstart", "learner"}
             )
             if is_learner:
+                active_workspace = (
+                    supabase.table("organisations")
+                    .select("id")
+                    .eq("id", str(organisation_id))
+                    .eq("is_active", True)
+                    .limit(1)
+                    .execute()
+                ).data or []
                 active_learner = (
                     supabase.table("organisation_members")
                     .select("id")
@@ -459,8 +486,8 @@ def _check_course_view_access(
                     .limit(1)
                     .execute()
                 ).data or []
-                if not active_learner:
-                    raise HTTPException(403, "An active learner membership is required for this organisation course.")
+                if not active_workspace or not active_learner:
+                    raise HTTPException(403, "An active learner membership in an active organisation is required for this course.")
             return
 
     # Preserve individual course enrolments, including enrolments without an
