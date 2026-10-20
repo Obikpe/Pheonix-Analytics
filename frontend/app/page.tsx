@@ -32,9 +32,10 @@ const stages = [
 ];
 
 const audiences = [
-  { icon: GraduationCap, title: "For learners", text: "Build practical skills through lessons, practice, projects and an honest record of progress.", href: "/for-learners", link: "Explore learning" },
-  { icon: Compass, title: "For instructors", text: "Guide learners, review practical work and create learning experiences with clear outcomes.", href: "/for-instructors", link: "Explore teaching" },
-  { icon: Network, title: "For organisations", text: "Shape learning around your people, programmes, teams and agreed outcomes.", href: "/for-organisations", link: "Explore organisation learning" },
+  { icon: GraduationCap, title: "Independent learners", text: "Choose what to learn, practise at your own pace, build projects and collect evidence of the skills you can demonstrate.", kind: "learner", href: "#library", link: "Start learning" },
+  { icon: Compass, title: "Instructors", text: "Shape learning experiences, guide practice, review submitted work and help learners understand their next steps.", kind: "instructor", href: "#how-it-works", link: "Explore the learning approach" },
+  { icon: Network, title: "Organisation admins", text: "Organise learning for teams and cohorts, assign programmes, and follow progress, practical evidence and outcomes.", kind: "organisation", href: "#evidence", link: "Explore evidence and outcomes" },
+  { icon: BookOpen, title: "Organisation learners", text: "Follow the courses and activities assigned to your programme, work through cohort tasks and build evidence within your learning context.", kind: "programme", href: "#library", link: "Access assigned learning" },
 ];
 
 const tracks = [
@@ -138,7 +139,7 @@ export default function Page() {
         </div>
       </section>
 
-      <section className="learnora-section">
+      <section id="evidence" className="learnora-section">
         <div className="mx-auto grid max-w-[82rem] gap-12 px-5 sm:px-8 lg:grid-cols-[.9fr_1.1fr] lg:items-center lg:px-10">
           <div className="learnora-evidence-visual">
             <div className="learnora-evidence-grid" />
@@ -167,10 +168,23 @@ export default function Page() {
 
       <section id="organisations" className="learnora-section learnora-section-soft">
         <div className="mx-auto max-w-[82rem] px-5 sm:px-8 lg:px-10">
-          <div className="max-w-3xl"><p className="learnora-kicker">Different journeys, one foundation</p><h2 className="learnora-section-title mt-5">A learning experience shaped around the person doing the work.</h2><p className="mt-5 text-base leading-8 text-slate-400">Learners need room to practise. Instructors need tools to teach and review. Organisations need visibility into capability and outcomes. Learnora is designed around those different needs without assuming everyone works the same way.</p></div>
-          <div className="mt-10 grid gap-4 md:grid-cols-3">
-            {audiences.map(({icon: Icon, title, text, href, link}) => <article key={title} className="learnora-audience-card group">
-              <span className="learnora-audience-icon"><Icon size={21}/></span><h3 className="mt-6 text-xl font-semibold text-white">{title}</h3><p className="mt-3 min-h-[72px] text-sm leading-6 text-slate-400">{text}</p><a href={href} className="mt-6 inline-flex items-center gap-2 text-sm font-semibold text-[#f2d477] hover:text-white">{link} <ArrowRight size={15}/></a>
+          <div className="max-w-3xl">
+            <p className="learnora-kicker">One platform, four distinct experiences</p>
+            <h2 className="learnora-section-title mt-5">The right learning journey for the role you play.</h2>
+            <p className="mt-5 text-base leading-8 text-slate-400">Learnora connects learning and practical evidence, while recognising that independent learners, instructors, organisation administrators and people learning through a programme have different goals and responsibilities.</p>
+          </div>
+          <div className="mt-10 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            {audiences.map(({icon: Icon, title, text, kind, href, link}) => <article key={title} className="learnora-audience-card group flex h-full flex-col">
+              <span className="learnora-audience-icon"><Icon size={21}/></span>
+              <h3 className="mt-6 text-xl font-semibold text-white">{title}</h3>
+              <p className="mt-3 flex-1 text-sm leading-6 text-slate-400">{text}</p>
+              {kind === "learner" ? (
+                <button type="button" onClick={() => openAuth("register")} className="mt-6 inline-flex items-center gap-2 self-start text-left text-sm font-semibold text-[#f2d477] hover:text-white">{link} <ArrowRight size={15}/></button>
+              ) : kind === "programme" ? (
+                <button type="button" onClick={() => openAuth("login")} className="mt-6 inline-flex items-center gap-2 self-start text-left text-sm font-semibold text-[#f2d477] hover:text-white">Sign in to your programme <ArrowRight size={15}/></button>
+              ) : (
+                <a href={href} className="mt-6 inline-flex items-center gap-2 self-start text-sm font-semibold text-[#f2d477] hover:text-white">{link} <ArrowRight size={15}/></a>
+              )}
             </article>)}
           </div>
         </div>
