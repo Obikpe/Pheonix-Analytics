@@ -143,8 +143,11 @@ DECLARE
     v_month_count integer := 0;
     v_lock_key text;
 BEGIN
-    IF p_user_id IS NULL OR COALESCE(p_feature, '') = '' THEN
-        RAISE EXCEPTION 'user_id and feature are required';
+    IF p_user_id IS NULL OR length(btrim(COALESCE(p_feature, ''))) = 0 THEN
+        RAISE EXCEPTION 'user_id and a non-empty feature are required';
+    END IF;
+    IF p_requests_per_day IS NULL OR p_requests_per_month IS NULL THEN
+        RAISE EXCEPTION 'Daily and monthly AI quota limits are required';
     END IF;
     IF COALESCE(p_scope_type, 'user') NOT IN ('user','organisation','global','feature') THEN
         RAISE EXCEPTION 'Unsupported AI quota scope type';
