@@ -93,7 +93,12 @@ class CourseContentAccessTests(unittest.TestCase):
             }],
             enrolments=[{
                 "id": "enrolment-1", "course_id": "course-1",
-                "user_id": "user-1", "organisation_id": "org-a", "status": "active",
+                "user_id": "user-1", "organisation_id": "org-a",
+                "status": "active", "source_type": "individual_assignment",
+            }],
+            organisation_members=[{
+                "id": "org-member-1", "organisation_id": "org-a",
+                "user_id": "user-1", "role": "learner", "status": "active",
             }],
         )
         with patch.object(course_content, "supabase", db):
