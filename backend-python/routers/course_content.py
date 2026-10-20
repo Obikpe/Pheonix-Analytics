@@ -295,6 +295,7 @@ def _check_course_view_access(
                 .eq("course_id", course_id)
                 .eq("organisation_id", str(organisation_id))
                 .eq("status", "active")
+                .eq("access_type", "assigned")
                 .limit(1)
                 .execute()
             ).data or []
@@ -323,6 +324,7 @@ def _check_course_view_access(
                 .eq("course_id", course_id)
                 .eq("organisation_id", str(organisation_id))
                 .eq("status", "active")
+                .eq("access_type", "assigned")
                 .limit(1)
                 .execute()
             )
