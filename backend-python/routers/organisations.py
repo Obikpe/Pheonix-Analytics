@@ -1002,8 +1002,9 @@ def create_organisation_team(
     existing = supabase.table("organisation_teams").select("id").eq("organisation_id", organisation_id).eq("slug", slug).limit(1).execute()
     if existing.data:
         raise HTTPException(409, "A team with this slug already exists in the organisation.")
-    if body.manager_user_id:
-        manager = supabase.table("organisation_members").select("id").eq("organisation_id", organisation_id).eq("user_id", body.manager_user_id).eq("status", "active").limit(1).execute()
+    manager_user_id = body.manager_user_id.strip() if body.manager_user_id and body.manager_user_id.strip() else None
+    if manager_user_id:
+        manager = supabase.table("organisation_members").select("id").eq("organisation_id", organisation_id).eq("user_id", manager_user_id).eq("status", "active").limit(1).execute()
         if not manager.data:
             raise HTTPException(400, "The team manager must be an active organisation member.")
     now = datetime.now(timezone.utc).isoformat()
@@ -1013,7 +1014,7 @@ def create_organisation_team(
         "slug": slug,
         "description": body.description,
         "status": body.status,
-        "manager_user_id": body.manager_user_id,
+        "manager_user_id": manager_user_id,
         "created_by": context.user_id,
         "created_at": now,
         "updated_at": now,
@@ -1050,10 +1051,14 @@ def update_organisation_team(
         raise HTTPException(404, "Team not found.")
     if changes.get("status") == "active" and existing_team[0].get("status") != "active":
         ensure_org_capacity(organisation_id, "teams")
-    if changes.get("manager_user_id"):
-        manager = supabase.table("organisation_members").select("id").eq("organisation_id", organisation_id).eq("user_id", changes["manager_user_id"]).eq("status", "active").limit(1).execute()
-        if not manager.data:
-            raise HTTPException(400, "The team manager must be an active organisation member.")
+    if "manager_user_id" in changes:
+        manager_user_id = changes["manager_user_id"]
+        manager_user_id = manager_user_id.strip() if isinstance(manager_user_id, str) and manager_user_id.strip() else None
+        changes["manager_user_id"] = manager_user_id
+        if manager_user_id:
+            manager = supabase.table("organisation_members").select("id").eq("organisation_id", organisation_id).eq("user_id", manager_user_id).eq("status", "active").limit(1).execute()
+            if not manager.data:
+                raise HTTPException(400, "The team manager must be an active organisation member.")
     changes["updated_at"] = datetime.now(timezone.utc).isoformat()
     result = supabase.table("organisation_teams").update(changes).eq("id", team_id).eq("organisation_id", organisation_id).execute()
     if not result.data:
