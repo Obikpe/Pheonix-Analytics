@@ -35,7 +35,7 @@ The live object inventory also does not contain the legacy tables `tracks`, `enr
 
 ### A. Tenant integrity is mostly enforced in application code
 
-The current foreign keys prove that a team, cohort, course, or user exists, but by themselves they do not prove the linked records belong to the same organisation. The backend should validate active organisation membership before team/cohort enrolment and should scope every read/update/delete by the tenant ID.
+The current foreign keys prove that a team, cohort, course, or user exists, but by themselves they do not prove the linked records belong to the same organisation. The organisation API now validates active membership before team/cohort enrolment and filters stale team/cohort memberships before creating enrolments. The proposed migration adds database-side validation because backend checks alone cannot protect future write paths.
 
 **Proposed database protection:** add database-side integrity checks for:
 - active team membership → active membership in the same organisation as the team;
@@ -48,7 +48,7 @@ Prefer composite foreign keys only where the schema can represent the tenant key
 
 ### B. Team membership endpoint accepted users without verifying tenant membership
 
-The team endpoint previously upserted a user into `organisation_team_members` after checking the team's organisation, but did not check that the target user was an active member of that same organisation, nor validate the team-specific role. Fix this in the backend now and add regression tests. Database-side protection remains necessary for writes outside this endpoint.
+The team endpoints previously upserted a user into `organisation_team_members` after checking the team's organisation, but did not consistently check active membership in that same organisation, validate team-specific roles, or reject inactive teams. Both `/api/organisation-teams` and `/api/organisations/{organisation_id}/teams/...` now enforce those checks. The cohort update/reactivation routes now check active learner membership and capacity; team/course enrolment routes filter stale memberships; organisation course assignments avoid double-counting a course already owned by that organisation. Regression tests cover cross-tenant team additions, unpublished course assignment, and cohort reactivation. Database-side protection remains necessary for writes outside these endpoints.
 
 ### C. Team course assignments are missing
 
@@ -84,7 +84,7 @@ The organisation membership role check currently represents `owner`, `admin`, `i
 
 ### I. Migration history and deployment target need reconciliation
 
-Only nine timestamped migration records were registered in the live project, while the repository contains numbered scripts. Build an explicit mapping from each repository migration to the live schema and registration history. Do not manually mark a migration applied or replay an old SQL file blindly. Verify the Vercel backend project reference before production rollout.
+Only nine timestamped migration records were registered in the live project. An initial mapping found exact registered-name matches for the organisation portal and migrations 017–022, while 001–015 and the learner-onboarding record remain unresolved against the repository chain. The live schema also lacks five legacy tables from 001 while newer Learnora equivalents exist. This mismatch is documented, but a complete applied/not-applied mapping still requires reviewing each older script and its data lineage. Do not manually mark a migration applied or replay an old SQL file blindly. Verify the Vercel backend project reference before production rollout.
 
 ## 3. Proposed migration sequence
 
