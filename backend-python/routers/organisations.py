@@ -795,7 +795,7 @@ def assign_course_to_cohort(organisation_id: str, cohort_id: str, body: dict, co
         else:
             supabase.table("course_access").insert({
                 "course_id": course_id, "organisation_id": organisation_id,
-                "access_type": "assigned", "status": "active",
+                "access_type": "scoped", "status": "active",
                 "assigned_by": context.user_id, "assigned_at": datetime.now(timezone.utc).isoformat(),
             }).execute()
 
