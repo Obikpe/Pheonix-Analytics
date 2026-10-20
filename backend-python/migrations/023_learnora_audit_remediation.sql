@@ -76,6 +76,7 @@ CREATE TABLE IF NOT EXISTS public.team_course_assignments (
 );
 CREATE INDEX IF NOT EXISTS team_course_assignments_team_status_idx
     ON public.team_course_assignments(team_id, status);
+ALTER TABLE public.team_course_assignments ENABLE ROW LEVEL SECURITY;
 
 CREATE OR REPLACE FUNCTION public.reserve_learnora_ai_quota(
     p_user_id uuid,
