@@ -15,9 +15,25 @@ const shortcuts=[
 
 export default function Home() {
   const [user,setUser]=useState<any>(),[data,setData]=useState<any>(null),[error,setError]=useState("");
-  useEffect(()=>{teamMe().then(setUser).catch(()=>location.href="/login")},[]);
+  const [authChecked,setAuthChecked]=useState(false),[retryAuth,setRetryAuth]=useState(0);
+  useEffect(()=>{
+    let cancelled=false;
+    setAuthChecked(false);
+    teamMe().then((account)=>{
+      if(cancelled)return;
+      setUser(account);
+      setError("");
+    }).catch((e:any)=>{
+      if(cancelled)return;
+      if(e?.status===401){location.href="/login";return;}
+      setUser(null);
+      setError(e?.message||"Learnora's internal service could not be reached.");
+    }).finally(()=>{if(!cancelled)setAuthChecked(true)});
+    return ()=>{cancelled=true};
+  },[retryAuth]);
   useEffect(()=>{if(!user)return;Promise.all([staff(),departments(),teams()]).then(([s,d,t])=>setData({staff:s.staff||[],departments:d.departments||[],teams:t.teams||[]})).catch(e=>{setError(e.message||"Some workspace summaries could not be loaded.");setData({staff:[],departments:[],teams:[]})})},[user]);
-  if(!user)return <div className="grid min-h-screen place-items-center bg-[var(--bg)] text-sm text-slate-500">Loading secure workspace…</div>;
+  if(!authChecked)return <div className="grid min-h-screen place-items-center bg-[var(--bg)] text-sm text-slate-500">Checking your secure workspace…</div>;
+  if(!user)return <main className="grid min-h-screen place-items-center bg-[var(--bg)] px-5 text-[var(--text)]"><section className="w-full max-w-md border border-white/[.1] bg-[#11171e] p-7 sm:p-9"><p className="section-kicker">Learnora Team</p><h1 className="mt-4 font-display text-3xl">Workspace unavailable</h1><p role="status" className="mt-3 text-sm leading-6 text-slate-400">{error||"We could not load your internal workspace."}</p><div className="mt-6 flex flex-wrap gap-3"><button type="button" onClick={()=>{setError("");setRetryAuth(v=>v+1)}} className="action">Try again</button><a href="/login" className="mini inline-flex items-center">Return to sign in</a></div></section></main>;
   const roles=user.roles||[];
   return <Shell roles={roles} active="overview">
     <section className="border-b border-white/[.1] pb-7 sm:pb-9">
