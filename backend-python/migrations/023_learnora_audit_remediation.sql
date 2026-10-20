@@ -422,6 +422,8 @@ DECLARE
     v_course_org uuid;
     v_member_role text;
     v_member_status text;
+    v_resource_status text;
+    v_workspace_active boolean;
 BEGIN
     IF TG_TABLE_NAME = 'organisation_teams' THEN
         IF NEW.manager_user_id IS NOT NULL THEN
@@ -464,9 +466,16 @@ BEGIN
         END IF;
     ELSIF TG_TABLE_NAME = 'cohort_members' THEN
         IF NEW.status = 'active' THEN
-            SELECT organisation_id INTO v_org FROM public.cohorts WHERE id = NEW.cohort_id;
+            SELECT organisation_id, status INTO v_org, v_resource_status FROM public.cohorts WHERE id = NEW.cohort_id;
             IF NOT FOUND THEN
                 RAISE EXCEPTION 'Cohort does not exist' USING ERRCODE = '23503';
+            END IF;
+            IF v_resource_status NOT IN ('draft','upcoming','active') THEN
+                RAISE EXCEPTION 'Closed cohorts cannot accept active members' USING ERRCODE = '23514';
+            END IF;
+            SELECT is_active INTO v_workspace_active FROM public.organisations WHERE id = v_org;
+            IF NOT COALESCE(v_workspace_active, false) THEN
+                RAISE EXCEPTION 'Inactive organisations cannot accept active cohort members' USING ERRCODE = '23514';
             END IF;
             SELECT role, status INTO v_member_role, v_member_status
             FROM public.organisation_members
@@ -478,9 +487,12 @@ BEGIN
             END IF;
         END IF;
     ELSIF TG_TABLE_NAME = 'cohort_course_assignments' THEN
-        SELECT organisation_id INTO v_org FROM public.cohorts WHERE id = NEW.cohort_id;
+        SELECT organisation_id, status INTO v_org, v_resource_status FROM public.cohorts WHERE id = NEW.cohort_id;
         IF NOT FOUND THEN
             RAISE EXCEPTION 'Cohort does not exist' USING ERRCODE = '23503';
+        END IF;
+        IF NEW.status = 'active' AND v_resource_status NOT IN ('draft','upcoming','active') THEN
+            RAISE EXCEPTION 'Closed cohorts cannot receive active course assignments' USING ERRCODE = '23514';
         END IF;
         SELECT ownership, organisation_id INTO v_course_owner, v_course_org
         FROM public.learnora_courses WHERE id = NEW.course_id;
@@ -492,9 +504,12 @@ BEGIN
                 USING ERRCODE = '23514';
         END IF;
     ELSIF TG_TABLE_NAME = 'team_course_assignments' THEN
-        SELECT organisation_id INTO v_org FROM public.organisation_teams WHERE id = NEW.team_id;
+        SELECT organisation_id, status INTO v_org, v_resource_status FROM public.organisation_teams WHERE id = NEW.team_id;
         IF NOT FOUND THEN
             RAISE EXCEPTION 'Team does not exist' USING ERRCODE = '23503';
+        END IF;
+        IF NEW.status = 'active' AND v_resource_status <> 'active' THEN
+            RAISE EXCEPTION 'Inactive teams cannot receive active course assignments' USING ERRCODE = '23514';
         END IF;
         SELECT ownership, organisation_id INTO v_course_owner, v_course_org
         FROM public.learnora_courses WHERE id = NEW.course_id;
