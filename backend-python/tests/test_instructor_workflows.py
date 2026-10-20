@@ -120,7 +120,12 @@ class InstructorAssessmentJourneyTests(unittest.TestCase):
             }],
         }
         self.original_supabase = workflows.supabase
-        workflows.supabase = FakeSupabase(self.store)
+        self.original_creator_supabase = creator.supabase
+        self.original_finance_supabase = creator_finance.supabase
+        fake_supabase = FakeSupabase(self.store)
+        workflows.supabase = fake_supabase
+        creator.supabase = fake_supabase
+        creator_finance.supabase = fake_supabase
         app = FastAPI()
         app.include_router(workflows.router)
         app.include_router(creator.router)
@@ -133,6 +138,8 @@ class InstructorAssessmentJourneyTests(unittest.TestCase):
 
     def tearDown(self):
         workflows.supabase = self.original_supabase
+        creator.supabase = self.original_creator_supabase
+        creator_finance.supabase = self.original_finance_supabase
 
     def test_instructor_lists_only_scoped_submissions(self):
         response = self.client.get("/api/instructor/submissions")
