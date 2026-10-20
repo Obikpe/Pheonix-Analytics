@@ -101,53 +101,66 @@ BEGIN
     IF p_user_id IS NULL OR COALESCE(p_feature, '') = '' THEN
         RAISE EXCEPTION 'user_id and feature are required';
     END IF;
+    IF COALESCE(p_scope_type, 'user') NOT IN ('user','organisation','global','feature') THEN
+        RAISE EXCEPTION 'Unsupported AI quota scope type';
+    END IF;
+    IF p_scope_type = 'organisation' AND p_organisation_id IS NULL THEN
+        RAISE EXCEPTION 'organisation_id is required for organisation-scoped quotas';
+    END IF;
+    IF p_requests_per_day < 0 OR p_requests_per_month < 0 THEN
+        RAISE EXCEPTION 'AI quota limits cannot be negative';
+    END IF;
 
-    -- Serialise reservations for the quota identity; transaction lock releases on return.
-    v_lock_key := COALESCE(p_scope_type, 'user') || ':' ||
-                  COALESCE(p_scope_id, p_user_id::text) || ':' ||
-                  COALESCE(p_limit_feature, p_feature);
+    -- All requests for the same quota bucket must take the same transaction lock.
+    -- Caller-supplied scope IDs are deliberately ignored for global/feature scopes.
+    v_lock_key := CASE COALESCE(p_scope_type, 'user')
+        WHEN 'organisation' THEN 'organisation:' || p_organisation_id::text
+        WHEN 'global' THEN 'global'
+        WHEN 'feature' THEN 'feature:' || COALESCE(p_limit_feature, p_feature)
+        ELSE 'user:' || p_user_id::text
+    END || ':' || COALESCE(p_limit_feature, p_feature);
     PERFORM pg_advisory_xact_lock(hashtextextended(v_lock_key, 0));
 
     IF p_scope_type = 'organisation' AND p_organisation_id IS NOT NULL THEN
         SELECT count(*)::integer INTO v_day_count
         FROM public.learnora_ai_quota_reservations r
         WHERE r.organisation_id = p_organisation_id
-          AND (p_limit_feature = '*' OR r.feature = p_limit_feature)
+          AND (p_limit_feature = '*' OR r.limit_feature = p_limit_feature)
           AND r.created_at >= date_trunc('day', v_now);
 
         SELECT count(*)::integer INTO v_month_count
         FROM public.learnora_ai_quota_reservations r
         WHERE r.organisation_id = p_organisation_id
-          AND (p_limit_feature = '*' OR r.feature = p_limit_feature)
+          AND (p_limit_feature = '*' OR r.limit_feature = p_limit_feature)
           AND r.created_at >= date_trunc('month', v_now);
     ELSIF p_scope_type = 'global' THEN
         SELECT count(*)::integer INTO v_day_count
         FROM public.learnora_ai_quota_reservations r
-        WHERE (p_limit_feature = '*' OR r.feature = p_limit_feature)
+        WHERE (p_limit_feature = '*' OR r.limit_feature = p_limit_feature)
           AND r.created_at >= date_trunc('day', v_now);
         SELECT count(*)::integer INTO v_month_count
         FROM public.learnora_ai_quota_reservations r
-        WHERE (p_limit_feature = '*' OR r.feature = p_limit_feature)
+        WHERE (p_limit_feature = '*' OR r.limit_feature = p_limit_feature)
           AND r.created_at >= date_trunc('month', v_now);
     ELSIF p_scope_type = 'feature' THEN
         SELECT count(*)::integer INTO v_day_count
         FROM public.learnora_ai_quota_reservations r
-        WHERE (p_limit_feature = '*' OR r.feature = p_limit_feature)
+        WHERE (p_limit_feature = '*' OR r.limit_feature = p_limit_feature)
           AND r.created_at >= date_trunc('day', v_now);
         SELECT count(*)::integer INTO v_month_count
         FROM public.learnora_ai_quota_reservations r
-        WHERE (p_limit_feature = '*' OR r.feature = p_limit_feature)
+        WHERE (p_limit_feature = '*' OR r.limit_feature = p_limit_feature)
           AND r.created_at >= date_trunc('month', v_now);
     ELSE
         SELECT count(*)::integer INTO v_day_count
         FROM public.learnora_ai_quota_reservations r
         WHERE r.user_id = p_user_id
-          AND (p_limit_feature = '*' OR r.feature = p_limit_feature)
+          AND (p_limit_feature = '*' OR r.limit_feature = p_limit_feature)
           AND r.created_at >= date_trunc('day', v_now);
         SELECT count(*)::integer INTO v_month_count
         FROM public.learnora_ai_quota_reservations r
         WHERE r.user_id = p_user_id
-          AND (p_limit_feature = '*' OR r.feature = p_limit_feature)
+          AND (p_limit_feature = '*' OR r.limit_feature = p_limit_feature)
           AND r.created_at >= date_trunc('month', v_now);
     END IF;
 
