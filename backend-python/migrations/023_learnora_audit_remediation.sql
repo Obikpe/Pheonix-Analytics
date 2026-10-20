@@ -249,6 +249,7 @@ DECLARE
     v_status text;
     v_cohort uuid;
     v_cohort_limit integer;
+    v_is_active boolean;
 BEGIN
     IF TG_TABLE_NAME = 'cohort_members' THEN
         IF NEW.status <> 'active' THEN RETURN NEW; END IF;
@@ -274,15 +275,16 @@ BEGIN
         v_org := NEW.organisation_id;
         v_key := CASE NEW.role WHEN 'learner' THEN 'learners' ELSE 'instructors' END;
     ELSIF TG_TABLE_NAME = 'cohorts' THEN
+        -- Capacity remains an invariant even when a cohort is being closed.
+        IF TG_OP = 'UPDATE' AND NEW.capacity IS NOT NULL THEN
+            SELECT count(*) INTO v_used FROM public.cohort_members WHERE cohort_id = NEW.id AND status = 'active';
+            IF v_used > NEW.capacity THEN
+                RAISE EXCEPTION 'Cohort capacity cannot be lower than its active membership (capacity %, active members %)', NEW.capacity, v_used
+                    USING ERRCODE = '23514';
+            END IF;
+        END IF;
         IF NEW.status NOT IN ('draft','upcoming','active','ending') THEN RETURN NEW; END IF;
         IF TG_OP = 'UPDATE' AND OLD.status IN ('draft','upcoming','active','ending') AND OLD.organisation_id = NEW.organisation_id THEN
-            IF NEW.capacity IS NOT NULL THEN
-                SELECT count(*) INTO v_used FROM public.cohort_members WHERE cohort_id = NEW.id AND status = 'active';
-                IF v_used > NEW.capacity THEN
-                    RAISE EXCEPTION 'Cohort capacity cannot be lower than its active membership (capacity %, active members %)', NEW.capacity, v_used
-                        USING ERRCODE = '23514';
-                END IF;
-            END IF;
             RETURN NEW;
         END IF;
         v_org := NEW.organisation_id; v_key := 'cohorts';
@@ -315,7 +317,12 @@ BEGIN
 
     PERFORM pg_advisory_xact_lock(hashtextextended('orgcap:' || v_org::text || ':' || v_key, 0));
 
-    SELECT settings INTO v_settings FROM public.organisations WHERE id = v_org;
+    SELECT settings, is_active INTO v_settings, v_is_active
+    FROM public.organisations WHERE id = v_org;
+    IF NOT FOUND OR COALESCE(v_is_active, false) = false THEN
+        RAISE EXCEPTION 'Organisation workspace is inactive or unavailable'
+            USING ERRCODE = '23514';
+    END IF;
     IF COALESCE(v_settings->>'pilot_mode', 'false') = 'true' THEN RETURN NEW; END IF;
 
     SELECT id INTO v_contract
