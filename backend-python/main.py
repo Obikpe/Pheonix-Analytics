@@ -60,6 +60,9 @@ if frontend and frontend not in origins:
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
+    # Permit preview deployments for these two Learnora apps on the connected Vercel team.
+    # Production domains remain explicitly listed above; API authentication still applies.
+    allow_origin_regex=r"https://(?:learnora|teamslearnora)-[a-z0-9-]+-obikpes-projects\\.vercel\\.app",
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=[
