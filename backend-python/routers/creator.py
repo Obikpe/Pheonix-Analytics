@@ -512,8 +512,8 @@ def review_application(
         require_permission("users.update")
     ),
 ):
-    if status not in {"approved", "declined"}:
-        raise HTTPException(400, "Status must be approved or declined.")
+    if status not in {"under_review", "approved", "declined"}:
+        raise HTTPException(400, "Status must be under_review, approved or declined.")
 
     application = (
         supabase
@@ -527,6 +527,8 @@ def review_application(
         raise HTTPException(404, "Creator application not found.")
 
     row = application.data[0]
+    if row.get("status") not in {"submitted", "under_review"}:
+        raise HTTPException(409, "This creator application has already been reviewed.")
     now = datetime.now(timezone.utc).isoformat()
 
     updated = (
@@ -538,10 +540,11 @@ def review_application(
             "reviewed_at": now,
         })
         .eq("id", application_id)
+        .eq("status", row["status"])
         .execute()
     )
     if not updated.data:
-        raise HTTPException(500, "Unable to update creator application.")
+        raise HTTPException(409, "Application status changed; reload the review queue.")
 
     if status == "approved":
         existing = (
