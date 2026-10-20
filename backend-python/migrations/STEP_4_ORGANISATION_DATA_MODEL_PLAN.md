@@ -130,3 +130,45 @@ This sequence is intentionally additive and staged; exact migration filenames/ve
 - `learnora_capacity_reservations` exists and must be reconciled with the actual contract-capacity workflow before any migration or runtime refactor.
 - No SQL migration has been applied and no production data has been changed.
 - Remaining gate before any migration: reconcile the complete numbered repository migration set with the live timestamped migration records and verify the deployed backend's Supabase project reference.
+
+
+## 8. Migration reconciliation decision ledger (read-only inspection)
+
+The live Supabase migration registry was re-read during this audit. It contains exactly these nine records:
+
+| Live version | Live name | Repository candidate | Decision |
+|---|---|---|---|
+| `20261008100924` | `add_learnora_ai_profiles` | No exact filename; AI foundation files `014` and `015` are candidates only | **Unresolved.** Do not equate by topic or insert a synthetic history row. Compare the applied schema/functions with both files and Git history. |
+| `20261009225421` | `learnora_organisation_portal` | `016_learnora_organisation_portal.sql` | Name/topic match; confirm SQL hash/effects before recording this as exact equivalence. |
+| `20261009230311` | `individual_learner_enrolments` | `017_individual_learner_enrolments.sql` | Name/topic match; confirm SQL hash/effects. |
+| `20261009230330` | `learner_lesson_notes` | `018_learner_lesson_notes.sql` | Name/topic match; confirm SQL hash/effects. |
+| `20261009230703` | `ai_lesson_summariser_profile` | `019_ai_lesson_summariser_profile.sql` | Name/topic match; confirm SQL hash/effects. |
+| `20261009231536` | `mark_witstart_pilot_mode` | `020_mark_witstart_pilot_mode.sql` | Name/topic match; confirm SQL hash/effects. |
+| `20261009231754` | `cohort_course_assignments` | `021_cohort_course_assignments.sql` | Name/topic match; confirm SQL hash/effects. |
+| `20261009232328` | `community_discussions` | `022_community_discussions.sql` | Name/topic match; confirm SQL hash/effects. |
+| `20261011051442` | `learner_onboarding_profiles` | No numbered file among `001`–`022` | **Unresolved.** Find the original SQL/commit or inspect the object definition and provenance; do not fabricate a replacement migration. |
+
+### Repository files without a corresponding live registry row
+
+- `001_initial.sql` through `013_learnora_lifecycle_constraints.sql): no matching registry rows were returned. This does **not** prove they were never applied; live objects may have been created manually, through another migration path, or by later scripts.
+- `014_learnora_ai_foundation.sql` and `015_learnora_ai_permissions.sql`: no exact registry entries. The live `add_learnora_ai_profiles` row is not proof that either file ran.
+- `023_learnora_audit_remediation.sql`: proposed audit patch only; deliberately absent from the live registry and must remain unapplied until validation is complete.
+
+### Reconciliation rule
+
+Do not insert fake rows into `supabase_migrations.schema_migrations`, do not rename the historical files to force a match, and do not run `supabase db push` or replay `001`–`015` against Pheonix while their state is unknown. A migration name is not proof of equivalent SQL. Preserve the current nine live records as the factual baseline.
+
+Before production rollout, build a per-file evidence record with: (1) the exact repository commit/blob hash; (2) the SQL statements/objects from that file; (3) the live object's definition and relevant constraints/policies/triggers; (4) whether effects match, partially match, or are absent; and (5) the reviewed action. Where an old file's effects are present but history is missing, prepare a separately reviewed history-repair procedure only after proving exact equivalence and confirming Supabase's supported migration-repair workflow. Where effects are partially present, write a new forward-only corrective migration rather than replaying the old file.
+
+### Validation boundary and remaining release gate
+
+Read-only validation confirms that the existing organisation-related base tables and referenced course/assessment tables exist, while the proposed `team_course_assignments`, `learnora_ai_quota_reservations` and three new routines are not present yet. This is expected for a proposal. It is **not** proof that the SQL parses or executes successfully.
+
+The migration has not been run against a disposable PostgreSQL/Supabase branch. Before approval, run it in an isolated database matching Pheonix's schema, run all migration statements to completion, and test:
+- duplicate/retry behaviour and AI quota daily/monthly boundaries under concurrent requests;
+- concurrent last-slot capacity claims, membership moves/suspensions, and cohort capacity reductions;
+- tenant mismatch attempts for team/cohort/course assignments and enrolments;
+- existing usage-log backfill and constraint validation against a representative data copy;
+- grants/RLS after the migration, including a non-organisation learner regression check.
+
+The last known GitHub runs were still in progress on the newest branch head when inspected; the immediately preceding backend regression run passed, but the newest commit is not yet fully verified. Production migration, merge, and any additional deployment remain separate approval gates.
