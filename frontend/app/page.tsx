@@ -195,9 +195,9 @@ export default function Page() {
           <span className="inline-flex items-center gap-2 text-xs text-slate-500"><BookOpen size={15} className="text-[#f2d477]"/> Browse the available catalogue</span>
         </div>
       </section>
-      <div id="library" className="learnora-existing-feature"><Library /></div>
-      <div id="playground" className="learnora-existing-feature"><Playground /></div>
-      <div id="pricing" className="learnora-existing-feature"><Pricing /></div>
+      <div className="learnora-existing-feature"><Library /></div>
+      <div className="learnora-existing-feature"><Playground /></div>
+      <div className="learnora-existing-feature"><Pricing /></div>
 
       <section className="learnora-final-cta">
         <div className="mx-auto grid max-w-[82rem] gap-8 px-5 py-16 sm:px-8 lg:grid-cols-[1fr_auto] lg:items-center lg:px-10 lg:py-20">
