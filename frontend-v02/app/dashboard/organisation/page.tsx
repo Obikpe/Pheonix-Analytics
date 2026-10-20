@@ -23,6 +23,7 @@ export default function OrganisationWorkspace() {
   const [teamCourseSelections, setTeamCourseSelections] = useState<Record<string, string>>({});
   const [assignedCourses, setAssignedCourses] = useState<any[]>([]);
   const [orgCourseSelection, setOrgCourseSelection] = useState("");
+  const [memberCourseSelections, setMemberCourseSelections] = useState<Record<string, string>>({});
   const [courseSelections, setCourseSelections] = useState<Record<string, string>>({});
   const [programmeForm, setProgrammeForm] = useState<any>({ name: "", description: "", start_date: "", end_date: "" });
   const [cohortForm, setCohortForm] = useState<any>({ name: "", description: "", programme_id: "", start_date: "", end_date: "", capacity: "", instructor_capacity: "" });
@@ -220,6 +221,19 @@ export default function OrganisationWorkspace() {
     } catch (e: any) { setError(e.message || "Course could not be assigned to the organisation."); }
   }
 
+  async function assignCourseToMember(userId: string) {
+    if (!user?.organisation_id || !memberCourseSelections[userId]) return;
+    setError(""); setNotice("");
+    try {
+      const result = await request<any>("/organisations/" + encodeURIComponent(user.organisation_id) + "/members/" + encodeURIComponent(userId) + "/courses", {
+        method: "POST", body: JSON.stringify({ course_id: memberCourseSelections[userId] }),
+      });
+      setNotice(result.created ? "Course assigned to learner." : "Learner is already enrolled in this course.");
+      setMemberCourseSelections((old) => ({ ...old, [userId]: "" }));
+      await load();
+    } catch (e: any) { setError(e.message || "Course could not be assigned to this learner."); }
+  }
+
   async function assignCourseToCohort(cohortId: string) {
     if (!user?.organisation_id || !courseSelections[cohortId]) return;
     setError("");
@@ -332,7 +346,7 @@ export default function OrganisationWorkspace() {
                 {members.length ? (
                   <div className="mt-5 overflow-x-auto">
                     <table className="w-full min-w-[520px] text-left text-sm">
-                      <thead className="border-b border-white/10 text-[10px] uppercase tracking-[.12em] text-slate-500"><tr><th className="py-3 pr-3">Person</th><th className="py-3 pr-3">Role</th><th className="py-3 pr-3">Status</th><th className="py-3">Update status</th></tr></thead>
+                      <thead className="border-b border-white/10 text-[10px] uppercase tracking-[.12em] text-slate-500"><tr><th className="py-3 pr-3">Person</th><th className="py-3 pr-3">Role</th><th className="py-3 pr-3">Status</th><th className="py-3 pr-3">Update status</th><th className="py-3">Assign course</th></tr></thead>
                       <tbody className="divide-y divide-white/[.06]">
                         {members.map((m) => (
                           <tr key={m.membership_id || m.id}>
@@ -340,6 +354,7 @@ export default function OrganisationWorkspace() {
                             <td className="py-4 pr-3 text-slate-300">{m.role}</td>
                             <td className="py-4 pr-3 text-slate-400">{m.status}</td>
                             <td className="py-4"><select aria-label={"Update status for " + (m.user?.email || m.membership_id)} value={m.status} onChange={(e) => void changeMember(String(m.membership_id || m.id), { status: e.target.value })} className="rounded-lg border border-white/10 bg-[#090c10] px-2 py-2 text-xs"><option value="active">Active</option><option value="invited">Invited</option><option value="suspended">Suspended</option></select></td>
+                            <td className="py-4">{capabilities.individual_course_assignment && m.role === "learner" && <div className="min-w-[220px]"><select aria-label={"Course for "+(m.user?.email || m.user_id)} value={memberCourseSelections[String(m.user_id)] || ""} onChange={(e) => setMemberCourseSelections((old) => ({ ...old, [String(m.user_id)]: e.target.value }))} className="w-full rounded-lg border border-white/10 bg-[#090c10] px-2 py-2 text-xs"><option value="">Choose course</option>{courseCatalogue.map((course) => <option key={course.id} value={course.id}>{course.title}</option>)}</select><button disabled={!memberCourseSelections[String(m.user_id)]} onClick={() => void assignCourseToMember(String(m.user_id))} className="mt-2 rounded-lg border border-white/10 px-2 py-1.5 text-xs disabled:opacity-50">Assign</button></div>}</td>
                           </tr>
                         ))}
                       </tbody>
