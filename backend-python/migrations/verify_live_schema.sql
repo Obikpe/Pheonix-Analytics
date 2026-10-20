@@ -177,4 +177,16 @@ LEFT JOIN public.organisation_members m
  AND m.role = 'learner'
 WHERE e.status = 'active'
   AND e.organisation_id IS NOT NULL
-  AND m.id IS NULL;
+  AND m.id IS NULL
+UNION ALL
+SELECT 'cohorts_capacity_below_one', count(*)
+FROM public.cohorts WHERE capacity IS NOT NULL AND capacity < 1
+UNION ALL
+SELECT 'cohorts_negative_instructor_capacity', count(*)
+FROM public.cohorts WHERE instructor_capacity IS NOT NULL AND instructor_capacity < 0
+UNION ALL
+SELECT 'cohort_invalid_date_range', count(*)
+FROM public.cohorts WHERE start_date IS NOT NULL AND end_date IS NOT NULL AND start_date > end_date
+UNION ALL
+SELECT 'programme_invalid_date_range', count(*)
+FROM public.learnora_programmes WHERE start_date IS NOT NULL AND end_date IS NOT NULL AND start_date > end_date;
