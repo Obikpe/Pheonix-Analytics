@@ -141,4 +141,29 @@ SELECT 'active_team_managers_without_active_org_membership', count(*)
 FROM public.organisation_teams t
 LEFT JOIN public.organisation_members m
   ON m.organisation_id = t.organisation_id AND m.user_id = t.manager_user_id AND m.status = 'active'
-WHERE t.manager_user_id IS NOT NULL AND t.status = 'active' AND m.id IS NULL;
+WHERE t.manager_user_id IS NOT NULL AND t.status = 'active' AND m.id IS NULL
+UNION ALL
+SELECT 'organisation_types_outside_supported_set', count(*)
+FROM public.organisations
+WHERE organisation_type IS NULL OR organisation_type NOT IN (
+    'academy','corporate','university','school','bootcamp','nonprofit','custom','community'
+)
+UNION ALL
+SELECT 'quizzes_below_70_percent_or_missing_score', count(*)
+FROM public.quizzes
+WHERE passing_score IS NULL OR passing_score < 70
+UNION ALL
+SELECT 'cohorts_over_current_capacity', count(*)
+FROM public.cohorts c
+WHERE c.capacity IS NOT NULL
+  AND (SELECT count(*) FROM public.cohort_members cm
+       WHERE cm.cohort_id = c.id AND cm.status = 'active') > c.capacity
+UNION ALL
+SELECT 'duplicate_active_team_memberships', count(*)
+FROM (
+    SELECT team_id, user_id
+    FROM public.organisation_team_members
+    WHERE status = 'active'
+    GROUP BY team_id, user_id
+    HAVING count(*) > 1
+) duplicate_memberships;
