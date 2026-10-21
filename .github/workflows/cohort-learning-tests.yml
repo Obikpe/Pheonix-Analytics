@@ -111,16 +111,19 @@ jobs:
           ))
           PY
           )"
+          LAST_RESPONSE=""
           for attempt in $(seq 1 30); do
-            if curl --fail --silent \
+            LAST_RESPONSE="$(curl --silent --show-error --write-out '\nHTTP_STATUS:%{http_code}' \
               -H "Authorization: Bearer $STAGING_SERVICE_KEY" \
               -H "apikey: $STAGING_SERVICE_KEY" \
-              "http://127.0.0.1:3000/rest/v1/cohorts?select=id&limit=0" >/dev/null; then
+              "http://127.0.0.1:3000/rest/v1/cohorts?select=id&limit=0" || true)"
+            if [[ "$LAST_RESPONSE" == *"HTTP_STATUS:200" ]]; then
               echo "PostgREST is ready and accepts the isolated service-role token"
               exit 0
             fi
             sleep 2
           done
+          echo "$LAST_RESPONSE"
           docker logs cohort-postgrest
           exit 1
       - name: Run full authenticated cohort lifecycle API journey
