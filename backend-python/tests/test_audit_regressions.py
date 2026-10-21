@@ -8,6 +8,8 @@ os.environ.setdefault("SUPABASE_URL", "https://example.supabase.co")
 os.environ.setdefault("SUPABASE_SERVICE_ROLE_KEY", "unit-test-service-key")
 
 from fastapi import HTTPException
+from starlette.requests import Request
+from routers.auth import _get_client_ip
 from routers.ai import _authorise_feature
 from routers.organisations import (
     _validate_organisation_type,
@@ -68,6 +70,21 @@ class AuditRegressionTests(unittest.TestCase):
 
     def test_quiz_may_require_more_than_70(self):
         self.assertEqual(effective_passing_score({"passing_score": 85}), 85.0)
+
+    def test_client_ip_ignores_untrusted_forwarded_for_prefix(self):
+        request = Request({
+            "type": "http",
+            "method": "GET",
+            "path": "/",
+            "headers": [
+                (b"x-forwarded-for", b"198.51.100.200, 203.0.113.4"),
+                (b"x-real-ip", b"203.0.113.44"),
+            ],
+            "client": ("127.0.0.1", 12345),
+            "server": ("testserver", 80),
+            "scheme": "https",
+        })
+        self.assertEqual(_get_client_ip(request), "203.0.113.44")
 
 
 if __name__ == "__main__":
