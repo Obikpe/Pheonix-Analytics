@@ -25,6 +25,6 @@ The replay also bootstraps a minimal `storage.buckets` table in the disposable C
 
 ## Required before promoting any legacy file
 
-For every candidate, document the exact object/data lineage and classify it as applied-equivalent, partially superseded, not applied, or unknown. Compare columns, defaults, constraints, indexes, triggers, functions, RLS, grants, views and seeded rows. Do not replay these scripts or fabricate migration-ledger rows to force a clean history.
+For every candidate, document the exact object/data lineage and classify it as applied-equivalent, partially superseded, not applied, or unknown. Compare columns, defaults, constraints, indexes, triggers, functions, RLS, grants, views and seeded rows. Do not replay these scripts against the active Supabase project or any existing database, and do not fabricate migration-ledger rows to force a clean history.
 
 These scripts may be rehearsed only in a brand-new, disposable CI database to test whether the legacy bootstrap plus timestamped migrations can be replayed. Never replay them against the active Supabase project or another existing database. The current-schema snapshot at `supabase/baselines/active-pheonix-public-schema.sql` is for disposable API staging only. It is not a replacement for the missing historical pre-migration baseline and must not be inserted into the active migration directory.
