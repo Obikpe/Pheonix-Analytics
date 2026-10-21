@@ -84,7 +84,7 @@ class CohortLearnerTests(unittest.TestCase):
             with self.assertRaises(HTTPException) as caught:
                 cohort_learners.login_cohort_account(payload, request)
         self.assertEqual(caught.exception.status_code, 401)
-        record_failure.assert_called_once()
+        self.assertEqual(record_failure.call_count, 2)  # account + client-IP buckets
 
     def test_active_login_returns_cohort_scoped_token(self):
         account = {
