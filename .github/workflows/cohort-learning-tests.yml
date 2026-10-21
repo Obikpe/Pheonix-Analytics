@@ -231,6 +231,23 @@ jobs:
           fi
           echo "Permission keys match the active catalog baseline; AI provider seed count matches; contract templates and clauses are empty as expected."
 
+      - name: Apply current service-role grants to disposable replay
+        if: steps.legacy_replay.outcome == 'success' && steps.seed_check.outcome == 'success'
+        env:
+          LEGACY_REPLAY_DATABASE_URL: postgresql://postgres:cohort-ci-only@localhost:5432/legacy_replay_staging
+        run: |
+          # The historical migration chain does not reproduce Supabase's current default service_role grants.
+          # Align only this disposable replay database with the catalog snapshot's service-role-only harness.
+          psql "$LEGACY_REPLAY_DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
+          REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM PUBLIC, anon, authenticated;
+          REVOKE ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public FROM PUBLIC, anon, authenticated;
+          REVOKE ALL PRIVILEGES ON ALL FUNCTIONS IN SCHEMA public FROM PUBLIC, anon, authenticated;
+          GRANT USAGE ON SCHEMA public TO service_role;
+          GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO service_role;
+          GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO service_role;
+          GRANT ALL PRIVILEGES ON ALL FUNCTIONS IN SCHEMA public TO service_role;
+          SQL
+
       - name: Compare replayed schema with the catalog snapshot
         if: always() && steps.legacy_replay.outcome == 'success'
         continue-on-error: true
