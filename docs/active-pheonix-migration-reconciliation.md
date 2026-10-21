@@ -246,11 +246,20 @@ All five source/target pairs had identical blob SHAs in the repository API. This
 - Applied live migration `20261021220321_process_creator_payout_atomically`, `20261021220327_encrypt_cohort_date_of_birth`, and `20261021220333_cohort_login_rate_limits`. The DOB schema migration is applied. A read-only count found zero cohort accounts, zero plaintext DOB rows, and zero encrypted DOB rows, so no existing DOB backfill is currently needed. A stable `COHORT_DOB_ENCRYPTION_KEY` has been provisioned in the `learnora-backend` Vercel production and preview environments for future account creation.
 - The `supabase_admin` default ACL still grants browser privileges for future objects created by that managed role. The active connection is `postgres` and is not a member of `supabase_admin`, so the database rejected changing that role's defaults. This is an unresolved managed-role privilege issue requiring Supabase-admin-level access; do not claim future-object ACL parity until it is resolved.
 
-### Integration blocker — audit branch and cohort branch
+### Branch integration status — verified after merge
 
-PR #7 (`fix/learnora-audit-tenant-isolation`) and PR #8 (`cohort-org-backend-reconciliation`) remain open against `main`. GitHub's compare endpoint reports the branches as diverged (160 commits ahead / 230 behind for audit relative to cohort at the latest comparison). The audit branch includes important application guards and tests that are not fully ported into the cohort branch. **Do not merge either PR independently or merge the entire audit branch blindly.** Reconcile by reviewing and porting the specific guarded application changes and tests onto an integration branch, then run all CI against that combined tree.
+PR #7 (`fix/learnora-audit-tenant-isolation`) and PR #8 (`cohort-org-backend-reconciliation`) are both merged into `main` at merge commit `4b609776c9f477ff42ada20f8fe5cbd6d80c28ef`. The earlier warning that both PRs remained open is stale and has been superseded.
 
-No live migration, production-data change, PR merge, or deployment was performed by these follow-up commits.
+The merged `main` tree contains the tenant-scoped course-content guards, module-unlock checks, organisation team membership guards, AI quota reservation service, cohort login validation/throttling, payout RPC, DOB encryption, browser table-grant revocation and trigger-function execute restrictions. CI must continue to test the actual current-schema snapshot and the historical replay independently.
+
+### Remaining release blockers
+
+- **Managed-role default ACL:** live verification shows zero explicit public-table grants to `anon` and `authenticated`, but `supabase_admin` still has default ACL entries granting browser roles privileges on future tables, sequences and functions. The connected `postgres` role cannot alter another role's defaults without membership. This is not resolved by the existing migration and must be handled by a Supabase project administrator/support or another explicitly authorised administrative mechanism. Do not claim complete future-object grant hardening until a read-only verification query returns no such ACL entries.
+- **Local-storage bearer tokens:** frontends still store `phx_token` in `localStorage`. CSP and security headers reduce some exposure but do not remove token theft risk. A full HttpOnly-cookie migration requires coordinated backend, frontend, CSRF and cross-site-cookie testing; it is not equivalent to merely setting a cookie alongside the existing localStorage token.
+- **Grading audit and scope:** the learner-facing assignment endpoints enforce enrolment and module unlocks, but a project-wide search of the current router files did not identify an instructor grading endpoint corresponding to the original finding. Before declaring this closed, locate the actual grading/write path and verify instructor-to-course assignment scope, one-way/controlled grade transitions, and audit logging. Do not add a speculative endpoint without confirming the product contract.
+- **Migration provenance:** the five 20 October migration files were compared byte-for-byte with the archived source candidates during reconciliation, but repository history for the timestamped paths alone shows restoration commits. The two catalog-reconstructed files remain reconstructions, not recovered originals. Keep them explicitly labelled and do not represent their historical provenance as fully recovered.
+
+The latest live check confirms that `information_schema.role_table_grants` returns zero rows for `anon` and `authenticated` in `public`. The remaining managed-role default ACL is a separate, unresolved future-object risk.
 
 
 ## Live remediation applied — 2026-10-21
