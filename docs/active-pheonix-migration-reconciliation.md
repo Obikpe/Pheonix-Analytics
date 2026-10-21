@@ -217,30 +217,6 @@ The following timestamped migrations are now verified against byte-identical sou
 All five source/target pairs had identical blob SHAs in the repository API. This resolves the content-provenance uncertainty for those five files, but not the separate branch-integration dependency.
 
 
-## Follow-up security work — latest branch commits
-
-- Tightened the cohort username allowlist to `[a-z0-9.-]{2,160}`; the regex no longer admits a backslash. Regression tests already cover `%`, `a%`, and `_`, generic 401 responses, dummy password verification, IP+username buckets, and the sixth-attempt lockout.
-- Added `supabase/rollback/20261021220303_revoke_browser_table_grants.rollback.sql` outside the active migration directory. It restores the exact 12-table grants from migration `20261020230906`; it is emergency-only because applying it restores browser-role exposure.
-- Applied live migration `20261021220303_revoke_browser_table_grants`; verified `information_schema.role_table_grants` returns zero rows for `anon` and `authenticated` in `public`. The migration also hardens defaults owned by `postgres`.
-- Applied live migration `20261021220321_process_creator_payout_atomically`, `20261021220327_encrypt_cohort_date_of_birth`, and `20261021220333_cohort_login_rate_limits`. The DOB schema migration is applied. A read-only count found zero cohort accounts, zero plaintext DOB rows, and zero encrypted DOB rows, so no existing DOB backfill is currently needed. A stable `COHORT_DOB_ENCRYPTION_KEY` has been provisioned in the `learnora-backend` Vercel production and preview environments for future account creation.
-- The `supabase_admin` default ACL still grants browser privileges for future objects created by that managed role. The active connection is `postgres` and is not a member of `supabase_admin`, so the database rejected changing that role's defaults. This is an unresolved managed-role privilege issue requiring Supabase-admin-level access; do not claim future-object ACL parity until it is resolved.
-
-### Branch integration status — verified after merge
-
-PR #7 (`fix/learnora-audit-tenant-isolation`) and PR #8 (`cohort-org-backend-reconciliation`) are both merged into `main` at merge commit `4b609776c9f477ff42ada20f8fe5cbd6d80c28ef`. The earlier warning that both PRs remained open is stale and has been superseded.
-
-The merged `main` tree contains the tenant-scoped course-content guards, module-unlock checks, organisation team membership guards, AI quota reservation service, cohort login validation/throttling, payout RPC, DOB encryption, browser table-grant revocation and trigger-function execute restrictions. CI must continue to test the actual current-schema snapshot and the historical replay independently.
-
-### Remaining release blockers
-
-- **Managed-role default ACL:** live verification shows zero explicit public-table grants to `anon` and `authenticated`, but `supabase_admin` still has default ACL entries granting browser roles privileges on future tables, sequences and functions. The connected `postgres` role cannot alter another role's defaults without membership. This is not resolved by the existing migration and must be handled by a Supabase project administrator/support or another explicitly authorised administrative mechanism. Do not claim complete future-object grant hardening until a read-only verification query returns no such ACL entries.
-- **Local-storage bearer tokens:** frontends still store `phx_token` in `localStorage`. CSP and security headers reduce some exposure but do not remove token theft risk. A full HttpOnly-cookie migration requires coordinated backend, frontend, CSRF and cross-site-cookie testing; it is not equivalent to merely setting a cookie alongside the existing localStorage token.
-- **Grading audit and scope:** the learner-facing assignment endpoints enforce enrolment and module unlocks, but a project-wide search of the current router files did not identify an instructor grading endpoint corresponding to the original finding. Before declaring this closed, locate the actual grading/write path and verify instructor-to-course assignment scope, one-way/controlled grade transitions, and audit logging. Do not add a speculative endpoint without confirming the product contract.
-- **Migration provenance:** the five 20 October migration files were compared byte-for-byte with the archived source candidates during reconciliation, but repository history for the timestamped paths alone shows restoration commits. The two catalog-reconstructed files remain reconstructions, not recovered originals. Keep them explicitly labelled and do not represent their historical provenance as fully recovered.
-
-The latest live check confirms that `information_schema.role_table_grants` returns zero rows for `anon` and `authenticated` in `public`. The remaining managed-role default ACL is a separate, unresolved future-object risk.
-
-
 ## Live remediation applied — 2026-10-21
 
 The following five release migrations were applied to the active Pheonix Supabase project in order and recorded in the migration ledger using the versions below:
