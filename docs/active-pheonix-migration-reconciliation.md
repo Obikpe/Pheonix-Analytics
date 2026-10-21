@@ -41,15 +41,15 @@ The seven formerly missing timestamped sources have been restored as follows:
 
 | Live migration | Source provenance |
 | --- | --- |
-| `20261020230826` audit remediation | Recovered verbatim from the previously committed `backend-python/migrations/023_learnora_audit_remediation.sql` |
-| `20261020230906` shared learner grants / trigger routines | Recovered verbatim from `024_restore_shared_learner_grants_and_lock_trigger_routines.sql` |
-| `20261020232148` unlimited monthly AI quota | Recovered verbatim from `025_allow_unlimited_monthly_ai_quota.sql` |
-| `20261020234717` timestamp trigger search path | Recovered verbatim from `026_pin_shared_timestamp_trigger_search_path.sql` |
-| `20261020234813` browser grants for organisation controls | Recovered verbatim from `027_revoke_browser_grants_from_org_control_tables.sql` |
+| `20261020230826` audit remediation | Timestamped SQL source is present and replay-tested; the referenced prior path is not present in the current tree and its exact historical provenance is not independently verified. |
+| `20261020230906` shared learner grants / trigger routines | Timestamped SQL source is present and replay-tested; exact historical byte-for-byte provenance is not independently verified. |
+| `20261020232148` unlimited monthly AI quota | Timestamped SQL source is present and replay-tested; exact historical byte-for-byte provenance is not independently verified. |
+| `20261020234717` timestamp trigger search path | Timestamped SQL source is present and replay-tested; exact historical byte-for-byte provenance is not independently verified. |
+| `20261020234813` browser grants for organisation controls | Timestamped SQL source is present and replay-tested; exact historical byte-for-byte provenance is not independently verified. |
 | `20261008100924` AI profiles | Original source was not found in repository history. A catalog-derived equivalent was reconstructed from the live table definition; it is explicitly labelled and is not byte-for-byte original SQL. |
 | `20261011051442` learner onboarding profiles | Original source was not found in repository history. A catalog-derived equivalent was reconstructed from the live table definition; it is explicitly labelled and is not byte-for-byte original SQL. |
 
-The two catalog-derived files should not be described as exact source recovery. They need a final diff against any trusted backup or author copy if one becomes available. They are not replayed against the active database.
+The two catalog-derived files should not be described as exact source recovery. They need a final diff against any trusted backup or author copy if one becomes available. They are not replayed against the active database. The five 2026-10-20 SQL files are present and successfully replay, but their original historical source paths could not be independently verified in the current Git history; do not call them byte-for-byte recovery until the original blobs or trusted backups are found.
 
 ## Legacy baseline decision
 
@@ -110,7 +110,7 @@ Four active-schema tables are absent from the replay: `media`, `security_logs`, 
 
 The historical chain also fails to reproduce the active `service_role` grants by itself. For the second API test only, CI applies the same service-role-only grant harness used by the catalog snapshot. This is a disposable-test adjustment, not a recovered historical migration.
 
-The authenticated cohort lifecycle test passes against both the catalog snapshot and the replayed chain **after** that grant adjustment. This validates the cohort routes, but it does not make the full legacy schema equivalent. No legacy tables or columns were automatically dropped or remapped: their data lineage is unresolved, and forcing the fingerprint to match without a reviewed mapping could destroy or misclassify data.
+The authenticated cohort lifecycle test passes against both the catalog snapshot and the replayed chain **after** that grant adjustment. On the replayed-chain run, the legacy `audit_logs` table shape also triggers a swallowed `account_type` schema-cache error in the authentication audit writer; the test remains green because that writer intentionally catches exceptions. The catalog-snapshot run does not show this warning. This is another observable consequence of the known legacy schema drift, not a successful audit-write assertion. This validates the cohort routes, but it does not make the full legacy schema equivalent. No legacy tables or columns were automatically dropped or remapped: their data lineage is unresolved, and forcing the fingerprint to match without a reviewed mapping could destroy or misclassify data.
 
 ## Authenticated API journey added to CI
 
@@ -122,12 +122,12 @@ The existing migration-integration job remains separate: it applies the 12 cohor
 
 ## Verification completed on the current branch
 
-The latest full code verification on commit `cc40e7d51d91937142d218e468c5921b290235ad` reported:
+The latest full code verification before this run was on commit `cc40e7d51d91937142d218e468c5921b290235ad`. The latest verified run on 2026-10-21 is on commit `56aa678a7d5d5a02c2c9e61642581d2b60d9c500`:
 
-- [Cohort Learning Access Tests](https://github.com/Obikpe/Pheonix-Analytics/actions/runs/39670620490) — **passed**. The 12 cohort migrations and SQL invariants passed; the authenticated lifecycle journey passed against both disposable database variants; deterministic permission and AI-provider seed checks passed. The schema fingerprint step reports the known global drift and is non-blocking.
-- [Learnora Backend Verification](https://github.com/Obikpe/Pheonix-Analytics/actions/runs/39670620444) — **passed**.
-- [Learnora frontends](https://github.com/Obikpe/Pheonix-Analytics/actions/runs/39670620572) — both `frontend-team` and `frontend-v02` builds **passed**.
-- [Learnora quality checks](https://github.com/Obikpe/Pheonix-Analytics/actions/runs/39670620437) — frontend subjobs were cancelled by overlapping runs; backend syntax passed. This quality workflow still needs a clean rerun.
+- [Cohort Learning Access Tests](https://github.com/Obikpe/Pheonix-Analytics/actions/runs/39671419293) — **passed**. The 12 cohort migrations and SQL invariants passed; the authenticated lifecycle journey passed against both disposable database variants; deterministic permission and AI-provider seed checks passed. The schema fingerprint step reports the known global drift and is non-blocking.
+- [Learnora Backend Verification](https://github.com/Obikpe/Pheonix-Analytics/actions/runs/39671419719) — **passed**.
+- [Learnora frontends](https://github.com/Obikpe/Pheonix-Analytics/actions/runs/39671419462) — both `frontend-team` and `frontend-v02` builds **passed**.
+- [Learnora quality checks](https://github.com/Obikpe/Pheonix-Analytics/actions/runs/39671419552) — frontend subjobs were cancelled by overlapping runs; backend syntax passed. This quality workflow still needs a clean rerun.
 
 The organisation UI now supports creating tracks, enabling tracks per cohort, provisioning cohort-only learner accounts, assigning courses and selected lessons to each learner, selecting a tutor, and marking cohorts completed or archiving them. The frontend build is verified; a separate browser-driven UI acceptance run has not yet been performed.
 
@@ -139,3 +139,10 @@ The organisation UI now supports creating tracks, enabling tracks per cohort, pr
 4. Before merge, perform a browser-driven acceptance pass on the organisation UI using a disposable organisation: create a track, enable it on a cohort, provision a learner, assign course/lessons/tutor, then complete and archive the cohort. Confirm the page displays API errors clearly and refreshes state after each action.
 
 The draft PR remains open. No merge, live migration, or deployment was performed.
+
+
+## Latest authenticated staging run (2026-10-21)
+
+The latest [Cohort Learning Access Tests run](https://github.com/Obikpe/Pheonix-Analytics/actions/runs/39671419293) passed on commit `56aa678a7d5d5a02c2c9e61642581d2b60d9c500`. Its completed steps include the 12 cohort migrations and SQL assertions, restoration of the catalog-derived schema snapshot into a separate disposable database, replay of the legacy-plus-timestamped chain in another disposable database, deterministic permission/AI-provider seed checks, schema fingerprint comparison, and the authenticated FastAPI/PostgREST cohort lifecycle journey against both databases. Backend verification, frontend builds, and quality checks also passed in runs [39671419719](https://github.com/Obikpe/Pheonix-Analytics/actions/runs/39671419719), [39671419462](https://github.com/Obikpe/Pheonix-Analytics/actions/runs/39671419462), and [39671419552](https://github.com/Obikpe/Pheonix-Analytics/actions/runs/39671419552).
+
+Important: the schema fingerprint step is report-only and the logs show real global differences between the historical replay and the current catalog snapshot. The replayed-chain API journey emits a swallowed audit-log schema-cache warning for `audit_logs.account_type`; the catalog-snapshot journey does not. Therefore the API route journey passed, but full schema/security parity and audit-write parity have not been established. Both databases were ephemeral GitHub Actions PostgreSQL instances; no live Supabase migration or production data mutation occurred.
