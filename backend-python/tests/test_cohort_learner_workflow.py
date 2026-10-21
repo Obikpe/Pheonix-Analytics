@@ -79,8 +79,8 @@ class CohortLearnerTests(unittest.TestCase):
         request = SimpleNamespace(headers={}, client=None)
         payload = cohort_learners.CohortLogin(username="unknown-user", password="not-the-password")
         with patch.object(cohort_learners, "supabase", fake), \
-             patch.object(cohort_learners, "_limited", return_value=False), \
-             patch.object(cohort_learners, "_record_failure") as record_failure:
+             patch.object(cohort_learners, "_cohort_rate_limited", return_value=False), \
+             patch.object(cohort_learners, "_cohort_record_failure") as record_failure:
             with self.assertRaises(HTTPException) as caught:
                 cohort_learners.login_cohort_account(payload, request)
         self.assertEqual(caught.exception.status_code, 401)
@@ -100,8 +100,8 @@ class CohortLearnerTests(unittest.TestCase):
         request = SimpleNamespace(headers={}, client=None)
         payload = cohort_learners.CohortLogin(username=account["username"], password="a-valid-password")
         with patch.object(cohort_learners, "supabase", fake), \
-             patch.object(cohort_learners, "_limited", return_value=False), \
-             patch.object(cohort_learners, "_clear_failures"), \
+             patch.object(cohort_learners, "_cohort_rate_limited", return_value=False), \
+             patch.object(cohort_learners, "_cohort_clear_failures"), \
              patch.object(cohort_learners, "verify_password", return_value=(True, False)):
             response = cohort_learners.login_cohort_account(payload, request)
         decoded = jwt.decode(response["access_token"], cohort_learners.JWT_SECRET, algorithms=[cohort_learners.ALGORITHM])
