@@ -42,13 +42,15 @@ async def rate_limit_handler(request, exc):
 
 # CORS Middleware (Correctly placed to handle preflight OPTIONS requests)
 origins = [
-    "http://localhost:3000",
     "https://thepheonixanalytics.com",
     "https://www.thepheonixanalytics.com",
     "https://learnora-me.vercel.app",
     "https://teamslearnora.vercel.app",
     "https://learnora-me-v02.vercel.app",
 ]
+
+if os.getenv("APP_ENV", "production").strip().lower() != "production":
+    origins.append("http://localhost:3000")
 
 internal_frontend = os.getenv("INTERNAL_FRONTEND_URL", "").rstrip("/")
 if internal_frontend and internal_frontend not in origins:
