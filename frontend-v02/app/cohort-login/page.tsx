@@ -22,7 +22,7 @@ export default function CohortLoginPage() {
         body: JSON.stringify({ username, password }),
       });
       const authToken = result.token || result.access_token;
-      if (!authToken || result.account_type !== "cohort") throw new Error("The server did not return a valid cohort learner session.");
+      if (!authToken || !result.account?.cohort_id) throw new Error("The server did not return a valid cohort learner session.");
       setToken(authToken);
       window.location.assign("/dashboard/cohort");
     } catch (e: any) {
