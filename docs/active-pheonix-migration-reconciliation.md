@@ -236,3 +236,17 @@ The following timestamped migrations are now verified against byte-identical sou
 - `20261020234813_revoke_browser_grants_from_org_control_tables.sql` ↔ `backend-python/migrations/027_revoke_browser_grants_from_org_control_tables.sql`
 
 All five source/target pairs had identical blob SHAs in the repository API. This resolves the content-provenance uncertainty for those five files, but not the separate branch-integration dependency.
+
+
+## Follow-up security work — latest branch commits
+
+- Tightened the cohort username allowlist to `[a-z0-9.-]{2,160}`; the regex no longer admits a backslash. Regression tests already cover `%`, `a%`, and `_`, generic 401 responses, dummy password verification, IP+username buckets, and the sixth-attempt lockout.
+- Added `supabase/rollback/20261021183000_revoke_browser_table_grants.rollback.sql` outside the active migration directory. It restores the exact 12-table grants from migration `20261020230906`; it is explicitly marked emergency-only because applying it restores the browser-role exposure.
+- The active migration `20261021183000_revoke_browser_table_grants.sql` already revokes browser/public privileges across all existing public tables/views and tightens defaults for `postgres` and `supabase_admin`. CI asserts effective table/view privileges and default ACLs against the isolated legacy replay. This is repository/CI hardening only; it has **not** been applied to live Supabase.
+- Read-only live inventory returned explicit privileges on 53 public tables for each of `anon` and `authenticated` (371 privilege rows per role), and default ACL entries for both `postgres` and `supabase_admin`. Re-run the full inventory and verify all client paths before staging or production rollout.
+
+### Integration blocker — audit branch and cohort branch
+
+PR #7 (`fix/learnora-audit-tenant-isolation`) and PR #8 (`cohort-org-backend-reconciliation`) remain open against `main`. GitHub's compare endpoint reports the branches as diverged (160 commits ahead / 230 behind for audit relative to cohort at the latest comparison). The audit branch includes important application guards and tests that are not fully ported into the cohort branch. **Do not merge either PR independently or merge the entire audit branch blindly.** Reconcile by reviewing and porting the specific guarded application changes and tests onto an integration branch, then run all CI against that combined tree.
+
+No live migration, production-data change, PR merge, or deployment was performed by these follow-up commits.
