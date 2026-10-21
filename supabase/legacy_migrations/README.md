@@ -10,7 +10,12 @@ Leaving these short-version files under `supabase/migrations/` risks Supabase CL
 
 ## Reconstructed prerequisite discovered during replay
 
-The first empty-database rehearsal reached legacy migration 003 and failed because `public.users` is referenced by that migration but is not created by archived migrations 001 or 002. Its original bootstrap source was not found in repository history. The supplemental `002z_reconstructed_users_registry.sql` restores the current catalog's users-table columns and primary/email constraints so the isolated rehearsal can continue. It is explicitly catalog-derived, not an original historical source, and is kept outside the active migration directory.
+The empty-database rehearsal exposed two pre-existing registry prerequisites absent from the archived chain:
+
+- `public.users` is referenced by migration 003 but is not created by 001 or 002. `002z_reconstructed_users_registry.sql` restores its current catalog column and key shape for the disposable replay.
+- `public.admins` is referenced by migration 004 but is not created by 001–003. `003z_reconstructed_admins_registry.sql` restores its current catalog table, sequence, key/check constraints, indexes, timestamp trigger and RLS state for the disposable replay.
+
+Neither original bootstrap source was found in repository history. Both files are explicitly catalog-derived, not original historical sources, and are kept outside the active migration directory.
 
 The replay also bootstraps a minimal `storage.buckets` table in the disposable CI database because hosted Supabase supplies the Storage schema as a managed service; this CI-only table is not a project migration.
 
