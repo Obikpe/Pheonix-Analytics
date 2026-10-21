@@ -114,7 +114,7 @@ def _username(first_name: str, last_name: str) -> str:
 
 
 def _send_activation(*, email: str, first_name: str, username: str, token: str) -> None:
-    url = f"{FRONTEND_URL}/cohort-activate?token={token}"
+    url = f"{FRONTEND_URL}/cohort-activate#token={token}"
     subject = "Activate your Learnora cohort account"
     text_body = (
         f"Hi {first_name},\n\n"
