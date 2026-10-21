@@ -5,6 +5,7 @@ on:
     paths:
       - "backend-python/**"
       - "supabase/migrations/**"
+      - "supabase/legacy_migrations/**"
       - "supabase/baselines/**"
       - "frontend-v02/app/dashboard/organisation/**"
       - ".github/workflows/cohort-learning-tests.yml"
