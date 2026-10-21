@@ -194,3 +194,32 @@ The following are intentionally release-blocking rather than silently "fixed" by
 5. **Browser acceptance:** CI confirms builds and API-level cohort lifecycle behavior, not a real browser interaction with a deployed preview. Run the organisation workflow in an isolated preview with disposable test identities before merge; validate visible errors and refresh behaviour.
 
 No live Supabase schema, migration ledger, production data, or Vercel deployment was changed. No merge or deployment was performed.
+
+
+## Security remediation follow-up — branch-only, not applied to live Supabase
+
+The following changes are now staged on the cohort PR branch:
+
+- Cohort login uses exact username equality, rejects wildcard/special characters with the same generic 401, performs a dummy password hash verification for malformed or unknown usernames, and records failures in both username+IP and IP-only buckets.
+- The cohort API returns no date of birth. New cohort accounts encrypt DOB using `COHORT_DOB_ENCRYPTION_KEY` and write no plaintext DOB. The schema migration adds `date_of_birth_encrypted` and allows the legacy plaintext column to be cleared.
+- `backend-python/scripts/encrypt_cohort_dates_of_birth.py` is an explicit backfill tool. It must be run only after the key is securely configured for the intended environment; it never logs personal data. Existing production rows remain plaintext until this controlled backfill has been run and verified.
+- Activation links put the one-time token in the URL fragment, and the activation page removes it from browser history immediately after reading it.
+- Track listing no longer interpolates an organisation ID into a PostgREST `.or_()` expression.
+- Payout processing now calls a pinned `SECURITY DEFINER` RPC that locks the payout row and inserts its ledger entry in the same database transaction. A dedicated `creator_payouts.process` permission replaces the broad `users.update` gate.
+- Production FastAPI docs/OpenAPI endpoints are disabled, the permissive Vercel-preview CORS regex was removed, and security headers are configured for the API and both frontends.
+- A new migration revokes browser/public privileges from all existing public tables/views and removes unsafe default grants for `postgres` and `supabase_admin` (including global default function execution). CI now checks effective browser privileges and default ACLs against the replayed migration chain before the replay is normalised for API smoke checks.
+- The cohort API integration fixture restores the catalog snapshot and applies the three new release-candidate migrations before exercising the API. The separate historical replay remains isolated.
+
+### Required before any live rollout
+
+1. Review the full read-only inventory: the active project currently reports 53 public tables with explicit privileges for each of `anon` and `authenticated`, plus default ACLs for both `postgres` and `supabase_admin`. Confirm all browser clients/scripts/automations use the FastAPI backend before applying the grant revocation.
+2. Apply and verify the new migrations in staging first. Do not run them against production from this branch.
+3. Configure a unique Fernet key in the backend environment as `COHORT_DOB_ENCRYPTION_KEY`, back up the relevant records, run the DOB backfill, and verify every non-null plaintext DOB has a ciphertext before clearing the plaintext column values. The CI key is a disposable fixture and must never be reused.
+4. Confirm the new payout permission is assigned only to the intended finance operators through the permission administration workflow. Until assigned, payout processing intentionally fails closed for non-super-admin actors.
+5. Reconcile PR #7 (audit tenant-isolation fixes) with PR #8 (cohort workflow) before either is released. The branches have diverged substantially; do not merge the entire audit branch blindly. Port/review its course-content guards, module-unlock checks, AI quota reservation, team-membership guards, and associated regression tests onto a combined branch, then rerun all CI.
+6. Verify instructor grading is scoped to the assigned course and add immutable grading audit events before enabling any instructor submission-grading route. This remains unverified on the cohort branch.
+7. Decide the session migration from localStorage to HttpOnly secure cookies. Current bearer-token storage remains a residual XSS exposure; the new CSP is a baseline policy, not a substitute for the cookie migration.
+8. Recover the original migration source artifacts where possible. The two catalog-reconstructed migrations and five historical source files with unverified provenance remain qualified as such; do not describe them as original recoveries.
+9. Run the quality workflow to a clean completed result. A cancelled result is not a pass.
+
+No migration has been applied to the live Supabase project, no existing production DOB has been backfilled, and no merge or deployment has been performed by this remediation.
