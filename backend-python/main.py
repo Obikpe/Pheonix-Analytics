@@ -7,7 +7,7 @@ ENV_PATH = Path(__file__).parent / ".env"
 load_dotenv(dotenv_path=ENV_PATH, override=True)
 
 # 2. NOW import routers
-from routers import auth, grading, progress, billing, webhooks, community, grader, admin, organisations, organisation_members, courses, course_access, course_content, internal_auth, internal_staff, internal_teams, commercial, creator, lifecycle, learning_structure, media, access, organisation_teams, ai, creator_finance, evidence, internal_operations, internal_content, ai_profiles, public_directory, learner_onboarding, cohort_learners, notifications as notifications_router
+from routers import auth, grading, progress, billing, webhooks, community, grader, admin, organisations, organisation_members, courses, course_access, course_content, internal_auth, internal_staff, internal_teams, commercial, creator, lifecycle, learning_structure, media, access, organisation_teams, ai, creator_finance, evidence, internal_operations, internal_content, ai_profiles, public_directory, learner_onboarding, cohort_learners, cohort_learning, notifications as notifications_router
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -97,6 +97,7 @@ app.include_router(grader.router, prefix="/api/grader", tags=["grader"])
 # Learnora V1 organisation architecture
 app.include_router(organisations.router)
 app.include_router(cohort_learners.router)
+app.include_router(cohort_learning.router)
 app.include_router(organisation_members.router)
 app.include_router(courses.router)
 app.include_router(course_access.router)
