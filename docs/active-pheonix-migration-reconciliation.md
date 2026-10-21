@@ -4,7 +4,7 @@
 
 Target: active Pheonix Supabase project `gihfupzvdpyrmynqgukz`.
 
-All live database inspection in this task was read-only. No production rows, schema, migration ledger, or Vercel deployment were changed. Do not merge or deploy until the CI API journey and remaining legacy seed/data-lineage review pass.
+All live database inspection in this task was read-only. No production rows, schema, migration ledger, or Vercel deployment were changed. Do not merge or deploy until the legacy schema-parity gap, baseline strategy, and browser UI acceptance are reviewed.
 
 ## Active migration ledger restored
 
@@ -88,22 +88,46 @@ These are replacement signals, not a complete lineage map. The legacy Witstart s
 
 This snapshot is **only** a disposable staging fixture for testing the current schema and authenticated API journey. It is not an original migration, not a data backup, not the historical pre-2026-10-08 baseline, and not proof that every migration can be replayed from an empty database.
 
+## Full legacy replay rehearsal and schema-drift result
+
+The disposable CI job now replays all 15 archived legacy SQL files, the five catalog-derived prerequisites, and all 26 timestamped migrations in a fresh PostgreSQL database. The migration sequence completes successfully. Deterministic seed checks also pass: the replay produces the same 41 permission keys as the active catalog, one AI-provider seed row, and no contract-template or contract-clause rows (both are empty in the active database).
+
+A schema fingerprint comparison is intentionally **report-only** because the replay is not equivalent to the current catalog. After normalizing function-definition whitespace and ignoring column order, the comparison reports:
+
+| Object category | Active catalog | Replayed chain | Difference |
+| --- | ---: | ---: | --- |
+| Column definitions | 986 | 926 | 95 missing from replay; 35 replay-only |
+| Constraint definitions | 449 | 441 | 20 missing; 12 replay-only |
+| Indexes | 315 | 287 | 35 missing; 7 replay-only |
+| Functions | 52 | 52 | Match after whitespace normalization |
+| Triggers | 44 | 37 | 7 missing from replay |
+| RLS table states | 101 | 102 | 30 active states not reproduced; 31 replay-only states |
+| Policies | 0 | 1 | Extra `lessons.enrolled can read` policy in replay |
+| Views | 1 | 0 | `course_content_health` missing from replay |
+| Sequences | 1 | 1 | Match |
+
+Four active-schema tables are absent from the replay: `media`, `security_logs`, `password_reset_tokens`, and `email_verification_tokens`. Five legacy-only tables remain in the replay: `tracks`, `enrollments`, `user_progress`, `user_project_progress`, and `community_qna`. There is also column drift in `courses`, `lessons`, `audit_logs`, and `learnora_contract_versions`, among other objects. RLS differences include the cohort lifecycle tables, so the replay does not reproduce the active database's full security posture.
+
+The historical chain also fails to reproduce the active `service_role` grants by itself. For the second API test only, CI applies the same service-role-only grant harness used by the catalog snapshot. This is a disposable-test adjustment, not a recovered historical migration.
+
+The authenticated cohort lifecycle test passes against both the catalog snapshot and the replayed chain **after** that grant adjustment. This validates the cohort routes, but it does not make the full legacy schema equivalent. No legacy tables or columns were automatically dropped or remapped: their data lineage is unresolved, and forcing the fingerprint to match without a reviewed mapping could destroy or misclassify data.
+
 ## Authenticated API journey added to CI
 
 `backend-python/tests/test_cohort_api_lifecycle.py` exercises the real FastAPI routes against the snapshot restored into a separate disposable PostgreSQL database exposed through local PostgREST. The test signs in an organisation owner through `/api/auth/login`, creates a cohort and track, enables the track, provisions a cohort learner, activates the account, signs in the learner, enables a course, assigns a tutor and lesson, reads the lesson, writes and reads progress, completes and archives the cohort, then verifies the account credentials are retired, the live membership is removed, the history snapshot excludes credentials, and the old learner token is rejected.
 
 Only the outbound activation-email transport is replaced with a test token capture. Authentication, permission resolution, database reads/writes, cohort APIs, learner APIs, progress, closure and archive all use the actual application routes and isolated PostgreSQL data.
 
-The existing migration-integration job remains separate: it applies the 12 cohort migrations to a minimal synthetic legacy schema and runs SQL invariant assertions. The new authenticated journey uses the catalog-derived full current schema snapshot; it does not replay applied migrations on top of that snapshot.
+The existing migration-integration job remains separate: it applies the 12 cohort migrations to a minimal synthetic legacy schema and runs SQL invariant assertions. The authenticated journey now runs once against the catalog-derived full current schema snapshot and once against the replayed historical-plus-timestamped chain, with the staging-only service-role grants noted above.
 
 ## Verification completed on the current branch
 
-The following GitHub Actions runs passed on commit `190468e94569b7affd61da560c5725158280c224`:
+The latest full code verification on commit `cc40e7d51d91937142d218e468c5921b290235ad` reported:
 
-- [Cohort Learning Access Tests](https://github.com/Obikpe/Pheonix-Analytics/actions/runs/39665774708) — synthetic migration assertions plus the full authenticated API lifecycle against disposable PostgreSQL/PostgREST.
-- [Learnora Backend Verification](https://github.com/Obikpe/Pheonix-Analytics/actions/runs/39665774674) — backend verification.
-- [Learnora frontends](https://github.com/Obikpe/Pheonix-Analytics/actions/runs/39665774712) — both `frontend-team` and `frontend-v02` builds passed.
-- [Learnora quality checks](https://github.com/Obikpe/Pheonix-Analytics/actions/runs/39665774854) — quality checks passed.
+- [Cohort Learning Access Tests](https://github.com/Obikpe/Pheonix-Analytics/actions/runs/39670620490) — **passed**. The 12 cohort migrations and SQL invariants passed; the authenticated lifecycle journey passed against both disposable database variants; deterministic permission and AI-provider seed checks passed. The schema fingerprint step reports the known global drift and is non-blocking.
+- [Learnora Backend Verification](https://github.com/Obikpe/Pheonix-Analytics/actions/runs/39670620444) — **passed**.
+- [Learnora frontends](https://github.com/Obikpe/Pheonix-Analytics/actions/runs/39670620572) — both `frontend-team` and `frontend-v02` builds **passed**.
+- [Learnora quality checks](https://github.com/Obikpe/Pheonix-Analytics/actions/runs/39670620437) — frontend subjobs were cancelled by overlapping runs; backend syntax passed. This quality workflow still needs a clean rerun.
 
 The organisation UI now supports creating tracks, enabling tracks per cohort, provisioning cohort-only learner accounts, assigning courses and selected lessons to each learner, selecting a tutor, and marking cohorts completed or archiving them. The frontend build is verified; a separate browser-driven UI acceptance run has not yet been performed.
 
@@ -111,7 +135,7 @@ The organisation UI now supports creating tracks, enabling tracks per cohort, pr
 
 1. Keep the two catalog-derived migration sources explicitly marked until a trusted original/backup is available or their equivalence is formally reviewed.
 2. Complete the remaining object- and data-level mapping for legacy migrations 001–015, including the Witstart identity-set mismatch and permission/AI seed values. No production repair is authorised by this report.
-3. Do not claim a fully reproducible empty-database migration chain until a verified historical baseline or approved baseline/squash strategy is established. The catalog snapshot is for disposable staging only and must not be promoted into the active migration directory.
+3. Resolve the global schema fingerprint differences with a reviewed current-state baseline/squash strategy. Do not automatically drop legacy tables/columns or invent identity mappings; the catalog snapshot is for disposable staging only and must not be promoted into the active migration directory.
 4. Before merge, perform a browser-driven acceptance pass on the organisation UI using a disposable organisation: create a track, enable it on a cohort, provision a learner, assign course/lessons/tutor, then complete and archive the cohort. Confirm the page displays API errors clearly and refreshes state after each action.
 
 The draft PR remains open. No merge, live migration, or deployment was performed.
