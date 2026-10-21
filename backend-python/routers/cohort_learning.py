@@ -536,3 +536,86 @@ def my_cohort_lesson_content(course_id: str, lesson_id: str, user: CurrentUser =
     if not module.data:
         raise HTTPException(403, "Lesson does not belong to the assigned course.")
     return {"success": True, "lesson": lesson, "module": module.data[0]}
+
+
+class LessonProgressIn(BaseModel):
+    progress_percent: int = Field(default=0, ge=0, le=100)
+    completed: bool = False
+    last_position_seconds: int = Field(default=0, ge=0)
+
+
+def _active_course_assignment(user: CurrentUser, course_id: str) -> tuple[dict, dict]:
+    account, member = _active_cohort_member(user)
+    result = (
+        supabase.table("cohort_member_course_assignments")
+        .select("id,course_id,status")
+        .eq("cohort_member_id", member["id"])
+        .eq("course_id", course_id)
+        .eq("status", "active")
+        .limit(1)
+        .execute()
+    )
+    if not result.data:
+        raise HTTPException(403, "This course has not been assigned to you.")
+    return account, result.data[0]
+
+
+@router.get("/api/cohort-learning/me/courses/{course_id}/progress")
+def my_cohort_course_progress(course_id: str, user: CurrentUser = Depends(get_current_user)):
+    account, assignment = _active_course_assignment(user, course_id)
+    rows = (
+        supabase.table("cohort_account_lesson_progress")
+        .select("lesson_id,progress_percent,completed,last_position_seconds,first_started_at,last_accessed_at,completed_at,updated_at")
+        .eq("cohort_account_id", str(account["id"]))
+        .eq("course_assignment_id", str(assignment["id"]))
+        .order("updated_at", desc=True)
+        .execute()
+    ).data or []
+    return {"success": True, "course_id": course_id, "progress": rows}
+
+
+@router.put("/api/cohort-learning/me/courses/{course_id}/lessons/{lesson_id}/progress")
+def update_my_cohort_lesson_progress(
+    course_id: str,
+    lesson_id: str,
+    body: LessonProgressIn,
+    user: CurrentUser = Depends(get_current_user),
+):
+    account, assignment = _active_course_assignment(user, course_id)
+    member = _active_cohort_member(user)[1]
+    allowed = (
+        supabase.table("cohort_member_lesson_assignments")
+        .select("id")
+        .eq("course_assignment_id", str(assignment["id"]))
+        .eq("lesson_id", lesson_id)
+        .eq("status", "active")
+        .limit(1)
+        .execute()
+    )
+    if not allowed.data:
+        raise HTTPException(403, "This lesson has not been assigned to you.")
+
+    completed = bool(body.completed or body.progress_percent == 100)
+    progress_percent = 100 if completed else body.progress_percent
+    now = datetime.now(timezone.utc).isoformat()
+    payload = {
+        "cohort_account_id": str(account["id"]),
+        "cohort_member_id": str(member["id"]),
+        "cohort_id": str(account["cohort_id"]),
+        "course_assignment_id": str(assignment["id"]),
+        "lesson_id": lesson_id,
+        "progress_percent": progress_percent,
+        "completed": completed,
+        "last_position_seconds": body.last_position_seconds,
+        "last_accessed_at": now,
+        "updated_at": now,
+    }
+    try:
+        result = supabase.table("cohort_account_lesson_progress").upsert(
+            payload, on_conflict="cohort_account_id,lesson_id"
+        ).execute()
+    except Exception:
+        raise HTTPException(409, "Progress could not be saved. Please retry.")
+    if not result.data:
+        raise HTTPException(500, "Progress could not be saved.")
+    return {"success": True, "progress": result.data[0]}
