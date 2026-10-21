@@ -56,7 +56,11 @@ class MigrationInventoryTests(unittest.TestCase):
             encoding="utf-8"
         )
         self.assertRegex(sql, r"(?is)p_requests_per_month\s+IS\s+NOT\s+NULL")
-        self.assertNotRegex(\n            sql,\n            r"(?is)IF\\s+p_requests_per_month\\s+IS\\s+NULL\\s+THEN",\n            "A NULL monthly limit must remain valid (unlimited).",\n        )
+        self.assertNotRegex(
+            sql,
+            r"(?is)IF\s+p_requests_per_month\s+IS\s+NULL\s+THEN",
+            "A NULL monthly limit must remain valid (unlimited).",
+        )
 
     def test_browser_grant_revocation_is_scoped_to_control_tables(self):
         sql = (REMEDIATION_DIR / "027_revoke_browser_grants_from_org_control_tables.sql").read_text(
