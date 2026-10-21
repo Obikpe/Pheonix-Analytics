@@ -691,7 +691,7 @@ def _build_verification_url(
     return (
         f"{FRONTEND_URL}"
         f"{EMAIL_VERIFICATION_PATH}"
-        f"?token={token}"
+        f"#token={token}"
     )
 
 
