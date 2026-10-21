@@ -40,6 +40,11 @@ from services.audit import audit
 router = APIRouter(tags=["Cohort learners"])
 ACTIVATION_TTL_MINUTES = 60
 
+# Generate a one-time dummy bcrypt hash at cold start. Unknown usernames still
+# execute the same expensive password verification path as known accounts.
+# The dummy credential is never associated with a real account.
+DUMMY_COHORT_PASSWORD_HASH = hash_password(secrets.token_urlsafe(32))
+
 
 class TrackCreate(BaseModel):
     name: str = Field(min_length=2, max_length=120)
@@ -66,7 +71,7 @@ class CohortActivation(BaseModel):
 
 
 class CohortLogin(BaseModel):
-    username: str = Field(min_length=2, max_length=160)
+    username: str = Field(min_length=1, max_length=160)
     password: str = Field(min_length=1, max_length=72)
 
 
@@ -554,27 +559,47 @@ def activate_cohort_account(body: CohortActivation):
 @router.post("/api/cohort-auth/login")
 def login_cohort_account(body: CohortLogin, request: Request):
     username = body.username.strip().lower()
-    rate_key = f"cohort:{username}:{_get_client_ip(request) or 'unknown'}"
-    if _limited(rate_key):
+    client_ip = _get_client_ip(request) or "unknown"
+    rate_key = f"cohort:{username}:{client_ip}"
+    ip_rate_key = f"cohort-ip:{client_ip}"
+
+    # A client-wide bucket prevents username rotation from bypassing the
+    # per-account bucket. Both checks run before any account lookup.
+    if _limited(rate_key) or _limited(ip_rate_key):
         raise HTTPException(429, "Too many failed login attempts. Try again later.")
+
+    if not re.fullmatch(r"[a-z0-9.\\-]{2,160}", username):
+        verify_password(body.password, DUMMY_COHORT_PASSWORD_HASH)
+        _record_failure(rate_key)
+        _record_failure(ip_rate_key)
+        raise HTTPException(401, "Invalid username or password.")
+
     result = (
         supabase.table("cohort_accounts")
         .select("id,cohort_id,organisation_id,email,username,password_hash,status")
-        .ilike("username", username)
+        .eq("username", username)
         .limit(1)
         .execute()
     )
     account = result.data[0] if result.data else None
-    valid, _ = verify_password(body.password, account.get("password_hash") or "") if account else (False, False)
+    # Do not disclose account existence through a skipped password hash check.
+    valid, _ = verify_password(
+        body.password,
+        (account.get("password_hash") or "") if account else DUMMY_COHORT_PASSWORD_HASH,
+    )
     if not account or not valid:
         _record_failure(rate_key)
+        _record_failure(ip_rate_key)
         raise HTTPException(401, "Invalid username or password.")
     if account.get("status") != "active":
         _record_failure(rate_key)
+        _record_failure(ip_rate_key)
         raise HTTPException(403, "This cohort account is not active. Activate it or contact your organisation.")
     cohort = supabase.table("cohorts").select("status").eq("id", account["cohort_id"]).limit(1).execute()
     if not cohort.data or cohort.data[0].get("status") not in {"draft", "upcoming", "active"}:
         raise HTTPException(403, "This cohort has ended and the account is no longer available.")
+    # Clear only this account's bucket. The client-wide bucket intentionally
+    # remains so successful login to another account cannot reset spray limits.
     _clear_failures(rate_key)
     now = datetime.now(timezone.utc).isoformat()
     supabase.table("cohort_accounts").update({"last_login_at": now}).eq("id", account["id"]).execute()
