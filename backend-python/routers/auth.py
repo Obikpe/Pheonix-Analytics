@@ -1025,6 +1025,9 @@ class CurrentUser(BaseModel):
     course_access: bool = False
     organisation_id: Optional[str] = None
     organisation_role: Optional[str] = None
+    cohort_id: Optional[str] = None
+    track_id: Optional[str] = None
+    username: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
@@ -1409,6 +1412,61 @@ def get_current_user(
         raise HTTPException(
             status_code=401,
             detail="Invalid or expired token",
+        )
+
+    # Cohort learners authenticate against cohort_accounts, not public.users.
+    # This branch keeps cohort identities isolated from Learnora's global
+    # email-unique account model and revalidates account/membership state per request.
+    if payload.get("account_type") == "cohort":
+        cohort_account_id = str(payload.get("cohort_account_id") or payload.get("sub") or "")
+        if not cohort_account_id:
+            raise HTTPException(status_code=401, detail="Invalid cohort token")
+        account_result = (
+            supabase.table("cohort_accounts")
+            .select("id,cohort_id,organisation_id,email,username,first_name,last_name,status")
+            .eq("id", cohort_account_id)
+            .limit(1)
+            .execute()
+        )
+        if not account_result.data or account_result.data[0].get("status") != "active":
+            raise HTTPException(status_code=403, detail="Cohort account is inactive")
+        cohort_account = account_result.data[0]
+        membership_result = (
+            supabase.table("cohort_members")
+            .select("id,track_id,status")
+            .eq("cohort_id", cohort_account["cohort_id"])
+            .eq("cohort_account_id", cohort_account_id)
+            .eq("status", "active")
+            .limit(1)
+            .execute()
+        )
+        if not membership_result.data:
+            raise HTTPException(status_code=403, detail="Cohort membership is inactive")
+        cohort_result = (
+            supabase.table("cohorts")
+            .select("status")
+            .eq("id", cohort_account["cohort_id"])
+            .limit(1)
+            .execute()
+        )
+        if not cohort_result.data or cohort_result.data[0].get("status") not in {"draft", "upcoming", "active"}:
+            raise HTTPException(status_code=403, detail="Cohort is closed")
+        cohort_status = cohort_result.data[0]["status"]
+        member = membership_result.data[0]
+        return CurrentUser(
+            id=cohort_account_id,
+            name=f"{cohort_account.get('first_name', '')} {cohort_account.get('last_name', '')}".strip(),
+            email=cohort_account["email"],
+            role="cohort_learner",
+            sub_status="active",
+            account_type="cohort",
+            is_paid=False,
+            access_state="cohort",
+            course_access=cohort_status == "active",
+            organisation_id=str(cohort_account["organisation_id"]),
+            cohort_id=str(cohort_account["cohort_id"]),
+            track_id=str(member["track_id"]) if member.get("track_id") else None,
+            username=cohort_account.get("username"),
         )
 
     email = (
