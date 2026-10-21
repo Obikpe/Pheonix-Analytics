@@ -1,8 +1,11 @@
 """Regression tests for cohort-login username matching and throttling."""
 import unittest
+import os
+from datetime import date
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
+from cryptography.fernet import Fernet
 from fastapi import HTTPException
 from starlette.requests import Request
 
@@ -62,6 +65,18 @@ class CohortLoginSecurityTests(unittest.TestCase):
             self.db.table.assert_not_called()
             self.assertEqual(record_failure.call_count, 6)  # username + IP bucket per attempt
             self.assertEqual(verify.call_count, 3)  # constant-cost dummy password check
+
+    def test_date_of_birth_requires_encryption_key_and_encrypts_value(self):
+        with patch.dict(os.environ, {"COHORT_DOB_ENCRYPTION_KEY": ""}):
+            with self.assertRaises(HTTPException) as raised:
+                cohort._encrypt_date_of_birth(date(2000, 1, 2))
+            self.assertEqual(raised.exception.status_code, 503)
+
+        key = Fernet.generate_key()
+        with patch.dict(os.environ, {"COHORT_DOB_ENCRYPTION_KEY": key.decode("ascii")}):
+            encrypted = cohort._encrypt_date_of_birth(date(2000, 1, 2))
+        self.assertNotEqual(encrypted, "2000-01-02")
+        self.assertEqual(Fernet(key).decrypt(encrypted.encode("ascii")).decode("ascii"), "2000-01-02")
 
     def test_five_bad_attempts_block_the_sixth_for_same_username_and_ip(self):
         with patch.object(cohort, "supabase", self.db), \
