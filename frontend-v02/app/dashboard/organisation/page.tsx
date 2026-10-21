@@ -543,7 +543,7 @@ export default function OrganisationWorkspace() {
                 {assignedCourses.length > 0 && <div className="mt-4 grid gap-2 sm:grid-cols-2">{assignedCourses.map((assignment) => <div key={assignment.id} className="rounded-lg border border-white/[.06] p-3"><p className="text-sm font-medium">{assignment.course?.title || assignment.course_id}</p><p className="mt-1 text-xs text-slate-500">{assignment.access_type} · Assigned {assignment.assigned_at ? new Date(assignment.assigned_at).toLocaleDateString() : "date unavailable"}</p></div>)}</div>}
                 {!courseCatalogue.length && <p className="mt-3 text-xs leading-5 text-slate-600">No published courses are currently available to assign. Draft courses are intentionally excluded.</p>}
               </div>
-              <div className="mt-6 grid gap-4 xl:grid-cols-3">
+              <div className="mt-6 grid gap-4 xl:grid-cols-4">
                 <form onSubmit={createProgramme} className="rounded-xl border border-white/[.07] bg-black/15 p-4">
                   <h3 className="font-semibold">Create programme</h3>
                   <label className="mt-4 block text-xs text-slate-400">Programme name<input required minLength={2} value={programmeForm.name} onChange={(e) => setProgrammeForm((old: any) => ({ ...old, name: e.target.value }))} className={inputClass} /></label>
@@ -561,6 +561,15 @@ export default function OrganisationWorkspace() {
                   <button disabled={busy} className="mt-4 rounded-xl bg-[#d7ad35] px-4 py-3 text-sm font-bold text-black disabled:opacity-50">{busy ? "Creating…" : "Create cohort"}</button>
                 </form>
 
+                <form onSubmit={createTrack} className="rounded-xl border border-white/[.07] bg-black/15 p-4">
+                  <h3 className="font-semibold">Create learning track</h3>
+                  <p className="mt-2 text-xs leading-5 text-slate-500">Tracks are organisation-owned learning paths. Enable a track on a cohort before creating learner accounts.</p>
+                  <label className="mt-4 block text-xs text-slate-400">Track name<input required minLength={2} value={trackForm.name} onChange={(e) => setTrackForm((old: any) => ({ ...old, name: e.target.value }))} className={inputClass} placeholder="e.g. Data Science" /></label>
+                  <label className="mt-3 block text-xs text-slate-400">Description<textarea value={trackForm.description} onChange={(e) => setTrackForm((old: any) => ({ ...old, description: e.target.value }))} rows={3} className={inputClass} placeholder="Skills, learning outcomes and scope" /></label>
+                  <button disabled={busy || trackForm.name.trim().length < 2} className="mt-4 rounded-xl bg-[#d7ad35] px-4 py-3 text-sm font-bold text-black disabled:opacity-50">{busy ? "Creating…" : "Create track"}</button>
+                  <p className="mt-3 text-[11px] text-slate-600">{trackCatalogue.length} active track(s) available</p>
+                </form>
+
                 <form onSubmit={createTeam} className="rounded-xl border border-white/[.07] bg-black/15 p-4">
                   <h3 className="font-semibold">Create team</h3>
                   <label className="mt-4 block text-xs text-slate-400">Team name<input required minLength={2} value={teamForm.name} onChange={(e) => setTeamForm((old: any) => ({ ...old, name: e.target.value }))} className={inputClass} /></label>
@@ -573,7 +582,115 @@ export default function OrganisationWorkspace() {
 
               <div className="mt-8 grid gap-4 xl:grid-cols-3">
                 <div className="rounded-xl border border-white/[.07] p-4"><h3 className="font-semibold">Programmes <span className="text-xs text-slate-500">({programmes.length})</span></h3><div className="mt-3 space-y-2">{programmes.map((p) => <div key={p.id} className="rounded-lg bg-black/20 p-3"><div className="flex items-start justify-between gap-2"><p className="text-sm font-medium">{p.name}</p><span className="text-[10px] uppercase text-slate-500">{p.status}</span></div><p className="mt-2 text-xs text-slate-500">{p.start_date || "Start not set"} → {p.end_date || "End not set"}</p></div>)}{!programmes.length && <p className="text-xs leading-5 text-slate-600">No programmes created yet.</p>}</div></div>
-                <div className="rounded-xl border border-white/[.07] p-4"><h3 className="font-semibold">Cohorts <span className="text-xs text-slate-500">({cohorts.length})</span></h3><div className="mt-3 space-y-3">{cohorts.map((cohort) => <div key={cohort.id} className="rounded-lg bg-black/20 p-3"><div className="flex items-start justify-between gap-2"><p className="text-sm font-medium">{cohort.name}</p><span className="text-[10px] uppercase text-slate-500">{cohort.status}</span></div><p className="mt-2 text-xs text-slate-500">{cohort.start_date || "Start not set"} → {cohort.end_date || "End not set"} · Capacity {cohort.capacity ?? "—"}</p><div className="mt-3 space-y-2">{cohortCourses.filter((assignment) => String(assignment.cohort_id) === String(cohort.id) && assignment.status === "active").map((assignment) => <p key={assignment.id} className="rounded-lg border border-white/[.06] px-2 py-2 text-xs text-slate-400">Course: {assignment.course?.title || assignment.course_id}</p>)}</div><div className="mt-3 grid gap-2"><select aria-label={"Course for "+cohort.name} value={courseSelections[cohort.id] || ""} onChange={(e) => setCourseSelections((old) => ({ ...old, [cohort.id]: e.target.value }))} className="w-full rounded-lg border border-white/10 bg-[#090c10] px-2 py-2 text-xs"><option value="">Choose a published course</option>{courseCatalogue.map((course) => <option key={course.id} value={course.id}>{course.title}</option>)}</select><button disabled={!courseSelections[cohort.id] || !courseCatalogue.length} onClick={() => void assignCourseToCohort(String(cohort.id))} className="rounded-lg border border-white/10 px-3 py-2 text-xs disabled:opacity-50">Assign course</button></div><div className="mt-3 flex gap-2"><input aria-label={"Learner user ID for "+cohort.name} value={cohortUserIds[cohort.id] || ""} onChange={(e) => setCohortUserIds((old) => ({ ...old, [cohort.id]: e.target.value }))} placeholder="Learner user ID" className="min-w-0 flex-1 rounded-lg border border-white/10 bg-[#090c10] px-2 py-2 text-xs" /><button onClick={() => void addCohortMember(String(cohort.id))} className="rounded-lg border border-white/10 px-3 py-2 text-xs">Add</button></div></div>)}{!cohorts.length && <p className="text-xs leading-5 text-slate-600">No cohorts created yet.</p>}</div></div>
+                <div className="rounded-xl border border-white/[.07] p-4">
+                  <h3 className="font-semibold">Cohorts <span className="text-xs text-slate-500">({cohorts.length})</span></h3>
+                  <p className="mt-2 text-xs leading-5 text-slate-500">Each cohort owns its learner accounts. A learner stays on one track for the cohort's lifetime; courses, lesson plans and tutors are assigned per learner.</p>
+                  <div className="mt-3 space-y-3">
+                    {cohorts.map((cohort) => {
+                      const cohortId = String(cohort.id);
+                      const enabledTracks = cohortTracks[cohortId] || [];
+                      const learners = cohortLearners[cohortId] || [];
+                      const open = ["draft", "upcoming", "active"].includes(cohort.status);
+                      const availableTracks = trackCatalogue.filter((track) => !enabledTracks.some((enabled) => String(enabled.id) === String(track.id)));
+                      const tutorMembers = members.filter((member) => ["instructor", "tutor"].includes(String(member.role || "").toLowerCase()) && member.status === "active");
+                      return <div key={cohort.id} className="rounded-xl border border-white/[.07] bg-black/20 p-3">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-semibold">{cohort.name}</p>
+                            <p className="mt-1 text-xs text-slate-500">{cohort.start_date || "Start not set"} → {cohort.end_date || "End not set"} · Capacity {cohort.capacity ?? "—"}</p>
+                          </div>
+                          <span className={"rounded-full border px-2.5 py-1 text-[10px] uppercase tracking-[.1em] " + (cohort.status === "active" ? "border-emerald-400/20 text-emerald-200" : "border-white/10 text-slate-400")}>{cohort.status}</span>
+                        </div>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {open && <button onClick={() => void toggleCohortManagement(cohort)} className="rounded-lg border border-[#d7ad35]/30 px-3 py-2 text-xs font-semibold gold">{expandedCohorts[cohortId] ? "Hide learning setup" : "Manage tracks & learners"}</button>}
+                          {open && <button onClick={() => void completeCohort(cohort)} className="rounded-lg border border-white/10 px-3 py-2 text-xs text-slate-300">Mark completed</button>}
+                          {["completed", "expired", "closed"].includes(cohort.status) && <button onClick={() => void archiveCohort(cohort)} className="rounded-lg border border-amber-300/20 px-3 py-2 text-xs text-amber-200">Archive & retire access</button>}
+                        </div>
+                        {!open && <p className="mt-3 text-xs leading-5 text-slate-500">{cohort.status === "archived" ? "Archived. Learner access is retired and the cohort history is preserved." : "This cohort is closed to new learner and learning assignments."}</p>}
+                        {expandedCohorts[cohortId] && open && <div className="mt-4 space-y-5 border-t border-white/[.07] pt-4">
+                          <section>
+                            <div className="flex flex-wrap items-start justify-between gap-3">
+                              <div><h4 className="text-sm font-semibold">1. Tracks and course catalogue</h4><p className="mt-1 text-xs leading-5 text-slate-500">Enable only the tracks offered in this cohort, then choose the published courses available within each track.</p></div>
+                              <span className="text-[11px] text-slate-600">{enabledTracks.length} enabled track(s)</span>
+                            </div>
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              <select aria-label={"Track to enable for " + cohort.name} value={trackSelections[cohortId] || ""} onChange={(e) => setTrackSelections((old) => ({ ...old, [cohortId]: e.target.value }))} className="min-w-0 flex-1 rounded-lg border border-white/10 bg-[#090c10] px-3 py-2.5 text-xs">
+                                <option value="">Choose an active track</option>
+                                {availableTracks.map((track) => <option key={track.id} value={track.id}>{track.name}</option>)}
+                              </select>
+                              <button disabled={!trackSelections[cohortId]} onClick={() => void enableTrackForCohort(cohortId)} className="rounded-lg bg-[#d7ad35] px-3 py-2.5 text-xs font-bold text-black disabled:opacity-50">Enable track</button>
+                            </div>
+                            {!trackCatalogue.length && <p className="mt-2 text-xs text-amber-200/80">Create a learning track above before adding learners.</p>}
+                            <div className="mt-3 space-y-3">
+                              {enabledTracks.map((track) => {
+                                const key = cohortId + ":" + String(track.id);
+                                const trackCourses = cohortTrackCourses[cohortId]?.[String(track.id)] || [];
+                                const availableCourses = courseCatalogue.filter((course) => course.status === "published" && !trackCourses.some((item) => String(item.course_id) === String(course.id) && item.status === "active"));
+                                return <div key={track.id} className="rounded-lg border border-white/[.07] p-3">
+                                  <div className="flex flex-wrap items-start justify-between gap-2"><p className="text-sm font-medium">{track.name}</p><span className="text-[10px] text-slate-500">{trackCourses.filter((item) => item.status === "active").length} active course(s)</span></div>
+                                  <div className="mt-2 flex flex-wrap gap-2">
+                                    <select aria-label={"Course to enable for " + track.name} value={trackCourseSelections[key] || ""} onChange={(e) => setTrackCourseSelections((old) => ({ ...old, [key]: e.target.value }))} className="min-w-0 flex-1 rounded-lg border border-white/10 bg-[#090c10] px-2 py-2 text-xs">
+                                      <option value="">Choose a published course</option>
+                                      {availableCourses.map((course) => <option key={course.id} value={course.id}>{course.title}</option>)}
+                                    </select>
+                                    <button disabled={!trackCourseSelections[key]} onClick={() => void enableCourseForTrack(cohortId, String(track.id))} className="rounded-lg border border-white/10 px-3 py-2 text-xs disabled:opacity-50">Enable course</button>
+                                  </div>
+                                  {trackCourses.length > 0 && <div className="mt-3 space-y-2">{trackCourses.map((item) => <div key={item.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-black/20 px-2.5 py-2"><span className="text-xs text-slate-300">{item.course?.title || item.course_id}</span><span className={"text-[10px] uppercase " + (item.status === "active" ? "text-emerald-200" : "text-slate-600")}>{item.status}</span></div>)}</div>}
+                                </div>;
+                              })}
+                            </div>
+                          </section>
+
+                          <section className="border-t border-white/[.06] pt-4">
+                            <h4 className="text-sm font-semibold">2. Provision a cohort learner</h4>
+                            <p className="mt-1 text-xs leading-5 text-slate-500">This creates a cohort-only account, not an organisation membership. The learner receives a one-time activation email and keeps the selected track until this cohort ends.</p>
+                            <form onSubmit={(e) => { e.preventDefault(); void createCohortLearner(cohortId); }} className="mt-3 grid gap-2 sm:grid-cols-2">
+                              <label className="text-[11px] text-slate-400">First name<input required value={learnerForms[cohortId]?.first_name || ""} onChange={(e) => setLearnerForms((old) => ({ ...old, [cohortId]: { ...(old[cohortId] || {}), first_name: e.target.value } }))} className={inputClass} /></label>
+                              <label className="text-[11px] text-slate-400">Last name<input required value={learnerForms[cohortId]?.last_name || ""} onChange={(e) => setLearnerForms((old) => ({ ...old, [cohortId]: { ...(old[cohortId] || {}), last_name: e.target.value } }))} className={inputClass} /></label>
+                              <label className="text-[11px] text-slate-400">Learner email<input required type="email" value={learnerForms[cohortId]?.email || ""} onChange={(e) => setLearnerForms((old) => ({ ...old, [cohortId]: { ...(old[cohortId] || {}), email: e.target.value } }))} className={inputClass} /></label>
+                              <label className="text-[11px] text-slate-400">Date of birth<input required type="date" max={new Date().toISOString().slice(0, 10)} value={learnerForms[cohortId]?.date_of_birth || ""} onChange={(e) => setLearnerForms((old) => ({ ...old, [cohortId]: { ...(old[cohortId] || {}), date_of_birth: e.target.value } }))} className={inputClass} /></label>
+                              <label className="text-[11px] text-slate-400 sm:col-span-2">Fixed learning track<select required value={learnerForms[cohortId]?.track_id || ""} onChange={(e) => setLearnerForms((old) => ({ ...old, [cohortId]: { ...(old[cohortId] || {}), track_id: e.target.value } }))} className={inputClass}><option value="">Choose an enabled track</option>{enabledTracks.map((track) => <option key={track.id} value={track.id}>{track.name}</option>)}</select></label>
+                              <button disabled={busy || !enabledTracks.length} className="mt-2 rounded-xl bg-[#d7ad35] px-4 py-3 text-sm font-bold text-black disabled:opacity-50 sm:col-span-2">Create learner and send activation</button>
+                            </form>
+                          </section>
+
+                          <section className="border-t border-white/[.06] pt-4">
+                            <div className="flex flex-wrap items-start justify-between gap-3"><div><h4 className="text-sm font-semibold">3. Learner roster and individual assignments</h4><p className="mt-1 text-xs leading-5 text-slate-500">Choose a track-eligible course, select its lesson plan and assign an active organisation tutor for each learner.</p></div><span className="text-[11px] text-slate-600">{learners.length} learner account(s)</span></div>
+                            {!learners.length && <p className="mt-3 rounded-lg border border-dashed border-white/10 p-4 text-xs text-slate-500">No cohort learner accounts yet. Provision the first learner above.</p>}
+                            <div className="mt-3 space-y-3">
+                              {learners.map((learner) => {
+                                const memberId = String(learner.member_id || "");
+                                const form = learnerCourseForms[memberId] || { course_id: "", tutor_user_id: "", lesson_ids: [] };
+                                const learnerTrackCourses = (cohortTrackCourses[cohortId]?.[String(learner.track_id)] || []).filter((item) => item.status === "active");
+                                const assigned = learnerAssignments[cohortId]?.[memberId] || [];
+                                const lessons = lessonOptions[memberId] || [];
+                                return <div key={learner.id} className="rounded-lg border border-white/[.07] bg-black/15 p-3">
+                                  <div className="flex flex-wrap items-start justify-between gap-3">
+                                    <div><p className="text-sm font-medium">{learner.first_name} {learner.last_name}</p><p className="mt-1 text-xs text-slate-500">{learner.email} · @{learner.username}</p><p className="mt-1 text-[11px] text-slate-600">Track: {learner.track?.name || "Not assigned"} · Membership: {learner.membership_status || "inactive"}</p></div>
+                                    <span className={"rounded-full border px-2 py-1 text-[10px] uppercase " + (learner.status === "active" ? "border-emerald-400/20 text-emerald-200" : "border-white/10 text-slate-400")}>{String(learner.status || "unknown").replaceAll("_", " ")}</span>
+                                  </div>
+                                  {assigned.length > 0 && <div className="mt-3 space-y-2">{assigned.map((assignment) => <div key={assignment.id} className="rounded-md border border-white/[.06] px-3 py-2"><p className="text-xs font-medium text-slate-300">{assignment.course?.title || assignment.course_id}</p><p className="mt-1 text-[11px] text-slate-500">{assignment.lesson_ids?.length || 0} lesson(s) · {assignment.tutor_user_id ? "Tutor assigned" : "No tutor assigned"} · {assignment.status}</p></div>)}</div>}
+                                  {memberId && learner.membership_status === "active" && <div className="mt-3 border-t border-white/[.06] pt-3">
+                                    <div className="grid gap-2 sm:grid-cols-2">
+                                      <label className="text-[11px] text-slate-400">Course for this learner<select value={form.course_id || ""} onChange={(e) => { const courseId = e.target.value; setLearnerCourseForms((old) => ({ ...old, [memberId]: { ...(old[memberId] || {}), course_id: courseId, lesson_ids: [] } })); setLessonOptions((old) => ({ ...old, [memberId]: [] })); if (courseId) void loadLearnerLessonOptions(cohortId, learner, courseId); }} className={inputClass}><option value="">Choose an enabled track course</option>{learnerTrackCourses.map((item) => <option key={item.course_id} value={item.course_id}>{item.course?.title || item.course_id}</option>)}</select></label>
+                                      <label className="text-[11px] text-slate-400">Tutor<select value={form.tutor_user_id || ""} onChange={(e) => setLearnerCourseForms((old) => ({ ...old, [memberId]: { ...(old[memberId] || {}), tutor_user_id: e.target.value } }))} className={inputClass}><option value="">No tutor assigned</option>{tutorMembers.map((member) => { const tutorId = String(member.user_id || member.user?.id || ""); return <option key={member.membership_id || member.id || tutorId} value={tutorId}>{member.user?.name || member.user?.email || tutorId}</option>; })}</select></label>
+                                    </div>
+                                    {form.course_id && <div className="mt-3 rounded-lg border border-white/[.06] p-3"><div className="flex items-center justify-between gap-2"><p className="text-xs font-semibold">Lesson plan</p><button type="button" onClick={() => setLearnerCourseForms((old) => ({ ...old, [memberId]: { ...(old[memberId] || {}), lesson_ids: lessons.map((lesson) => String(lesson.id)) } }))} className="text-[11px] gold">Select all</button></div>
+                                      {!lessons.length ? <p className="mt-2 text-xs text-slate-600">Choose a course to load its published lessons.</p> : <div className="mt-2 space-y-2">{lessons.map((lesson) => { const checked = (form.lesson_ids || []).includes(String(lesson.id)); return <label key={lesson.id} className="flex items-start gap-2 text-xs text-slate-400"><input type="checkbox" checked={checked} onChange={(e) => setLearnerCourseForms((old) => { const previous = old[memberId] || {}; const selected = new Set((previous.lesson_ids || []).map(String)); if (e.target.checked) selected.add(String(lesson.id)); else selected.delete(String(lesson.id)); return { ...old, [memberId]: { ...previous, lesson_ids: Array.from(selected) } }; })} className="mt-0.5 accent-[#d7ad35]" /><span>{lesson.title}<span className="ml-2 text-[10px] text-slate-600">{lesson.duration_minutes ? lesson.duration_minutes + " min" : ""}</span></span></label>; })}</div>}
+                                      <button disabled={busy || !lessons.length} onClick={() => void assignCourseToLearner(cohortId, learner)} className="mt-3 rounded-lg bg-[#d7ad35] px-3 py-2 text-xs font-bold text-black disabled:opacity-50">Save course, lessons & tutor</button>
+                                    </div>}
+                                  </div>}
+                                  {!memberId && <p className="mt-3 text-xs text-amber-200/80">This account has no active cohort membership and cannot receive new course assignments.</p>}
+                                </div>;
+                              })}
+                            </div>
+                          </section>
+                        </div>}
+                      </div>;
+                    })}
+                    {!cohorts.length && <p className="text-xs leading-5 text-slate-600">No cohorts created yet.</p>}
+                  </div>
+                </div>
                 <div className="rounded-xl border border-white/[.07] p-4"><h3 className="font-semibold">Teams <span className="text-xs text-slate-500">({teams.length})</span></h3><div className="mt-3 space-y-3">{teams.map((team) => <div key={team.id} className="rounded-lg bg-black/20 p-3"><div className="flex items-start justify-between gap-2"><p className="text-sm font-medium">{team.name}</p><span className="text-[10px] uppercase text-slate-500">{team.status}</span></div><p className="mt-2 text-xs text-slate-500">{team.description || "No description"} · {team.slug}</p><a href={"/dashboard/team/"+team.id} className="mt-3 inline-block text-xs font-semibold gold">Open team workspace →</a><div className="mt-3 grid gap-2"><input aria-label={"Member user ID for "+team.name} value={teamUserIds[team.id] || ""} onChange={(e) => setTeamUserIds((old) => ({ ...old, [team.id]: e.target.value }))} placeholder="Existing member user ID" className="w-full rounded-lg border border-white/10 bg-[#090c10] px-2 py-2 text-xs" /><div className="flex gap-2"><select aria-label={"Team role for "+team.name} value={teamRoles[team.id] || "member"} onChange={(e) => setTeamRoles((old) => ({ ...old, [team.id]: e.target.value }))} className="min-w-0 flex-1 rounded-lg border border-white/10 bg-[#090c10] px-2 py-2 text-xs"><option value="member">Member</option><option value="lead">Team lead</option><option value="manager">Manager</option></select><button onClick={() => void addTeamMember(String(team.id))} className="rounded-lg border border-white/10 px-3 py-2 text-xs">Add</button></div></div></div>)}{!teams.length && <p className="text-xs leading-5 text-slate-600">No teams created yet.</p>}</div></div>
               </div>
             </section>
