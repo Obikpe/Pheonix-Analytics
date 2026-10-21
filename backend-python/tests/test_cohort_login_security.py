@@ -1,6 +1,6 @@
-"""Regression tests for cohort-login username matching and throttling."""
-import unittest
+"""Regression tests for cohort-login username matching and persistent throttling."""
 import os
+import unittest
 from datetime import date
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -63,8 +63,8 @@ class CohortLoginSecurityTests(unittest.TestCase):
                     self.assertEqual(raised.exception.status_code, 401)
                     self.assertEqual(raised.exception.detail, "Invalid username or password.")
             self.db.table.assert_not_called()
-            self.assertEqual(record_failure.call_count, 6)  # username + IP bucket per attempt
-            self.assertEqual(verify.call_count, 3)  # constant-cost dummy password check
+            self.assertEqual(record_failure.call_count, 6)
+            self.assertEqual(verify.call_count, 3)
 
     def test_date_of_birth_requires_encryption_key_and_encrypts_value(self):
         with patch.dict(os.environ, {"COHORT_DOB_ENCRYPTION_KEY": ""}):
@@ -79,10 +79,20 @@ class CohortLoginSecurityTests(unittest.TestCase):
         self.assertEqual(Fernet(key).decrypt(encrypted.encode("ascii")).decode("ascii"), "2000-01-02")
 
     def test_five_bad_attempts_block_the_sixth_for_same_username_and_ip(self):
+        failures = {}
+
+        def limited(key):
+            return failures.get(key, 0) >= cohort.COHORT_LOGIN_MAX_FAILS
+
+        def record(key):
+            failures[key] = failures.get(key, 0) + 1
+
         with patch.object(cohort, "supabase", self.db), \
              patch.object(cohort, "_get_client_ip", return_value="203.0.113.44"), \
-             patch.object(cohort, "verify_password", return_value=(False, False)):\n            original_limited = cohort._cohort_rate_limited\n            original_record = cohort._cohort_record_failure\n            failures = {}\n            def limited(key):\n                return failures.get(key, 0) >= cohort.COHORT_LOGIN_MAX_FAILS\n            def record(key):\n                failures[key] = failures.get(key, 0) + 1\n            cohort._cohort_rate_limited = limited\n            cohort._cohort_record_failure = record\n            self.addCleanup(setattr, cohort, "_cohort_rate_limited", original_limited)\n            self.addCleanup(setattr, cohort, "_cohort_record_failure", original_record)
-            for _ in range(auth.MAX_FAILS):
+             patch.object(cohort, "_cohort_rate_limited", side_effect=limited), \
+             patch.object(cohort, "_cohort_record_failure", side_effect=record), \
+             patch.object(cohort, "verify_password", return_value=(False, False)):
+            for _ in range(cohort.COHORT_LOGIN_MAX_FAILS):
                 with self.assertRaises(HTTPException) as raised:
                     cohort.login_cohort_account(
                         cohort.CohortLogin(username="learner.sample-ab12cd", password="wrong-password"),
