@@ -297,6 +297,8 @@ def create_cohort_learner(
         previous_track = membership_result.data[0].get("track_id")
         if previous_track and str(previous_track) != str(body.track_id):
             raise HTTPException(409, "This learner's track is fixed for this cohort. Create a new cohort to assign a different track.")
+        if membership_result.data[0].get("status") != "active":
+            ensure_cohort_capacity(cohort_id, 1)
     elif not existing:
         ensure_cohort_capacity(cohort_id, 1)
 
