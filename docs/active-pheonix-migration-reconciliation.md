@@ -94,12 +94,22 @@ Only the outbound activation-email transport is replaced with a test token captu
 
 The existing migration-integration job remains separate: it applies the 12 cohort migrations to a minimal synthetic legacy schema and runs SQL invariant assertions. The new authenticated journey uses the catalog-derived full current schema snapshot; it does not replay applied migrations on top of that snapshot.
 
-## Remaining gates
+## Verification completed on the current branch
 
-1. Run the updated cohort CI, including the new authenticated journey, and fix any schema, API, authentication, or PostgREST issues it exposes.
-2. Keep the two catalog-derived migration sources explicitly marked until a trusted original/backup is available or their equivalence is formally reviewed.
-3. Complete object- and data-level mapping for legacy migrations 001–015, including the Witstart identity-set mismatch and permission/AI seed values. No production repair is authorised by this report.
-4. Do not claim a fully reproducible empty-database migration chain until a verified historical baseline or approved baseline/squash strategy is established.
-5. Update and test the organisation UI so administrators can configure tracks per cohort, provision cohort-specific learner accounts, assign courses/lessons/tutors to each learner, and manage cohort completion/archive. The learner screens alone do not complete this organisation-side UI requirement.
+The following GitHub Actions runs passed on commit `190468e94569b7affd61da560c5725158280c224`:
+
+- [Cohort Learning Access Tests](https://github.com/Obikpe/Pheonix-Analytics/actions/runs/39665774708) — synthetic migration assertions plus the full authenticated API lifecycle against disposable PostgreSQL/PostgREST.
+- [Learnora Backend Verification](https://github.com/Obikpe/Pheonix-Analytics/actions/runs/39665774674) — backend verification.
+- [Learnora frontends](https://github.com/Obikpe/Pheonix-Analytics/actions/runs/39665774712) — both `frontend-team` and `frontend-v02` builds passed.
+- [Learnora quality checks](https://github.com/Obikpe/Pheonix-Analytics/actions/runs/39665774854) — quality checks passed.
+
+The organisation UI now supports creating tracks, enabling tracks per cohort, provisioning cohort-only learner accounts, assigning courses and selected lessons to each learner, selecting a tutor, and marking cohorts completed or archiving them. The frontend build is verified; a separate browser-driven UI acceptance run has not yet been performed.
+
+## Remaining release gates
+
+1. Keep the two catalog-derived migration sources explicitly marked until a trusted original/backup is available or their equivalence is formally reviewed.
+2. Complete the remaining object- and data-level mapping for legacy migrations 001–015, including the Witstart identity-set mismatch and permission/AI seed values. No production repair is authorised by this report.
+3. Do not claim a fully reproducible empty-database migration chain until a verified historical baseline or approved baseline/squash strategy is established. The catalog snapshot is for disposable staging only and must not be promoted into the active migration directory.
+4. Before merge, perform a browser-driven acceptance pass on the organisation UI using a disposable organisation: create a track, enable it on a cohort, provision a learner, assign course/lessons/tutor, then complete and archive the cohort. Confirm the page displays API errors clearly and refreshes state after each action.
 
 The draft PR remains open. No merge, live migration, or deployment was performed.
