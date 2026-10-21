@@ -169,15 +169,26 @@ def list_tracks(
     context: PermissionContext = Depends(require_permission("organisations.view")),
 ):
     _scope(context, organisation_id)
-    result = (
+    selected = "id,organisation_id,name,slug,description,status,created_at"
+    organisation_tracks = (
         supabase.table("learnora_tracks")
-        .select("id,organisation_id,name,slug,description,status,created_at")
-        .or_(f"organisation_id.eq.{organisation_id},organisation_id.is.null")
+        .select(selected)
+        .eq("organisation_id", organisation_id)
         .eq("status", "active")
-        .order("name")
         .execute()
+    ).data or []
+    global_tracks = (
+        supabase.table("learnora_tracks")
+        .select(selected)
+        .is_("organisation_id", "null")
+        .eq("status", "active")
+        .execute()
+    ).data or []
+    tracks = sorted(
+        [*organisation_tracks, *global_tracks],
+        key=lambda item: (str(item.get("name") or "").casefold(), str(item.get("id") or "")),
     )
-    return {"success": True, "tracks": result.data or []}
+    return {"success": True, "tracks": tracks}
 
 
 @router.post("/api/organisations/{organisation_id}/cohorts/{cohort_id}/tracks", status_code=201)
