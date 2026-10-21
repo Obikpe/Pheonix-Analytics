@@ -59,7 +59,7 @@ SELECT jsonb_build_object(
     ) ORDER BY p.proname, pg_get_function_identity_arguments(p.oid))
     FROM pg_proc p
     JOIN pg_namespace ns ON ns.oid = p.pronamespace
-    WHERE ns.nspname = 'public'
+    WHERE ns.nspname = 'public' AND p.prokind IN ('f', 'p')
   ), '[]'::jsonb),
   'views', COALESCE((
     SELECT jsonb_agg(jsonb_build_object(
