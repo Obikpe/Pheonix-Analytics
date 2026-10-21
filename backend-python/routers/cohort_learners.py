@@ -396,6 +396,67 @@ def create_cohort_learner(
     }
 
 
+@router.post("/api/organisations/{organisation_id}/cohorts/{cohort_id}/learners/{account_id}/resend-activation")
+def resend_cohort_activation(
+    organisation_id: str,
+    cohort_id: str,
+    account_id: str,
+    context: PermissionContext = Depends(require_permission("organisations.members")),
+):
+    _scope(context, organisation_id)
+    _cohort_for_org(organisation_id, cohort_id)
+    result = (
+        supabase.table("cohort_accounts")
+        .select("id,cohort_id,organisation_id,first_name,email,username,status")
+        .eq("id", account_id)
+        .eq("cohort_id", cohort_id)
+        .eq("organisation_id", organisation_id)
+        .limit(1)
+        .execute()
+    )
+    if not result.data:
+        raise HTTPException(404, "Cohort learner account not found.")
+    account = result.data[0]
+    if account.get("status") != "pending_activation":
+        raise HTTPException(409, "Only accounts awaiting activation can receive a new activation link.")
+
+    raw_token = _generate_raw_token()
+    now = datetime.now(timezone.utc)
+    expires = (now + timedelta(minutes=ACTIVATION_TTL_MINUTES)).isoformat()
+    updated = (
+        supabase.table("cohort_accounts")
+        .update({
+            "activation_token_hash": _hash_token(raw_token),
+            "activation_expires_at": expires,
+            "updated_at": now.isoformat(),
+        })
+        .eq("id", account_id)
+        .eq("status", "pending_activation")
+        .execute()
+    )
+    if not updated.data:
+        raise HTTPException(409, "The account changed while a new activation link was being issued.")
+    try:
+        _send_activation(
+            email=account["email"],
+            first_name=account["first_name"],
+            username=account["username"],
+            token=raw_token,
+        )
+    except Exception as exc:
+        print(f"Cohort activation resend failed: {type(exc).__name__}")
+        raise HTTPException(503, "Activation email could not be sent. Check email delivery settings and retry.")
+    audit(
+        actor_user_id=context.user_id,
+        action="cohort_activation_resent",
+        resource_type="cohort_account",
+        resource_id=account_id,
+        organisation_id=organisation_id,
+        metadata={"cohort_id": cohort_id},
+    )
+    return {"success": True, "message": "A fresh activation link has been sent.", "activation_expires_at": expires}
+
+
 @router.post("/api/cohort-auth/activate")
 def activate_cohort_account(body: CohortActivation):
     if body.password != body.confirm_password:
