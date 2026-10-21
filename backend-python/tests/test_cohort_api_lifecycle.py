@@ -261,7 +261,7 @@ class CohortAuthenticatedApiJourney(unittest.TestCase):
 
         me = self.client.get("/api/cohort-auth/me", headers=learner_headers)
         self.assertEqual(me.status_code, 200, me.text)
-        self.assertEqual(me.json()["learner"]["id"], learner["id"])
+        self.assertEqual(me.json()["account"]["id"], learner["id"])
 
         enable_course = self.client.post(
             f"/api/organisations/{self.org_id}/cohorts/{cohort_id}/tracks/{track_id}/courses",
@@ -302,7 +302,7 @@ class CohortAuthenticatedApiJourney(unittest.TestCase):
 
         learner_courses = self.client.get("/api/cohort-learning/me/courses", headers=learner_headers)
         self.assertEqual(learner_courses.status_code, 200, learner_courses.text)
-        self.assertEqual([row["id"] for row in learner_courses.json()["courses"]], [self.course_id])
+        self.assertEqual([row["course"]["id"] for row in learner_courses.json()["courses"]], [self.course_id])
 
         lesson_list = self.client.get(
             f"/api/cohort-learning/me/courses/{self.course_id}/lessons",
