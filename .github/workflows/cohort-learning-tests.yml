@@ -11,11 +11,26 @@ on:
 jobs:
   cohort-learning-tests:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: cohort_ci
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: cohort-ci-only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d cohort_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
     env:
       APP_ENV: development
       SUPABASE_URL: https://example.supabase.co
       SUPABASE_SERVICE_ROLE_KEY: test-service-role-key
       JWT_SECRET: cohort-tests-only-secret
+      TEST_DATABASE_URL: postgresql://postgres:cohort-ci-only@localhost:5432/cohort_ci
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -28,9 +43,37 @@ jobs:
       - name: Install backend dependencies
         working-directory: backend-python
         run: python -m pip install -r requirements.txt
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install --yes postgresql-client
       - name: Compile backend modules
         working-directory: backend-python
         run: python -m compileall -q routers services
-      - name: Run cohort workflow unit tests
+      - name: Run existing cohort workflow unit tests
         working-directory: backend-python
         run: python -m unittest discover -s tests -v
+      - name: Bootstrap isolated PostgreSQL fixture
+        run: psql "$TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -f backend-python/tests/db/cohort_baseline.sql
+      - name: Apply cohort migrations in order
+        shell: bash
+        run: |
+          set -euo pipefail
+          for migration in \
+            supabase/migrations/20261021112845_cohort_account_track_assignment.sql \
+            supabase/migrations/20261021113145_enforce_cohort_member_track_scope.sql \
+            supabase/migrations/20261021113310_allow_cohort_only_membership.sql \
+            supabase/migrations/20261021113447_cohort_step2_fk_indexes.sql \
+            supabase/migrations/20261021113710_validate_cohort_account_scope.sql \
+            supabase/migrations/20261021114646_cohort_member_course_lesson_access.sql \
+            supabase/migrations/20261021114859_harden_cohort_assignment_revocation.sql \
+            supabase/migrations/20261021115303_pin_cohort_assignment_trigger_search_path.sql \
+            supabase/migrations/20261021161009_cohort_archive_and_atomic_closure.sql \
+            supabase/migrations/20261021161130_fix_cohort_archive_enrolment_status.sql \
+            supabase/migrations/20261021161300_cohort_archive_fk_indexes.sql \
+            supabase/migrations/20261021182222_cohort_step5_restrict_lifecycle_and_trigger_function_access.sql
+          do
+            test -f "$migration" || { echo "Missing required migration: $migration"; exit 1; }
+            echo "Applying $migration"
+            psql "$TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -f "$migration"
+          done
+      - name: Run database-backed cohort lifecycle assertions
+        run: psql "$TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -f backend-python/tests/db/cohort_lifecycle_assertions.sql
