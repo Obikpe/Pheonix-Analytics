@@ -83,8 +83,8 @@ class CohortLoginSecurityTests(unittest.TestCase):
             self.assertEqual(auth._get_client_ip(request), "203.0.113.9")
 
     def test_rotating_usernames_still_hits_client_ip_bucket(self):
-        with patch.object(cohort, "supabase", self.db), \\
-             patch.object(cohort, "_get_client_ip", return_value="203.0.113.44"), \\
+        with patch.object(cohort, "supabase", self.db), \
+             patch.object(cohort, "_get_client_ip", return_value="203.0.113.44"), \
              patch.object(cohort, "verify_password", return_value=(False, False)):
             for i in range(auth.MAX_FAILS):
                 with self.assertRaises(HTTPException) as raised:
