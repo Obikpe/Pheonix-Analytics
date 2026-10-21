@@ -367,8 +367,23 @@ def list_cohort_members(
     cohort = supabase.table("cohorts").select("id").eq("id", cohort_id).eq("organisation_id", organisation_id).limit(1).execute()
     if not cohort.data:
         raise HTTPException(404, "Cohort not found.")
-    rows = supabase.table("cohort_members").select("id,cohort_id,user_id,joined_at,status").eq("cohort_id", cohort_id).order("joined_at", desc=True).execute()
-    return {"success": True, "members": rows.data or []}
+    rows = supabase.table("cohort_members").select("id,cohort_id,user_id,cohort_account_id,track_id,joined_at,status").eq("cohort_id", cohort_id).order("joined_at", desc=True).execute()
+    members = rows.data or []
+    account_ids = [row["cohort_account_id"] for row in members if row.get("cohort_account_id")]
+    account_map = {}
+    if account_ids:
+        accounts = supabase.table("cohort_accounts").select("id,first_name,last_name,email,username,date_of_birth,status,activated_at").in_("id", account_ids).execute()
+        account_map = {str(row["id"]): row for row in (accounts.data or [])}
+    track_ids = list({str(row["track_id"]) for row in members if row.get("track_id")})
+    track_map = {}
+    if track_ids:
+        tracks = supabase.table("learnora_tracks").select("id,name,slug").in_("id", track_ids).execute()
+        track_map = {str(row["id"]): row for row in (tracks.data or [])}
+    for member in members:
+        account_id = member.get("cohort_account_id")
+        member["learner"] = account_map.get(str(account_id)) if account_id else None
+        member["track"] = track_map.get(str(member["track_id"])) if member.get("track_id") else None
+    return {"success": True, "members": members}
 
 
 @router.post("/{organisation_id}/cohorts/{cohort_id}/members", status_code=201)
@@ -438,9 +453,15 @@ def update_cohort_member(
     cohort = supabase.table("cohorts").select("id").eq("id", cohort_id).eq("organisation_id", organisation_id).limit(1).execute()
     if not cohort.data:
         raise HTTPException(404, "Cohort not found.")
+    membership = supabase.table("cohort_members").select("id,cohort_account_id").eq("id", membership_id).eq("cohort_id", cohort_id).limit(1).execute()
+    if not membership.data:
+        raise HTTPException(404, "Cohort membership not found.")
+    member_row = membership.data[0]
     result = supabase.table("cohort_members").update({"status": body.status}).eq("id", membership_id).eq("cohort_id", cohort_id).execute()
     if not result.data:
         raise HTTPException(404, "Cohort membership not found.")
+    if member_row.get("cohort_account_id") and body.status in {"completed", "withdrawn"}:
+        supabase.table("cohort_accounts").update({"status": "inactive", "activation_token_hash": None, "activation_expires_at": None, "updated_at": datetime.now(timezone.utc).isoformat()}).eq("id", member_row["cohort_account_id"]).execute()
     return {"success": True, "member": result.data[0]}
 
 
