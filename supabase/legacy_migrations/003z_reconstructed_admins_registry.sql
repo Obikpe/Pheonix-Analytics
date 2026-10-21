@@ -41,7 +41,7 @@ RETURNS trigger
 LANGUAGE plpgsql
 AS $function$
 BEGIN
-    NEW.updated_at = NOW();
+    NEW.updated_at := pg_catalog.now();
     RETURN NEW;
 END;
 $function$;
