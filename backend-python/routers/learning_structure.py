@@ -4,6 +4,7 @@ from pydantic import BaseModel
 from .auth import supabase
 from .permissions import PermissionContext, require_permission
 from services.capacity import ensure_cohort_capacity
+from services.cohort_membership import upsert_cohort_membership
 from services.audit import audit
 
 router=APIRouter(prefix="/api/learning",tags=["Learning Structure"])
@@ -97,10 +98,9 @@ def add_cohort_member(cohort_id:str,body:CohortMemberIn,context:PermissionContex
     _scope(context,c.data[0]["organisation_id"])
     if c.data[0].get("status") in {"completed","expired","closed","archived"}:raise HTTPException(409,"Cohort is no longer accepting members.")
     existing=supabase.table("cohort_members").select("id,status").eq("cohort_id",cohort_id).eq("user_id",body.user_id).limit(1).execute()
-    if existing.data and existing.data[0]["status"]=="active":raise HTTPException(409,"User is already in this cohort.")
+    if existing.data and existing.data[0].get("status")=="active":
+        raise HTTPException(409,"User is already in this cohort.")
     ensure_cohort_capacity(cohort_id,1)
-    if existing.data:r=supabase.table("cohort_members").update({"status":"active"}).eq("id",existing.data[0]["id"]).execute()
-    else:r=supabase.table("cohort_members").insert({"cohort_id":cohort_id,"user_id":body.user_id,"status":"active"}).execute()
-    if not r.data:raise HTTPException(500,"Unable to add cohort member.")
-    audit(actor_user_id=context.user_id,action="cohort_member_added",resource_type="cohort_member",resource_id=r.data[0]["id"],organisation_id=c.data[0]["organisation_id"])
-    return {"success":True,"member":r.data[0]}
+    member=upsert_cohort_membership(cohort_id,body.user_id)
+    audit(actor_user_id=context.user_id,action="cohort_member_added",resource_type="cohort_member",resource_id=member["id"],organisation_id=c.data[0]["organisation_id"])
+    return {"success":True,"member":member}
