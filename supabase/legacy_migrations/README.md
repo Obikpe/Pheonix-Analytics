@@ -10,14 +10,15 @@ Leaving these short-version files under `supabase/migrations/` risks Supabase CL
 
 ## Reconstructed prerequisite discovered during replay
 
-The empty-database rehearsal exposed two pre-existing registry prerequisites absent from the archived chain:
+The empty-database rehearsal has exposed four pre-existing prerequisites absent from the archived chain:
 
 - `public.users` is referenced by migration 003 but is not created by 001 or 002. `002z_reconstructed_users_registry.sql` restores its current catalog column and key shape for the disposable replay.
 - `public.admins` is referenced by migration 004 but is not created by 001–003. `003z_reconstructed_admins_registry.sql` restores its current catalog table, sequence, key/check constraints, indexes, timestamp trigger and RLS state for the disposable replay.
 
 - The timestamped migration `20261020234717_pin_shared_timestamp_trigger_search_path.sql` alters `public.set_updated_at()`, but none of the archived bootstrap files defines it. `zz_reconstructed_set_updated_at.sql` restores the live catalog function definition for the disposable replay.
+- The timestamped migration `20261020234813_revoke_browser_grants_from_org_control_tables.sql` revokes grants on `public.learnora_contract_templates`, but no prior archived or active migration creates that table. `zz_reconstructed_contract_templates.sql` restores its schema-only catalog shape; it does not restore any template data.
 
-The original sources for these three prerequisites were not found in repository history. All three supplemental files are explicitly catalog-derived, not original historical sources, and are kept outside the active migration directory.
+The original sources for these four prerequisites were not found in repository history. All four supplemental files are explicitly catalog-derived, not original historical sources, and are kept outside the active migration directory.
 
 The replay also bootstraps a minimal `storage.buckets` table in the disposable CI database because hosted Supabase supplies the Storage schema as a managed service; this CI-only table is not a project migration.
 
