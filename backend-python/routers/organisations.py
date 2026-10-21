@@ -87,6 +87,10 @@ class CohortCreate(BaseModel):
     status: str = "draft"
 
 
+class CohortArchiveRequest(BaseModel):
+    reason: Optional[str] = Field(default=None, max_length=1000)
+
+
 class TeamCreate(BaseModel):
     name: str = Field(..., min_length=2, max_length=150)
     slug: Optional[str] = Field(default=None, max_length=100)
@@ -346,6 +350,8 @@ def update_organisation_cohort(
         raise HTTPException(400, "No supported cohort fields were supplied.")
     if "status" in changes and changes["status"] not in {"draft", "upcoming", "active", "ending", "completed", "expired", "closed", "archived"}:
         raise HTTPException(400, "Invalid cohort status.")
+    if changes.get("status") == "archived":
+        raise HTTPException(400, "Use the cohort archive endpoint to archive and close a cohort safely.")
     if changes.get("programme_id"):
         programme = supabase.table("learnora_programmes").select("id").eq("id", changes["programme_id"]).eq("organisation_id", organisation_id).limit(1).execute()
         if not programme.data:
@@ -355,6 +361,52 @@ def update_organisation_cohort(
     if not result.data:
         raise HTTPException(404, "Cohort not found.")
     return {"success": True, "cohort": result.data[0]}
+
+
+@router.post("/{organisation_id}/cohorts/{cohort_id}/archive")
+def archive_organisation_cohort(
+    organisation_id: str,
+    cohort_id: str,
+    body: CohortArchiveRequest,
+    context: PermissionContext = Depends(require_permission("organisations.update")),
+):
+    # Archiving must remain possible if the organisation workspace is inactive.
+    _assert_organisation_scope(context, organisation_id)
+    cohort = (
+        supabase.table("cohorts")
+        .select("id,status")
+        .eq("id", cohort_id)
+        .eq("organisation_id", organisation_id)
+        .limit(1)
+        .execute()
+    )
+    if not cohort.data:
+        raise HTTPException(404, "Cohort not found.")
+    if cohort.data[0].get("status") not in {"completed", "expired", "closed", "archived"}:
+        raise HTTPException(
+            409,
+            "Set the cohort status to completed, expired, or closed before archiving.",
+        )
+    try:
+        result = supabase.rpc(
+            "archive_and_close_cohort",
+            {
+                "p_cohort_id": cohort_id,
+                "p_actor_user_id": context.user_id,
+                "p_reason": body.reason,
+            },
+        ).execute()
+    except Exception as exc:
+        message = str(exc)
+        if "Set the cohort to completed" in message:
+            raise HTTPException(409, "The cohort must be completed, expired, or closed before archiving.")
+        raise HTTPException(500, "Cohort archival failed; no membership data was deleted.") from exc
+    payload = result.data
+    if isinstance(payload, list) and payload:
+        payload = payload[0]
+    if not isinstance(payload, dict) or not payload.get("success"):
+        raise HTTPException(500, "Cohort archival did not return a successful result.")
+    return payload
 
 
 @router.get("/{organisation_id}/cohorts/{cohort_id}/members")
