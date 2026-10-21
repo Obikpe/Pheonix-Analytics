@@ -1196,6 +1196,8 @@ CREATE TABLE public."users" (
   "email_verified_at" timestamp with time zone
 );
 
+ALTER SEQUENCE public."admins_id_seq" OWNED BY public."admins"."id";
+
 -- Primary keys, unique constraints, checks, and foreign keys.
 ALTER TABLE ONLY public."admins" ADD CONSTRAINT "admins_pkey" PRIMARY KEY (id);
 ALTER TABLE ONLY public."admins" ADD CONSTRAINT "admins_role_check" CHECK (role = ANY (ARRAY['super_admin'::text, 'staff_admin'::text, 'witstart_admin'::text]));
