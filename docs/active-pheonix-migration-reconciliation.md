@@ -57,7 +57,7 @@ Files `001_initial.sql` through `015_learnora_ai_permissions.sql` were moved int
 
 The live schema differs from these legacy scripts. Five tables created by `001_initial.sql` are absent: `tracks`, `enrollments`, `user_progress`, `user_project_progress`, and `community_qna`. Newer Learnora equivalents exist, but this is not enough to prove one-to-one data lineage. The older migrations also contain data-changing seed operations. Prior read-only comparison found a Witstart identity-set mismatch despite matching aggregate membership counts. No automatic repair was made because the correct identity mapping is ambiguous.
 
-**Status:** accidental replay risk is reduced, but a historically complete fresh-install migration chain is not yet proven. Do not insert synthetic migration history or replay 001–015. See `supabase/legacy_migrations/README.md`.
+**Status:** the legacy-plus-timestamped chain can now be executed in a brand-new disposable CI database after five catalog-derived prerequisites and a Supabase Storage bootstrap. It still does **not** reproduce the active catalog schema or all active grants. Do not run it against active Supabase or any existing database, and do not insert synthetic migration-ledger rows. A reviewed current-state baseline/squash strategy is still needed for reliable new-environment setup. See `supabase/legacy_migrations/README.md`.
 
 ## Legacy baseline: source-to-live object comparison
 
