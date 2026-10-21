@@ -369,6 +369,7 @@ jobs:
         if: steps.legacy_replay.outcome == 'success' && steps.seed_check.outcome == 'success'
         working-directory: backend-python
         env:
+          RUN_COHORT_API_INTEGRATION: "1"
           SUPABASE_URL: http://127.0.0.1:3003
           APP_ENV: development
           JWT_SECRET: cohort-tests-only-secret
