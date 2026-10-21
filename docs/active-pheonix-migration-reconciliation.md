@@ -59,6 +59,27 @@ The live schema differs from these legacy scripts. Five tables created by `001_i
 
 **Status:** accidental replay risk is reduced, but a historically complete fresh-install migration chain is not yet proven. Do not insert synthetic migration history or replay 001–015. See `supabase/legacy_migrations/README.md`.
 
+## Legacy baseline: source-to-live object comparison
+
+A read-only name-level comparison was performed between the `CREATE TABLE` declarations in legacy migrations 001–015 and the current catalog snapshot. It found 81 distinct legacy table declarations: 76 table names are present in the current public schema and five are absent. This is a **table/column-name comparison only**; it does not prove type, default, nullability, constraint, index, trigger, RLS, grant, or data equivalence.
+
+| Legacy table | Current evidence | Difference / decision |
+| --- | --- | --- |
+| `tracks` | `learnora_tracks` exists | Candidate successor by purpose; key/data lineage not proven. |
+| `enrollments` | `learnora_enrolments` exists | Candidate successor; old trial/status fields do not establish one-to-one entitlement lineage. |
+| `user_progress` | `learnora_lesson_progress` and `cohort_account_lesson_progress` exist | Two learner models now exist; do not merge their identities without a reviewed mapping. |
+| `community_qna` | `learnora_discussions` and `learnora_discussion_replies` exist | Likely evolved discussion model, but question/answer migration is unverified. |
+| `user_project_progress` | `projects` and `project_submissions` exist | Candidate project-workflow replacement; submission/completion semantics remain unverified. |
+
+The name-level column comparison also found drift in existing tables:
+
+- `courses`: legacy `track_id` and `duration` are absent from the current table; current columns include newer identifiers, track labels, publication state, timing and import metadata.
+- `lessons`: legacy `order_index`, `is_shared`, `content_type`, `notes` and `video_url` are absent; the current lesson model uses newer ordering, content-markdown, learning-objective, publication and import fields.
+- `audit_logs`: legacy `admin_id` and `target` are absent; current audit fields include actor email/type/role, IP, details and metadata.
+- Additional columns exist in current `cohorts`, `cohort_members`, `learnora_courses`, `learnora_enrolments`, `quizzes`, `learnora_course_purchases`, `learnora_organisation_requests`, `learnora_contracts`, `learnora_contract_versions`, and `learnora_creator_accounts`.
+
+These are replacement signals, not a complete lineage map. The legacy Witstart seed mismatch remains unresolved: one legacy-role user is absent from the matching organisation/cohort membership sets, while one membership in each set belongs to a user outside that role. No data repair was attempted because the intended identity mapping is not inferable from aggregate counts.
+
 ## Disposable staging schema snapshot
 
 `supabase/baselines/active-pheonix-public-schema.sql` is a schema-only catalog snapshot generated from a read-only inspection of the active project on 2026-10-21. It contains no production data, credentials, or auth-user records. It captures 101 public tables, 974 base-table columns, 449 constraints, 150 non-constraint indexes, 16 public functions, 44 triggers, 101 RLS flags, one sequence and one view. It intentionally grants the backend `service_role` access and gives browser roles no table/function grants for the local API test harness.
