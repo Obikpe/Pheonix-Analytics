@@ -1,0 +1,31 @@
+name: Cohort Learning Access Tests
+
+on:
+  pull_request:
+    paths:
+      - "backend-python/**"
+      - "supabase/migrations/**"
+      - ".github/workflows/cohort-learning-tests.yml"
+  workflow_dispatch:
+
+jobs:
+  cohort-learning-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: backend-python/requirements.txt
+      - name: Install backend dependencies
+        working-directory: backend-python
+        run: python -m pip install -r requirements.txt
+      - name: Compile backend modules
+        working-directory: backend-python
+        run: python -m compileall -q routers services
+      - name: Run cohort workflow unit tests
+        working-directory: backend-python
+        run: python -m unittest discover -s tests -v
