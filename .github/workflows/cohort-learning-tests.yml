@@ -204,8 +204,30 @@ jobs:
           done
           echo "Legacy plus timestamped migration replay completed."
 
-      - name: Compare replayed schema with the catalog snapshot
+      - name: Compare deterministic migration seed data
+        id: seed_check
         if: steps.legacy_replay.outcome == 'success'
+        env:
+          LEGACY_REPLAY_DATABASE_URL: postgresql://postgres:cohort-ci-only@localhost:5432/legacy_replay_staging
+        run: |
+          psql "$LEGACY_REPLAY_DATABASE_URL" -X -qAt -v ON_ERROR_STOP=1 \
+            -c "SELECT permission_key FROM public.learnora_permissions ORDER BY permission_key" \
+            > "$RUNNER_TEMP/replayed-permission-keys.txt"
+          diff -u supabase/baselines/expected_permission_keys.txt "$RUNNER_TEMP/replayed-permission-keys.txt"
+          provider_count="$(psql "$LEGACY_REPLAY_DATABASE_URL" -X -qAt -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM public.learnora_ai_providers")"
+          if [[ "$provider_count" != "1" ]]; then
+            echo "Expected one deterministic AI provider seed row; found $provider_count"
+            exit 1
+          fi
+          template_count="$(psql "$LEGACY_REPLAY_DATABASE_URL" -X -qAt -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM public.learnora_contract_templates")"
+          if [[ "$template_count" != "0" ]]; then
+            echo "Expected no contract-template seed rows; found $template_count"
+            exit 1
+          fi
+          echo "Permission keys match the active catalog baseline; AI provider seed count matches; no contract-template rows are expected."
+
+      - name: Compare replayed schema with the catalog snapshot
+        if: always() && steps.legacy_replay.outcome == 'success'
         env:
           SNAPSHOT_DATABASE_URL: postgresql://postgres:cohort-ci-only@localhost:5432/cohort_api_staging
           LEGACY_REPLAY_DATABASE_URL: postgresql://postgres:cohort-ci-only@localhost:5432/legacy_replay_staging
