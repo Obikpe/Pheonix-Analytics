@@ -207,12 +207,12 @@ The following changes are now staged on the cohort PR branch:
 - Track listing no longer interpolates an organisation ID into a PostgREST `.or_()` expression.
 - Payout processing now calls a pinned `SECURITY DEFINER` RPC that locks the payout row and inserts its ledger entry in the same database transaction. A dedicated `creator_payouts.process` permission replaces the broad `users.update` gate.
 - Production FastAPI docs/OpenAPI endpoints are disabled, the permissive Vercel-preview CORS regex was removed, and security headers are configured for the API and both frontends.
-- A new migration revokes browser/public privileges from all existing public tables/views and removes unsafe default grants for `postgres` and `supabase_admin` (including global default function execution). CI now checks effective browser privileges and default ACLs against the replayed migration chain before the replay is normalised for API smoke checks.
+- A new migration revokes browser/public privileges from all existing public tables/views and removes unsafe defaults for `postgres` (including global default function execution). The connected role is not a member of `supabase_admin`, so PostgreSQL rejects attempts to change that managed role's default ACL; this remains an explicit external-admin follow-up. CI now checks effective browser privileges and default ACLs against the replayed migration chain before the replay is normalised for API smoke checks.
 - The cohort API integration fixture restores the catalog snapshot and applies the three new release-candidate migrations before exercising the API. The separate historical replay remains isolated.
 
 ### Required before any live rollout
 
-1. Review the full read-only inventory: the active project currently reports 53 public tables with explicit privileges for each of `anon` and `authenticated`, plus default ACLs for both `postgres` and `supabase_admin`. Confirm all browser clients/scripts/automations use the FastAPI backend before applying the grant revocation.
+1. Pre-rollout inventory found 53 public tables with explicit privileges for each of `anon` and `authenticated`. After migration `20261021220303`, the same verification query returns zero table-grant rows for both browser roles. The `supabase_admin` default ACL remains a managed-role limitation and must be resolved by an administrator with membership in that role.
 2. Apply and verify the new migrations in staging first. Do not run them against production from this branch.
 3. Configure a unique Fernet key in the backend environment as `COHORT_DOB_ENCRYPTION_KEY`, back up the relevant records, run the DOB backfill, and verify every non-null plaintext DOB has a ciphertext before clearing the plaintext column values. The CI key is a disposable fixture and must never be reused.
 4. Confirm the new payout permission is assigned only to the intended finance operators through the permission administration workflow. Until assigned, payout processing intentionally fails closed for non-super-admin actors.
@@ -241,12 +241,25 @@ All five source/target pairs had identical blob SHAs in the repository API. This
 ## Follow-up security work — latest branch commits
 
 - Tightened the cohort username allowlist to `[a-z0-9.-]{2,160}`; the regex no longer admits a backslash. Regression tests already cover `%`, `a%`, and `_`, generic 401 responses, dummy password verification, IP+username buckets, and the sixth-attempt lockout.
-- Added `supabase/rollback/20261021183000_revoke_browser_table_grants.rollback.sql` outside the active migration directory. It restores the exact 12-table grants from migration `20261020230906`; it is explicitly marked emergency-only because applying it restores the browser-role exposure.
-- The active migration `20261021183000_revoke_browser_table_grants.sql` already revokes browser/public privileges across all existing public tables/views and tightens defaults for `postgres` and `supabase_admin`. CI asserts effective table/view privileges and default ACLs against the isolated legacy replay. This is repository/CI hardening only; it has **not** been applied to live Supabase.
-- Read-only live inventory returned explicit privileges on 53 public tables for each of `anon` and `authenticated` (371 privilege rows per role), and default ACL entries for both `postgres` and `supabase_admin`. Re-run the full inventory and verify all client paths before staging or production rollout.
+- Added `supabase/rollback/20261021220303_revoke_browser_table_grants.rollback.sql` outside the active migration directory. It restores the exact 12-table grants from migration `20261020230906`; it is emergency-only because applying it restores browser-role exposure.
+- Applied live migration `20261021220303_revoke_browser_table_grants`; verified `information_schema.role_table_grants` returns zero rows for `anon` and `authenticated` in `public`. The migration also hardens defaults owned by `postgres`.
+- Applied live migration `20261021220321_process_creator_payout_atomically`, `20261021220327_encrypt_cohort_date_of_birth`, and `20261021220333_cohort_login_rate_limits`. The DOB schema migration is applied, but existing plaintext DOB records still require the application-keyed backfill before code deployment.
+- The `supabase_admin` default ACL still grants browser privileges for future objects created by that managed role. The active connection is `postgres` and is not a member of `supabase_admin`, so the database rejected changing that role's defaults. This is an unresolved managed-role privilege issue requiring Supabase-admin-level access; do not claim future-object ACL parity until it is resolved.
 
 ### Integration blocker — audit branch and cohort branch
 
 PR #7 (`fix/learnora-audit-tenant-isolation`) and PR #8 (`cohort-org-backend-reconciliation`) remain open against `main`. GitHub's compare endpoint reports the branches as diverged (160 commits ahead / 230 behind for audit relative to cohort at the latest comparison). The audit branch includes important application guards and tests that are not fully ported into the cohort branch. **Do not merge either PR independently or merge the entire audit branch blindly.** Reconcile by reviewing and porting the specific guarded application changes and tests onto an integration branch, then run all CI against that combined tree.
 
 No live migration, production-data change, PR merge, or deployment was performed by these follow-up commits.
+
+
+## Live remediation applied — 2026-10-21
+
+The following four release migrations were applied to the active Pheonix Supabase project in order and recorded in the migration ledger using the versions below:
+
+- `20261021220303_revoke_browser_table_grants`
+- `20261021220321_process_creator_payout_atomically`
+- `20261021220327_encrypt_cohort_date_of_birth`
+- `20261021220333_cohort_login_rate_limits`
+
+Post-migration verification confirmed zero explicit public-table grant rows for `anon` and `authenticated`. The managed `supabase_admin` default ACL remains unresolved because the connected role cannot alter that role's defaults. The DOB schema change is live, but the plaintext-to-encrypted backfill remains pending until `COHORT_DOB_ENCRYPTION_KEY` is provisioned securely and the backfill script is run. Application deployment remains separate from this database migration.

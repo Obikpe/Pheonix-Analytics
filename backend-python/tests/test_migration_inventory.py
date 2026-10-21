@@ -28,10 +28,10 @@ class MigrationInventoryTests(unittest.TestCase):
             "20261020232148_allow_unlimited_monthly_ai_quota.sql",
             "20261020234717_pin_shared_timestamp_trigger_search_path.sql",
             "20261020234813_revoke_browser_grants_from_org_control_tables.sql",
-            "20261021183000_revoke_browser_table_grants.sql",
-            "20261021183500_process_creator_payout_atomically.sql",
-            "20261021184000_encrypt_cohort_date_of_birth.sql",
-            "20261021200000_cohort_login_rate_limits.sql",
+            "20261021220303_revoke_browser_table_grants.sql",
+            "20261021220321_process_creator_payout_atomically.sql",
+            "20261021220327_encrypt_cohort_date_of_birth.sql",
+            "20261021220333_cohort_login_rate_limits.sql",
         )
         for name in expected:
             with self.subTest(migration=name):
@@ -59,7 +59,7 @@ class MigrationInventoryTests(unittest.TestCase):
         )
 
     def test_browser_grant_revocation_covers_shared_and_control_tables(self):
-        sql = (ACTIVE_DIR / "20261021183000_revoke_browser_table_grants.sql").read_text(
+        sql = (ACTIVE_DIR / "20261021220303_revoke_browser_table_grants.sql").read_text(
             encoding="utf-8"
         )
         self.assertRegex(sql, r"(?is)REVOKE\s+ALL\s+PRIVILEGES\s+ON\s+ALL\s+TABLES\s+IN\s+SCHEMA\s+public")
