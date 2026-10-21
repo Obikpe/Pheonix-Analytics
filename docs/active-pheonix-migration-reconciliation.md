@@ -41,11 +41,11 @@ The seven formerly missing timestamped sources have been restored as follows:
 
 | Live migration | Source provenance |
 | --- | --- |
-| `20261020230826` audit remediation | Timestamped SQL source is present and replay-tested; the referenced prior path is not present in the current tree and its exact historical provenance is not independently verified. |
-| `20261020230906` shared learner grants / trigger routines | Timestamped SQL source is present and replay-tested; exact historical byte-for-byte provenance is not independently verified. |
-| `20261020232148` unlimited monthly AI quota | Timestamped SQL source is present and replay-tested; exact historical byte-for-byte provenance is not independently verified. |
-| `20261020234717` timestamp trigger search path | Timestamped SQL source is present and replay-tested; exact historical byte-for-byte provenance is not independently verified. |
-| `20261020234813` browser grants for organisation controls | Timestamped SQL source is present and replay-tested; exact historical byte-for-byte provenance is not independently verified. |
+| `20261020230826` audit remediation | Timestamped source is present and replay-tested; its content was compared byte-for-byte with an archived candidate, but the original deployment-time blob is not independently proven by the timestamped path's history. |
+| `20261020230906` shared learner grants / trigger routines | Timestamped source is present and replay-tested; content matches the archived candidate, but original deployment-time provenance remains qualified. |
+| `20261020232148` unlimited monthly AI quota | Timestamped source is present and replay-tested; content matches the archived candidate, but original deployment-time provenance remains qualified. |
+| `20261020234717` timestamp trigger search path | Timestamped source is present and replay-tested; content matches the archived candidate, but original deployment-time provenance remains qualified. |
+| `20261020234813` browser grants for organisation controls | Timestamped source is present and replay-tested; content matches the archived candidate, but original deployment-time provenance remains qualified. |
 | `20261008100924` AI profiles | Original source was not found in repository history. A catalog-derived equivalent was reconstructed from the live table definition; it is explicitly labelled and is not byte-for-byte original SQL. |
 | `20261011051442` learner onboarding profiles | Original source was not found in repository history. A catalog-derived equivalent was reconstructed from the live table definition; it is explicitly labelled and is not byte-for-byte original SQL. |
 
@@ -183,47 +183,26 @@ All four workflows completed successfully on that exact commit:
 - [Learnora Backend Verification](https://github.com/Obikpe/Pheonix-Analytics/actions/runs/39677648952) — **passed**.
 - [Cohort Learning Access Tests](https://github.com/Obikpe/Pheonix-Analytics/actions/runs/39677648786) — **passed** under the revised staging policy.
 
-## Remaining issues that cannot be safely auto-fixed from repository evidence alone
+## Current remediation status and remaining blockers
 
-The following are intentionally release-blocking rather than silently "fixed" by schema coercion:
+### Completed and verified on `main`
 
-1. **Historical migration source provenance:** GitHub commit searches for the two catalog-reconstructed migrations and a representative 20 October timestamped migration found no original source commit. The original SQL cannot be reconstructed with certainty from the current catalog because catalog state does not preserve all historical DDL, seed data, or migration side effects. Obtain trusted backup/author copies or formally approve the clearly labelled reconstructed sources after semantic review.
-2. **Legacy/current data lineage:** the Witstart identity-set mismatch and likely successor-table mappings require record-level business confirmation. No rows have been moved, deleted, or remapped.
-3. **Schema parity:** the report-only fingerprint still exposes missing/extra columns, constraints, indexes, triggers, RLS states, one policy, and one view. The replay is historical-analysis evidence, not a valid current-state bootstrap. Do not "fix" this by copying current object names into the legacy chain or dropping old objects.
-4. **Fresh-environment bootstrap:** the catalog SQL snapshot remains a CI-only fixture. Before release, create and validate a dedicated reviewed baseline/squash artifact for new environments, including the correct grants, managed Supabase dependencies, functions, triggers, RLS, constraints, and any required reference/seed data. Do not place the staging snapshot into the active migration directory or apply it to the live project.
-5. **Browser acceptance:** CI confirms builds and API-level cohort lifecycle behavior, not a real browser interaction with a deployed preview. Run the organisation workflow in an isolated preview with disposable test identities before merge; validate visible errors and refresh behaviour.
+- PR #7 (audit tenant-isolation fixes) and PR #8 (cohort lifecycle) are merged at `4b609776c9f477ff42ada20f8fe5cbd6d80c28ef`; the old instruction to merge those branches is obsolete.
+- The active Supabase migration ledger contains the five release migrations listed in the live-remediation section below.
+- Read-only verification now returns zero explicit `public` table-grant rows for `anon` and `authenticated`.
+- Cohort login rejects wildcard usernames, uses exact username matching, performs dummy password verification, and uses persistent database-backed failure throttling with a username+IP and an IP-only bucket.
+- DOB encryption, atomic payout processing, trigger-function execute restrictions, production docs disabling, explicit CORS allowlisting, CSP/security headers, course-content access guards, module-unlock checks, team membership checks, and database-backed AI quota reservation are present in the merged code.
+- The current `main` tree has the audit regression tests for course access, module unlocks, AI quota reservation, team membership, and platform-admin authority.
 
-No live Supabase schema, migration ledger, production data, or Vercel deployment was changed. No merge or deployment was performed.
+### Remaining release blockers
 
+1. **Managed-role default ACLs.** Live verification still shows `supabase_admin` default ACL entries granting `anon` and `authenticated` privileges on future tables, sequences, and functions. The active database connection is `postgres`, which is not superuser and is not a member of `supabase_admin`; it cannot alter that role's defaults. This requires an authorised Supabase administrative action or support intervention. The CI replay is being updated to reproduce this ACL rather than silently testing a cleaner database; until the ACL is removed, that check should fail.
+2. **LocalStorage bearer tokens.** The frontend still stores `phx_token` in `localStorage`. CSP/security headers reduce exposure but do not eliminate token theft through XSS. A complete HttpOnly-cookie migration needs coordinated backend and frontend changes, CSRF/origin enforcement, logout/expiry handling, and cross-site cookie tests. This remains unresolved.
+3. **Instructor grading scope/audit.** The current backend exposes learner assignment read/submit routes, but no instructor grading-write endpoint matching the reported issue could be identified in the current router tree. Do not add a speculative endpoint. If such a route exists in another deployed component, provide its path or source so its course-assignment scope, controlled grade transitions, and immutable audit events can be implemented and tested.
+4. **Historical source provenance.** The five 20 October migration files match archived source candidates byte-for-byte, but the timestamped path history consists of restoration commits, so original deployment-time provenance is still qualified. The two AI-profile/onboarding migrations remain catalog-derived reconstructions, not recovered originals. Obtain trusted author/backup artifacts if available; otherwise require explicit semantic review and approval before treating the reconstructions as canonical.
+5. **Session storage decision.** Verification and password-reset tokens are being moved to URL fragments on the follow-up branch so browsers do not send them in HTTP query strings. Those frontend/backend changes are not live until a reviewed merge and deployment; the current production frontend must not be assumed to have them.
 
-## Security remediation follow-up — branch-only, not applied to live Supabase
-
-The following changes are now staged on the cohort PR branch:
-
-- Cohort login uses exact username equality, rejects wildcard/special characters with the same generic 401, performs a dummy password hash verification for malformed or unknown usernames, and records failures in both username+IP and IP-only buckets.
-- The cohort API returns no date of birth. New cohort accounts encrypt DOB using `COHORT_DOB_ENCRYPTION_KEY` and write no plaintext DOB. The schema migration adds `date_of_birth_encrypted` and allows the legacy plaintext column to be cleared.
-- `backend-python/scripts/encrypt_cohort_dates_of_birth.py` is an explicit backfill tool. It must be run only after the key is securely configured for the intended environment; it never logs personal data. Existing production rows remain plaintext until this controlled backfill has been run and verified.
-- Activation links put the one-time token in the URL fragment, and the activation page removes it from browser history immediately after reading it.
-- Track listing no longer interpolates an organisation ID into a PostgREST `.or_()` expression.
-- Payout processing now calls a pinned `SECURITY DEFINER` RPC that locks the payout row and inserts its ledger entry in the same database transaction. A dedicated `creator_payouts.process` permission replaces the broad `users.update` gate.
-- Production FastAPI docs/OpenAPI endpoints are disabled, the permissive Vercel-preview CORS regex was removed, and security headers are configured for the API and both frontends.
-- A new migration revokes browser/public privileges from all existing public tables/views and removes unsafe defaults for `postgres` (including global default function execution). The connected role is not a member of `supabase_admin`, so PostgreSQL rejects attempts to change that managed role's default ACL; this remains an explicit external-admin follow-up. CI now checks effective browser privileges and default ACLs against the replayed migration chain before the replay is normalised for API smoke checks.
-- The cohort API integration fixture restores the catalog snapshot and applies the three new release-candidate migrations before exercising the API. The separate historical replay remains isolated.
-
-### Required before any live rollout
-
-1. Pre-rollout inventory found 53 public tables with explicit privileges for each of `anon` and `authenticated`. After migration `20261021220303`, the same verification query returns zero table-grant rows for both browser roles. The `supabase_admin` default ACL remains a managed-role limitation and must be resolved by an administrator with membership in that role.
-2. Apply and verify the new migrations in staging first. Do not run them against production from this branch.
-3. Configure a unique Fernet key in the backend environment as `COHORT_DOB_ENCRYPTION_KEY`, back up the relevant records, run the DOB backfill, and verify every non-null plaintext DOB has a ciphertext before clearing the plaintext column values. The CI key is a disposable fixture and must never be reused.
-4. Confirm the new payout permission is assigned only to the intended finance operators through the permission administration workflow. Until assigned, payout processing intentionally fails closed for non-super-admin actors.
-5. Reconcile PR #7 (audit tenant-isolation fixes) with PR #8 (cohort workflow) before either is released. The branches have diverged substantially; do not merge the entire audit branch blindly. Port/review its course-content guards, module-unlock checks, AI quota reservation, team-membership guards, and associated regression tests onto a combined branch, then rerun all CI.
-6. Verify instructor grading is scoped to the assigned course and add immutable grading audit events before enabling any instructor submission-grading route. This remains unverified on the cohort branch.
-7. Decide the session migration from localStorage to HttpOnly secure cookies. Current bearer-token storage remains a residual XSS exposure; the new CSP is a baseline policy, not a substitute for the cookie migration.
-8. Recover the original migration source artifacts where possible. The two catalog-reconstructed migrations and five historical source files with unverified provenance remain qualified as such; do not describe them as original recoveries.
-9. Run the quality workflow to a clean completed result. A cancelled result is not a pass.
-
-No migration has been applied to the live Supabase project, no existing production DOB has been backfilled, and no merge or deployment has been performed by this remediation.
-
+No automated legacy-data deletion or remapping has been performed. Do not merge/deploy a follow-up that leaves the managed-role default ACL check unresolved.
 
 ### Provenance verification added during remediation
 
@@ -236,21 +215,6 @@ The following timestamped migrations are now verified against byte-identical sou
 - `20261020234813_revoke_browser_grants_from_org_control_tables.sql` ↔ `backend-python/migrations/027_revoke_browser_grants_from_org_control_tables.sql`
 
 All five source/target pairs had identical blob SHAs in the repository API. This resolves the content-provenance uncertainty for those five files, but not the separate branch-integration dependency.
-
-
-## Follow-up security work — latest branch commits
-
-- Tightened the cohort username allowlist to `[a-z0-9.-]{2,160}`; the regex no longer admits a backslash. Regression tests already cover `%`, `a%`, and `_`, generic 401 responses, dummy password verification, IP+username buckets, and the sixth-attempt lockout.
-- Added `supabase/rollback/20261021220303_revoke_browser_table_grants.rollback.sql` outside the active migration directory. It restores the exact 12-table grants from migration `20261020230906`; it is emergency-only because applying it restores browser-role exposure.
-- Applied live migration `20261021220303_revoke_browser_table_grants`; verified `information_schema.role_table_grants` returns zero rows for `anon` and `authenticated` in `public`. The migration also hardens defaults owned by `postgres`.
-- Applied live migration `20261021220321_process_creator_payout_atomically`, `20261021220327_encrypt_cohort_date_of_birth`, and `20261021220333_cohort_login_rate_limits`. The DOB schema migration is applied. A read-only count found zero cohort accounts, zero plaintext DOB rows, and zero encrypted DOB rows, so no existing DOB backfill is currently needed. A stable `COHORT_DOB_ENCRYPTION_KEY` has been provisioned in the `learnora-backend` Vercel production and preview environments for future account creation.
-- The `supabase_admin` default ACL still grants browser privileges for future objects created by that managed role. The active connection is `postgres` and is not a member of `supabase_admin`, so the database rejected changing that role's defaults. This is an unresolved managed-role privilege issue requiring Supabase-admin-level access; do not claim future-object ACL parity until it is resolved.
-
-### Integration blocker — audit branch and cohort branch
-
-PR #7 (`fix/learnora-audit-tenant-isolation`) and PR #8 (`cohort-org-backend-reconciliation`) remain open against `main`. GitHub's compare endpoint reports the branches as diverged (160 commits ahead / 230 behind for audit relative to cohort at the latest comparison). The audit branch includes important application guards and tests that are not fully ported into the cohort branch. **Do not merge either PR independently or merge the entire audit branch blindly.** Reconcile by reviewing and porting the specific guarded application changes and tests onto an integration branch, then run all CI against that combined tree.
-
-No live migration, production-data change, PR merge, or deployment was performed by these follow-up commits.
 
 
 ## Live remediation applied — 2026-10-21

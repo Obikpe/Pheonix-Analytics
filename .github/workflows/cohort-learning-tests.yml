@@ -7,6 +7,7 @@ on:
       - "supabase/migrations/**"
       - "supabase/legacy_migrations/**"
       - "supabase/baselines/**"
+      - "supabase/ops/**"
       - "frontend-v02/app/dashboard/organisation/**"
       - ".github/workflows/cohort-learning-tests.yml"
   workflow_dispatch:
@@ -206,6 +207,22 @@ jobs:
             name text NOT NULL,
             "public" boolean NOT NULL DEFAULT false
           );
+          -- Reproduce the live managed-role default ACL as a regression fixture.
+          -- The current production postgres role cannot change this role's ACL;
+          -- the assertion below must stay red until the managed ACL is remediated.
+          DO $roles$
+          BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN CREATE ROLE anon NOLOGIN; END IF;
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN CREATE ROLE authenticated NOLOGIN; END IF;
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'supabase_admin') THEN CREATE ROLE supabase_admin NOLOGIN; END IF;
+          END
+          $roles$;
+          ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin IN SCHEMA public
+            GRANT ALL PRIVILEGES ON TABLES TO anon, authenticated;
+          ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin IN SCHEMA public
+            GRANT ALL PRIVILEGES ON SEQUENCES TO anon, authenticated;
+          ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin
+            GRANT EXECUTE ON FUNCTIONS TO anon, authenticated;
           SQL
           for migration in supabase/legacy_migrations/*.sql; do
             echo "Applying legacy bootstrap candidate: $migration"
@@ -283,7 +300,7 @@ jobs:
           )"
           if [[ "$default_privileges" != "0" ]]; then
             echo "Found $default_privileges unsafe public-schema default privilege entries."
-            psql "$LEGACY_REPLAY_DATABASE_URL" -x -c "SELECT d.defaclobjtype, pg_get_userbyid(d.defaclrole) AS owner_role, acl.grantee, acl.privilege_type FROM pg_default_acl d CROSS JOIN LATERAL aclexplode(d.defaclacl) acl WHERE d.defaclnamespace IN (0, 'public'::regnamespace) AND (acl.grantee = 0 OR acl.grantee IN (SELECT oid FROM pg_roles WHERE rolname IN ('anon', 'authenticated')));"
+            psql "$LEGACY_REPLAY_DATABASE_URL" -x -c "SELECT d.defaclobjtype, pg_get_userbyid(d.defaclrole) AS owner_role, CASE WHEN acl.grantee = 0 THEN 'PUBLIC' ELSE grantee.rolname END AS grantee, acl.privilege_type FROM pg_default_acl d CROSS JOIN LATERAL aclexplode(d.defaclacl) acl LEFT JOIN pg_roles grantee ON grantee.oid = acl.grantee WHERE d.defaclnamespace IN (0, 'public'::regnamespace) AND (acl.grantee = 0 OR grantee.rolname IN ('anon', 'authenticated'));"
             exit 1
           fi
           trigger_execute="$(psql "$LEGACY_REPLAY_DATABASE_URL" -X -qAt -v ON_ERROR_STOP=1 <<'SQL'
