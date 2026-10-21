@@ -23,7 +23,7 @@ class CohortAuthenticatedApiJourney(unittest.TestCase):
         cls.client = TestClient(app)
         cls.client.__enter__()  # Run FastAPI lifespan startup for the real app.
         cls.db = supabase
-        cls.hash_password = hash_password
+        cls.hash_password = staticmethod(hash_password)
 
     @classmethod
     def tearDownClass(cls):
