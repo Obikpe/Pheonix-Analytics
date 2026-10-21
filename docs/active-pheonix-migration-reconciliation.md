@@ -223,3 +223,16 @@ The following changes are now staged on the cohort PR branch:
 9. Run the quality workflow to a clean completed result. A cancelled result is not a pass.
 
 No migration has been applied to the live Supabase project, no existing production DOB has been backfilled, and no merge or deployment has been performed by this remediation.
+
+
+### Provenance verification added during remediation
+
+The following timestamped migrations are now verified against byte-identical source files on `fix/learnora-audit-tenant-isolation`:
+
+- `20261020230826_learnora_audit_remediation.sql` ↔ `backend-python/migrations/023_learnora_audit_remediation.sql`
+- `20261020230906_restore_shared_learner_grants_and_lock_trigger_routines.sql` ↔ `backend-python/migrations/024_restore_shared_learner_grants_and_lock_trigger_routines.sql`
+- `20261020232148_allow_unlimited_monthly_ai_quota.sql` ↔ `backend-python/migrations/025_allow_unlimited_monthly_ai_quota.sql`
+- `20261020234717_pin_shared_timestamp_trigger_search_path.sql` ↔ `backend-python/migrations/026_pin_shared_timestamp_trigger_search_path.sql`
+- `20261020234813_revoke_browser_grants_from_org_control_tables.sql` ↔ `backend-python/migrations/027_revoke_browser_grants_from_org_control_tables.sql`
+
+All five source/target pairs had identical blob SHAs in the repository API. This resolves the content-provenance uncertainty for those five files, but not the separate branch-integration dependency.
