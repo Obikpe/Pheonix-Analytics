@@ -1,48 +1,84 @@
 # Active Pheonix migration reconciliation — 2026-10-21
 
-## Scope and safety
+## Safety and scope
 
-This review compares the repository migration filenames with the migration ledger and the live schema in Supabase project `gihfupzvdpyrmynqgukz`. Database inspection was read-only. No live rows, schema objects, or migration history were changed. Do not merge or deploy this branch based only on the cohort CI run.
+Target: active Pheonix Supabase project `gihfupzvdpyrmynqgukz`.
 
-## Reconciliations completed on this branch
+All live database inspection in this task was read-only. No production rows, schema, migration ledger, or Vercel deployment were changed. Do not merge or deploy until the CI API journey and remaining legacy seed/data-lineage review pass.
 
-The repository migration files that clearly correspond to applied versions in the active migration ledger were renamed to the exact recorded versions:
+## Active migration ledger restored
 
-| Recorded version | Repository migration |
+The active project reports 26 applied timestamped migration versions. The active `supabase/migrations/` directory now contains exactly those 26 timestamped filenames, in the same version order:
+
+- `20261008100924_add_learnora_ai_profiles.sql`
+- `20261009225421_learnora_organisation_portal.sql`
+- `20261009230311_individual_learner_enrolments.sql`
+- `20261009230330_learner_lesson_notes.sql`
+- `20261009230703_ai_lesson_summariser_profile.sql`
+- `20261009231536_mark_witstart_pilot_mode.sql`
+- `20261009231754_cohort_course_assignments.sql`
+- `20261009232328_community_discussions.sql`
+- `20261011051442_learner_onboarding_profiles.sql`
+- `20261020230826_learnora_audit_remediation.sql`
+- `20261020230906_restore_shared_learner_grants_and_lock_trigger_routines.sql`
+- `20261020232148_allow_unlimited_monthly_ai_quota.sql`
+- `20261020234717_pin_shared_timestamp_trigger_search_path.sql`
+- `20261020234813_revoke_browser_grants_from_org_control_tables.sql`
+- `20261021112845_cohort_account_track_assignment.sql`
+- `20261021113145_enforce_cohort_member_track_scope.sql`
+- `20261021113310_allow_cohort_only_membership.sql`
+- `20261021113447_cohort_step2_fk_indexes.sql`
+- `20261021113710_validate_cohort_account_scope.sql`
+- `20261021114646_cohort_member_course_lesson_access.sql`
+- `20261021114859_harden_cohort_assignment_revocation.sql`
+- `20261021115303_pin_cohort_assignment_trigger_search_path.sql`
+- `20261021161009_cohort_archive_and_atomic_closure.sql`
+- `20261021161056_fix_cohort_archive_enrolment_status.sql`
+- `20261021161237_cohort_archive_fk_indexes.sql`
+- `20261021182222_cohort_step5_restrict_lifecycle_and_trigger_function_access.sql`
+
+The seven formerly missing timestamped sources have been restored as follows:
+
+| Live migration | Source provenance |
 | --- | --- |
-| `20261009225421` | `learnora_organisation_portal` |
-| `20261009230311` | `individual_learner_enrolments` |
-| `20261009230330` | `learner_lesson_notes` |
-| `20261009230703` | `ai_lesson_summariser_profile` |
-| `20261009231536` | `mark_witstart_pilot_mode` |
-| `20261009231754` | `cohort_course_assignments` |
-| `20261009232328` | `community_discussions` |
-| `20261021161056` | `fix_cohort_archive_enrolment_status` |
-| `20261021161237` | `cohort_archive_fk_indexes` |
+| `20261020230826` audit remediation | Recovered verbatim from the previously committed `backend-python/migrations/023_learnora_audit_remediation.sql` |
+| `20261020230906` shared learner grants / trigger routines | Recovered verbatim from `024_restore_shared_learner_grants_and_lock_trigger_routines.sql` |
+| `20261020232148` unlimited monthly AI quota | Recovered verbatim from `025_allow_unlimited_monthly_ai_quota.sql` |
+| `20261020234717` timestamp trigger search path | Recovered verbatim from `026_pin_shared_timestamp_trigger_search_path.sql` |
+| `20261020234813` browser grants for organisation controls | Recovered verbatim from `027_revoke_browser_grants_from_org_control_tables.sql` |
+| `20261008100924` AI profiles | Original source was not found in repository history. A catalog-derived equivalent was reconstructed from the live table definition; it is explicitly labelled and is not byte-for-byte original SQL. |
+| `20261011051442` learner onboarding profiles | Original source was not found in repository history. A catalog-derived equivalent was reconstructed from the live table definition; it is explicitly labelled and is not byte-for-byte original SQL. |
 
-The last two changes were checked against live database effects: the installed `archive_and_close_cohort(uuid, uuid, text)` function body matches the source migration body after whitespace normalization, and the indexes declared in `cohort_archive_fk_indexes` exist in the active schema. The CI migration sequence now uses the recorded cohort versions.
+The two catalog-derived files should not be described as exact source recovery. They need a final diff against any trusted backup or author copy if one becomes available. They are not replayed against the active database.
 
-## Read-only live-schema observations
+## Legacy baseline decision
 
-- The cohort learner, track/course assignment, lesson assignment, progress, lifecycle, and archive tables exist in `public`.
-- RLS is enabled on the inspected cohort tables.
-- The archive RPC and the three assignment/progress validation trigger functions are `SECURITY DEFINER`, pin an empty `search_path`, and have execution grants limited to the database owner and `service_role` in the inspected ACLs.
-- The expected cohort-account, track/member/course assignment, archive and progress indexes are present.
-- These observations validate selected objects only; they are not a full schema dump or proof that every repository migration matches production.
+Files `001_initial.sql` through `015_learnora_ai_permissions.sql` were moved intact to `supabase/legacy_migrations/`. They are preserved for historical analysis but are no longer in the active Supabase migration directory because their short version numbers do not exist in the live ledger. This prevents a normal migration command from treating them as pending work.
 
-## Blocking reconciliation still open
+The live schema differs from these legacy scripts. Five tables created by `001_initial.sql` are absent: `tracks`, `enrollments`, `user_progress`, `user_project_progress`, and `community_qna`. Newer Learnora equivalents exist, but this is not enough to prove one-to-one data lineage. The older migrations also contain data-changing seed operations. Prior read-only comparison found a Witstart identity-set mismatch despite matching aggregate membership counts. No automatic repair was made because the correct identity mapping is ambiguous.
 
-1. Repository migrations `001_initial.sql` through `015_learnora_ai_permissions.sql` use short numeric versions that do not appear in the active Supabase migration ledger. The ledger instead contains timestamped history. Some of these old files contain non-idempotent `CREATE TABLE` statements, so blindly running `supabase db push` could fail or conflict with the existing schema.
-2. The active ledger includes applied migrations for which matching source files are not present in the repository: `20261011051442_learner_onboarding_profiles`, `20261020230826_learnora_audit_remediation`, `20261020230906_restore_shared_learner_grants_and_lock_trigger_routines`, `20261020232148_allow_unlimited_monthly_ai_quota`, `20261020234717_pin_shared_timestamp_trigger_search_path`, and `20261020234813_revoke_browser_grants_from_org_control_tables`.
-3. The initial schema's authoritative baseline and exact mapping from the old `001`–`015` files to the live migration ledger have not been established. Do not fabricate historical migration entries or mark unverified SQL as applied.
+**Status:** accidental replay risk is reduced, but a historically complete fresh-install migration chain is not yet proven. Do not insert synthetic migration history or replay 001–015. See `supabase/legacy_migrations/README.md`.
 
-## Required before release
+## Disposable staging schema snapshot
 
-- Recover the exact SQL for missing applied migrations from a trusted source or produce a reviewed schema baseline/squash migration using a controlled, separately approved process.
-- Reconcile the initial baseline and all migration versions against the active ledger without replaying old DDL or editing the live migration history ad hoc.
-- Run a disposable, full-schema staging journey (provision learner, activate/login, assign track/course/lessons, read/write progress, close and archive cohort) before merge/deployment.
-- Keep the draft PR open until these checks pass.
+`supabase/baselines/active-pheonix-public-schema.sql` is a schema-only catalog snapshot generated from a read-only inspection of the active project on 2026-10-21. It contains no production data, credentials, or auth-user records. It captures 101 public tables, 974 base-table columns, 449 constraints, 150 non-constraint indexes, 16 public functions, 44 triggers, 101 RLS flags, one sequence and one view. It intentionally grants the backend `service_role` access and gives browser roles no table/function grants for the local API test harness.
 
-## CI scope limitation
+This snapshot is **only** a disposable staging fixture for testing the current schema and authenticated API journey. It is not an original migration, not a data backup, not the historical pre-2026-10-08 baseline, and not proof that every migration can be replayed from an empty database.
 
-The PostgreSQL GitHub Actions test uses a synthetic baseline and isolated fixture data. It proves the selected cohort migrations and assertions execute against that fixture; it is not production schema parity and does not connect to Supabase.
+## Authenticated API journey added to CI
+
+`backend-python/tests/test_cohort_api_lifecycle.py` exercises the real FastAPI routes against the snapshot restored into a separate disposable PostgreSQL database exposed through local PostgREST. The test signs in an organisation owner through `/api/auth/login`, creates a cohort and track, enables the track, provisions a cohort learner, activates the account, signs in the learner, enables a course, assigns a tutor and lesson, reads the lesson, writes and reads progress, completes and archives the cohort, then verifies the account credentials are retired, the live membership is removed, the history snapshot excludes credentials, and the old learner token is rejected.
+
+Only the outbound activation-email transport is replaced with a test token capture. Authentication, permission resolution, database reads/writes, cohort APIs, learner APIs, progress, closure and archive all use the actual application routes and isolated PostgreSQL data.
+
+The existing migration-integration job remains separate: it applies the 12 cohort migrations to a minimal synthetic legacy schema and runs SQL invariant assertions. The new authenticated journey uses the catalog-derived full current schema snapshot; it does not replay applied migrations on top of that snapshot.
+
+## Remaining gates
+
+1. Run the updated cohort CI, including the new authenticated journey, and fix any schema, API, authentication, or PostgREST issues it exposes.
+2. Keep the two catalog-derived migration sources explicitly marked until a trusted original/backup is available or their equivalence is formally reviewed.
+3. Complete object- and data-level mapping for legacy migrations 001–015, including the Witstart identity-set mismatch and permission/AI seed values. No production repair is authorised by this report.
+4. Do not claim a fully reproducible empty-database migration chain until a verified historical baseline or approved baseline/squash strategy is established.
+5. Update and test the organisation UI so administrators can configure tracks per cohort, provision cohort-specific learner accounts, assign courses/lessons/tutors to each learner, and manage cohort completion/archive. The learner screens alone do not complete this organisation-side UI requirement.
+
+The draft PR remains open. No merge, live migration, or deployment was performed.
