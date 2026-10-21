@@ -35,6 +35,8 @@ EXPECTED_VERSIONS = [
     "20261021161056",
     "20261021161237",
     "20261021182222",
+    "20261021183000",
+    "20261021183500",
 ]
 
 
@@ -69,7 +71,7 @@ class SupabaseMigrationInventoryTests(unittest.TestCase):
     def test_expected_permission_seed_keys_are_unique_and_sorted(self):
         key_file = REPO_ROOT / "supabase" / "baselines" / "expected_permission_keys.txt"
         keys = key_file.read_text(encoding="utf-8").splitlines()
-        self.assertEqual(len(keys), 41)
+        self.assertEqual(len(keys), 42)
         self.assertEqual(keys, sorted(set(keys)))
 
     def test_catalog_reconstructed_sources_are_not_misrepresented_as_original(self):
