@@ -66,6 +66,41 @@ class CohortLoginSecurityTests(unittest.TestCase):
             self.assertEqual(record_failure.call_count, 6)  # username + IP bucket per attempt
             self.assertEqual(verify.call_count, 3)  # constant-cost dummy password check
 
+    def test_vercel_sanitized_client_ip_is_preferred_for_rate_limit_identity(self):
+        request = Request({
+            "type": "http",
+            "method": "POST",
+            "path": "/api/cohort-auth/login",
+            "headers": [
+                (b"x-vercel-forwarded-for", b"203.0.113.9"),
+                (b"x-forwarded-for", b"198.51.100.7, 203.0.113.9"),
+            ],
+            "client": ("127.0.0.1", 43123),
+            "server": ("testserver", 80),
+            "scheme": "https",
+        })
+        with patch.dict(os.environ, {"VERCEL": "1"}):
+            self.assertEqual(auth._get_client_ip(request), "203.0.113.9")
+
+    def test_rotating_usernames_still_hits_client_ip_bucket(self):
+        with patch.object(cohort, "supabase", self.db), \\
+             patch.object(cohort, "_get_client_ip", return_value="203.0.113.44"), \\
+             patch.object(cohort, "verify_password", return_value=(False, False)):
+            for i in range(auth.MAX_FAILS):
+                with self.assertRaises(HTTPException) as raised:
+                    cohort.login_cohort_account(
+                        cohort.CohortLogin(username=f"learner.sample-{i:06x}", password="wrong-password"),
+                        make_request(),
+                    )
+                self.assertEqual(raised.exception.status_code, 401)
+
+            with self.assertRaises(HTTPException) as raised:
+                cohort.login_cohort_account(
+                    cohort.CohortLogin(username="learner.another-abcdef", password="wrong-password"),
+                    make_request(),
+                )
+            self.assertEqual(raised.exception.status_code, 429)
+
     def test_date_of_birth_requires_encryption_key_and_encrypts_value(self):
         with patch.dict(os.environ, {"COHORT_DOB_ENCRYPTION_KEY": ""}):
             with self.assertRaises(HTTPException) as raised:
