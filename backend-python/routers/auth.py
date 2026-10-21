@@ -795,7 +795,7 @@ def _build_password_reset_url(
     return (
         f"{FRONTEND_URL}"
         f"{PASSWORD_RESET_PATH}"
-        f"?token={token}"
+        f"#token={token}"
     )
 
 
