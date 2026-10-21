@@ -174,3 +174,21 @@ jobs:
       - name: Stop disposable PostgREST
         if: always()
         run: docker rm -f cohort-postgrest cohort-rest-proxy || true
+
+      # This replay uses only the ephemeral PostgreSQL service in this GitHub Actions job.
+      # It does not connect to Supabase or use production credentials.
+      - name: Rehearse legacy-to-current migration chain in isolated database
+        id: legacy_replay
+        env:
+          LEGACY_REPLAY_DATABASE_URL: postgresql://postgres:cohort-ci-only@localhost:5432/legacy_replay_staging
+        run: |
+          psql "postgresql://postgres:cohort-ci-only@localhost:5432/postgres" -v ON_ERROR_STOP=1 -c "CREATE DATABASE legacy_replay_staging"
+          for migration in supabase/legacy_migrations/[0-9]*.sql; do
+            echo "Applying legacy bootstrap candidate: $migration"
+            psql "$LEGACY_REPLAY_DATABASE_URL" -v ON_ERROR_STOP=1 -f "$migration"
+          done
+          for migration in supabase/migrations/[0-9]*.sql; do
+            echo "Applying timestamped migration: $migration"
+            psql "$LEGACY_REPLAY_DATABASE_URL" -v ON_ERROR_STOP=1 -f "$migration"
+          done
+          echo "Legacy plus timestamped migration replay completed."
