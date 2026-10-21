@@ -146,3 +146,15 @@ The draft PR remains open. No merge, live migration, or deployment was performed
 The latest [Cohort Learning Access Tests run](https://github.com/Obikpe/Pheonix-Analytics/actions/runs/39671419293) passed on commit `56aa678a7d5d5a02c2c9e61642581d2b60d9c500`. Its completed steps include the 12 cohort migrations and SQL assertions, restoration of the catalog-derived schema snapshot into a separate disposable database, replay of the legacy-plus-timestamped chain in another disposable database, deterministic permission/AI-provider seed checks, schema fingerprint comparison, and the authenticated FastAPI/PostgREST cohort lifecycle journey against both databases. Backend verification, frontend builds, and quality checks also passed in runs [39671419719](https://github.com/Obikpe/Pheonix-Analytics/actions/runs/39671419719), [39671419462](https://github.com/Obikpe/Pheonix-Analytics/actions/runs/39671419462), and [39671419552](https://github.com/Obikpe/Pheonix-Analytics/actions/runs/39671419552).
 
 Important: the schema fingerprint step is report-only and the logs show real global differences between the historical replay and the current catalog snapshot. The replayed-chain API journey emits a swallowed audit-log schema-cache warning for `audit_logs.account_type`; the catalog-snapshot journey does not. Therefore the API route journey passed, but full schema/security parity and audit-write parity have not been established. Both databases were ephemeral GitHub Actions PostgreSQL instances; no live Supabase migration or production data mutation occurred.
+
+
+## Staging policy decision — adopted
+
+The CI workflow now follows the explicit staging policy:
+
+1. **Current-schema acceptance staging:** restore `supabase/baselines/active-pheonix-public-schema.sql` into a fresh ephemeral PostgreSQL database and run the full authenticated FastAPI/PostgREST cohort lifecycle journey only against this catalog-derived snapshot.
+2. **Historical migration analysis:** replay `supabase/legacy_migrations/*.sql` followed by the timestamped migration files in a separate ephemeral database. Run deterministic seed checks and a report-only schema fingerprint comparison. Do not use this replay database as current-schema API acceptance evidence.
+3. **No legacy-data cleanup or remapping:** the workflow does not connect to the live Supabase project, drop or remap any production/legacy data, or apply migrations to the active database. The replay starts from an empty disposable database; any DDL in the historical chain is exercised only in that throwaway environment.
+4. **No automatic parity claim:** schema fingerprint differences remain visible and non-blocking for the historical-analysis job. They must be reviewed explicitly before any release migration plan is approved.
+
+The workflow change was committed on the draft PR branch at `0ac16ef271b8a9cc2011114a1d6fa55e377ff782`. A fresh CI run is required to verify this final workflow edit.
