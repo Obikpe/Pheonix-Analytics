@@ -166,6 +166,59 @@ def list_track_courses(
     return {"success": True, "courses": [{**row, "course": course_map.get(str(row["course_id"]))} for row in rows]}
 
 
+@router.get("/api/organisations/{organisation_id}/cohorts/{cohort_id}/tracks/{track_id}/courses/{course_id}/lessons")
+def list_track_course_lessons(
+    organisation_id: str,
+    cohort_id: str,
+    track_id: str,
+    course_id: str,
+    context: PermissionContext = Depends(require_permission("organisations.view")),
+):
+    """List published lessons available for a course enabled on this cohort track."""
+    _scope(context, organisation_id)
+    _cohort(organisation_id, cohort_id)
+    option = (
+        supabase.table("cohort_track_options")
+        .select("id")
+        .eq("cohort_id", cohort_id)
+        .eq("track_id", track_id)
+        .eq("status", "active")
+        .limit(1)
+        .execute()
+    )
+    if not option.data:
+        raise HTTPException(404, "Track is not enabled for this cohort.")
+    track_course = (
+        supabase.table("cohort_track_courses")
+        .select("id")
+        .eq("cohort_id", cohort_id)
+        .eq("track_id", track_id)
+        .eq("course_id", course_id)
+        .eq("status", "active")
+        .limit(1)
+        .execute()
+    )
+    if not track_course.data:
+        raise HTTPException(404, "Course is not enabled for this cohort track.")
+    _published_course(course_id, organisation_id)
+    modules = (
+        supabase.table("course_modules")
+        .select("id")
+        .eq("course_id", course_id)
+        .execute()
+    ).data or []
+    module_ids = [str(row["id"]) for row in modules]
+    lessons = (
+        supabase.table("learnora_lessons")
+        .select("id,module_id,title,slug,description,order_index,lesson_type,duration_minutes,status")
+        .in_("module_id", module_ids)
+        .eq("status", "published")
+        .order("order_index")
+        .execute()
+    ).data or [] if module_ids else []
+    return {"success": True, "lessons": lessons}
+
+
 @router.post("/api/organisations/{organisation_id}/cohorts/{cohort_id}/tracks/{track_id}/courses", status_code=201)
 def add_course_to_track(
     organisation_id: str,
