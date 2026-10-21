@@ -31,6 +31,7 @@ class MigrationInventoryTests(unittest.TestCase):
             "20261021183000_revoke_browser_table_grants.sql",
             "20261021183500_process_creator_payout_atomically.sql",
             "20261021184000_encrypt_cohort_date_of_birth.sql",
+            "20261021200000_cohort_login_rate_limits.sql",
         )
         for name in expected:
             with self.subTest(migration=name):
