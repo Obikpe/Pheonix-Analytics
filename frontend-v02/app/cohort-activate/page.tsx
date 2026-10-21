@@ -15,7 +15,13 @@ export default function CohortActivatePage() {
   const [done, setDone] = useState(false);
 
   useEffect(() => {
-    setToken(new URLSearchParams(window.location.search).get("token") || "");
+    const fragment = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+    const activationToken = fragment.get("token") || "";
+    setToken(activationToken);
+    if (activationToken) {
+      // Remove the one-time secret from the visible URL/history immediately.
+      window.history.replaceState(null, "", window.location.pathname + window.location.search);
+    }
   }, []);
 
   async function submit(event: FormEvent) {
