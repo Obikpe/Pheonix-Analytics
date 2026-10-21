@@ -592,7 +592,7 @@ def login_cohort_account(body: CohortLogin, request: Request):
     if _limited(rate_key) or _limited(ip_rate_key):
         raise HTTPException(429, "Too many failed login attempts. Try again later.")
 
-    if not re.fullmatch(r"[a-z0-9.\\-]{2,160}", username):
+    if not re.fullmatch(r"[a-z0-9.-]{2,160}", username):
         verify_password(body.password, DUMMY_COHORT_PASSWORD_HASH)
         _record_failure(rate_key)
         _record_failure(ip_rate_key)
