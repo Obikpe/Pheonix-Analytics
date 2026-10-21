@@ -17,6 +17,7 @@ courses.delete
 courses.publish
 courses.update
 courses.view
+creator_payouts.process
 organisations.create
 organisations.delete
 organisations.members
