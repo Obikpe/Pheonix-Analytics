@@ -88,6 +88,15 @@ jobs:
           API_TEST_DATABASE_URL: postgresql://postgres:cohort-ci-only@localhost:5432/cohort_api_staging
         run: |
           psql "$API_TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/baselines/active-pheonix-public-schema.sql
+          # Apply only the new release-candidate migrations on top of the catalog
+          # snapshot so the API test exercises the exact post-migration schema.
+          for migration in \
+            supabase/migrations/20261021183000_revoke_browser_table_grants.sql \
+            supabase/migrations/20261021183500_process_creator_payout_atomically.sql \
+            supabase/migrations/20261021184000_encrypt_cohort_date_of_birth.sql
+          do
+            psql "$API_TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -f "$migration"
+          done
           psql "$API_TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -c "NOTIFY pgrst, 'reload schema'"
       - name: Start local PostgREST and Supabase REST path proxy
         env:
