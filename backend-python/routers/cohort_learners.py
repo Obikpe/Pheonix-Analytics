@@ -4,12 +4,14 @@ Cohort identities are deliberately separate from public.users: one email may
 have a distinct account for each cohort without weakening normal Learnora's
 unique-email constraint.
 """
+import os
 import re
 import secrets
 from html import escape
 from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 
+from cryptography.fernet import Fernet, InvalidToken
 from fastapi import APIRouter, Depends, HTTPException, Request
 from jose import jwt
 from pydantic import BaseModel, EmailStr, Field
@@ -111,6 +113,16 @@ def _username(first_name: str, last_name: str) -> str:
     # Random suffix prevents predictable collisions; a partial unique index
     # still provides the final concurrency-safe guarantee.
     return f"{base}-{secrets.token_hex(3)}"
+
+def _encrypt_date_of_birth(value: date) -> str:
+    """Encrypt DOB at the application boundary; never persist it in plaintext."""
+    key = os.getenv("COHORT_DOB_ENCRYPTION_KEY", "").strip()
+    if not key:
+        raise HTTPException(503, "Cohort date-of-birth encryption is not configured.")
+    try:
+        return Fernet(key.encode("ascii")).encrypt(value.isoformat().encode("ascii")).decode("ascii")
+    except (ValueError, UnicodeEncodeError):
+        raise HTTPException(503, "Cohort date-of-birth encryption is not configured.")
 
 
 def _send_activation(*, email: str, first_name: str, username: str, token: str) -> None:
@@ -327,6 +339,7 @@ def create_cohort_learner(
     cohort = _cohort_for_org(organisation_id, cohort_id)
     if body.date_of_birth >= date.today():
         raise HTTPException(400, "Date of birth must be in the past.")
+    encrypted_dob = _encrypt_date_of_birth(body.date_of_birth)
     email = str(body.email).strip().lower()
     track_option = (
         supabase.table("cohort_track_options")
@@ -381,7 +394,8 @@ def create_cohort_learner(
         "last_name": body.last_name.strip(),
         "email": email,
         "username": username,
-        "date_of_birth": body.date_of_birth.isoformat(),
+        "date_of_birth": None,
+        "date_of_birth_encrypted": encrypted_dob,
         "password_hash": None,
         "status": "pending_activation",
         "activation_token_hash": token_hash,
