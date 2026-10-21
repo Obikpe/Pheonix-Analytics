@@ -61,6 +61,7 @@ email address belonging to a domain authenticated in Resend.
 """
 
 import hashlib
+import ipaddress
 import hmac
 import os
 import re
@@ -1041,23 +1042,28 @@ def _get_client_ip(
     if not request:
         return None
 
-    forwarded = request.headers.get(
-        "x-forwarded-for"
-    )
+    # Vercel documents x-vercel-forwarded-for as its own sanitized client-IP
+    # header. Prefer it for rate-limit identity when running on Vercel; fall back
+    # to x-forwarded-for, which Vercel overwrites at its edge, then the socket peer.
+    # Never trust arbitrary forwarded headers as a proxy chain on non-Vercel hosts.
+    if os.getenv("VERCEL", "").strip().lower() == "1":
+        vercel_forwarded = request.headers.get("x-vercel-forwarded-for", "").strip()
+        if vercel_forwarded:
+            candidate = vercel_forwarded.split(",")[0].strip()
+            try:
+                return str(ipaddress.ip_address(candidate))
+            except ValueError:
+                pass
 
-    if forwarded:
+        forwarded = request.headers.get("x-forwarded-for", "").strip()
+        if forwarded:
+            candidate = forwarded.split(",")[0].strip()
+            try:
+                return str(ipaddress.ip_address(candidate))
+            except ValueError:
+                pass
 
-        return (
-            forwarded
-            .split(",")[0]
-            .strip()
-        )
-
-    return (
-        request.client.host
-        if request.client
-        else None
-    )
+    return request.client.host if request.client else None
 
 
 def log_audit_event(
