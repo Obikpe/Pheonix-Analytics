@@ -61,6 +61,7 @@ email address belonging to a domain authenticated in Resend.
 """
 
 import hashlib
+import ipaddress
 import hmac
 import os
 import re
@@ -1037,27 +1038,27 @@ class CurrentUser(BaseModel):
 def _get_client_ip(
     request: Optional[Request],
 ) -> Optional[str]:
+    """Use Vercel's edge-normalised client IP, never a client-supplied XFF entry.
 
+    Vercel supplies X-Real-IP at the edge. X-Forwarded-For may contain a
+    client-provided prefix, so taking its leftmost value permits rate-limit
+    bucket spoofing when an intermediary appends rather than overwrites it.
+    """
     if not request:
         return None
 
-    forwarded = request.headers.get(
-        "x-forwarded-for"
-    )
+    candidates = [request.headers.get("x-real-ip")]
+    if request.client:
+        candidates.append(request.client.host)
 
-    if forwarded:
-
-        return (
-            forwarded
-            .split(",")[0]
-            .strip()
-        )
-
-    return (
-        request.client.host
-        if request.client
-        else None
-    )
+    for candidate in candidates:
+        if not candidate:
+            continue
+        try:
+            return str(ipaddress.ip_address(candidate.strip()))
+        except ValueError:
+            continue
+    return None
 
 
 def log_audit_event(
