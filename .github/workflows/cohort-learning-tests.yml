@@ -242,6 +242,7 @@ jobs:
           psql "$LEGACY_REPLAY_DATABASE_URL" -X -qAt -v ON_ERROR_STOP=1 -f supabase/baselines/schema_fingerprint.sql > "$RUNNER_TEMP/replayed-schema.json"
           python - "$RUNNER_TEMP/catalog-schema.json" "$RUNNER_TEMP/replayed-schema.json" <<'PY'
           import json
+          import re
           import sys
 
           with open(sys.argv[1], encoding="utf-8") as handle:
@@ -249,13 +250,42 @@ jobs:
           with open(sys.argv[2], encoding="utf-8") as handle:
               actual = json.load(handle)
 
+          def canonical(category, items):
+              normalized = []
+              for original in items:
+                  item = dict(original)
+                  if category == "columns" and item.get("default"):
+                      item["default"] = re.sub(r"\s+", " ", item["default"]).strip()
+                      item["default"] = item["default"].replace("public.gen_random_uuid()", "gen_random_uuid()")
+                  if category in {"functions", "indexes", "constraints", "triggers", "views"}:
+                      key = "definition"
+                      if item.get(key):
+                          item[key] = re.sub(r"\s+", " ", item[key]).strip()
+                  if category == "policies":
+                      for key in ("using", "check"):
+                          if item.get(key):
+                              item[key] = re.sub(r"\s+", " ", item[key]).strip()
+                  normalized.append(item)
+              return sorted(normalized, key=lambda item: json.dumps(item, sort_keys=True))
+
+          def object_key(category, item):
+              if category == "columns":
+                  return f"{item.get('table')}.{item.get('column')}"
+              if category in {"constraints", "indexes", "triggers", "policies"}:
+                  return f"{item.get('table')}.{item.get('name')}"
+              if category == "functions":
+                  return f"{item.get('name')}({item.get('arguments', '')})"
+              return item.get("name") or item.get("table") or json.dumps(item, sort_keys=True)
+
           failed = False
+          table_categories = {"columns", "constraints", "indexes", "triggers", "rls", "policies"}
           for category in sorted(expected):
-              left = expected[category]
-              right = actual.get(category, [])
+              left = canonical(category, expected[category])
+              right = canonical(category, actual.get(category, []))
               if left == right:
                   print(f"PASS {category}: {len(left)} objects match")
                   continue
+
               failed = True
               left_map = {json.dumps(item, sort_keys=True): item for item in left}
               right_map = {json.dumps(item, sort_keys=True): item for item in right}
@@ -265,10 +295,25 @@ jobs:
                   f"DIFF {category}: catalog={len(left)} replay={len(right)} "
                   f"missing_from_replay={len(missing)} extra_in_replay={len(extra)}"
               )
-              for item in missing[:8]:
-                  print("  MISSING", json.dumps(item, sort_keys=True)[:700])
-              for item in extra[:8]:
-                  print("  EXTRA", json.dumps(item, sort_keys=True)[:700])
+
+              if category in table_categories:
+                  grouped = {}
+                  for item in missing:
+                      grouped.setdefault(item.get("table", "<unknown>"), {"missing": [], "extra": []})["missing"].append(item)
+                  for item in extra:
+                      grouped.setdefault(item.get("table", "<unknown>"), {"missing": [], "extra": []})["extra"].append(item)
+                  ranked = sorted(grouped.items(), key=lambda pair: -(len(pair[1]["missing"]) + len(pair[1]["extra"])))
+                  for table, group in ranked[:35]:
+                      missing_keys = [object_key(category, item) for item in group["missing"]]
+                      extra_keys = [object_key(category, item) for item in group["extra"]]
+                      print(f"  {table}: missing={len(missing_keys)} extra={len(extra_keys)}")
+                      if missing_keys:
+                          print("    missing keys:", ", ".join(missing_keys[:25]))
+                      if extra_keys:
+                          print("    extra keys:", ", ".join(extra_keys[:25]))
+              else:
+                  print("  missing:", ", ".join(object_key(category, item) for item in missing[:30]))
+                  print("  extra:", ", ".join(object_key(category, item) for item in extra[:30]))
 
           if failed:
               raise SystemExit("Replayed schema does not yet match the catalog snapshot.")
