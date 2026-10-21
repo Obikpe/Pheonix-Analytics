@@ -5,6 +5,9 @@ BEGIN;
 
 REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM PUBLIC, anon, authenticated;
 
+-- Keep the legacy admin timestamp trigger's name resolution explicit as well.
+ALTER FUNCTION public.update_admins_updated_at() SET search_path = pg_catalog, public;
+
 -- Future objects inherit defaults from their creating role. The active Pheonix
 -- catalog currently has defaults for both postgres and supabase_admin.
 ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
