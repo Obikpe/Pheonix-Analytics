@@ -286,7 +286,22 @@ jobs:
             psql "$LEGACY_REPLAY_DATABASE_URL" -x -c "SELECT d.defaclobjtype, pg_get_userbyid(d.defaclrole) AS owner_role, acl.grantee, acl.privilege_type FROM pg_default_acl d CROSS JOIN LATERAL aclexplode(d.defaclacl) acl WHERE d.defaclnamespace IN (0, 'public'::regnamespace) AND (acl.grantee = 0 OR acl.grantee IN (SELECT oid FROM pg_roles WHERE rolname IN ('anon', 'authenticated')));"
             exit 1
           fi
-          echo "PASS: anon/authenticated have no effective privileges on public tables/views and no public-schema default ACL grants."
+          trigger_execute="$(psql "$LEGACY_REPLAY_DATABASE_URL" -X -qAt -v ON_ERROR_STOP=1 <<'SQL'
+          SELECT count(*)
+          FROM pg_trigger t
+          JOIN pg_proc p ON p.oid = t.tgfoid
+          JOIN pg_namespace n ON n.oid = p.pronamespace
+          CROSS JOIN (VALUES ('anon'), ('authenticated')) AS browser_roles(role_name)
+          WHERE NOT t.tgisinternal
+            AND n.nspname = 'public'
+            AND has_function_privilege(browser_roles.role_name, p.oid, 'EXECUTE');
+          SQL
+          )"
+          if [[ "$trigger_execute" != "0" ]]; then
+            echo "Browser roles can execute $trigger_execute trigger functions directly."
+            exit 1
+          fi
+          echo "PASS: anon/authenticated have no public-table privileges, unsafe default ACL grants, or direct trigger-function execute rights."
 
       - name: Apply current service-role grants to disposable replay
         if: steps.legacy_replay.outcome == 'success' && steps.seed_check.outcome == 'success'
