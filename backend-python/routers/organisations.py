@@ -618,9 +618,13 @@ def assign_course_to_cohort(organisation_id: str, cohort_id: str, body: dict, co
             raise HTTPException(500, "Course assignment could not be saved.")
         assignment_row = inserted.data[0]
 
-    cohort_members = (supabase.table("cohort_members").select("user_id").eq("cohort_id", cohort_id).eq("status", "active").execute()).data or []
+    cohort_members = (supabase.table("cohort_members").select("user_id,cohort_account_id").eq("cohort_id", cohort_id).eq("status", "active").execute()).data or []
+    # Legacy public.users learners continue to use learnora_enrolments. New
+    # cohort_accounts are provisioned through track-scoped assignments and
+    # must not be inserted into a table whose user_id references public.users.
+    legacy_members = [member for member in cohort_members if member.get("user_id")]
     created = 0
-    for cohort_member in cohort_members:
+    for cohort_member in legacy_members:
         existing_enrolment = (supabase.table("learnora_enrolments").select("id").eq("user_id", cohort_member["user_id"]).eq("course_id", course_id).in_("status", ["active", "completed"]).limit(1).execute()).data
         if existing_enrolment:
             continue
@@ -631,7 +635,12 @@ def assign_course_to_cohort(organisation_id: str, cohort_id: str, body: dict, co
         }).execute()
         if enrolled.data:
             created += 1
-    return {"success": True, "assignment": assignment_row, "enrolments_created": created}
+    return {
+        "success": True,
+        "assignment": assignment_row,
+        "enrolments_created": created,
+        "cohort_account_learners_require_individual_track_assignments": sum(1 for member in cohort_members if member.get("cohort_account_id")),
+    }
 
 
 @router.get("/{organisation_id}/teams")
