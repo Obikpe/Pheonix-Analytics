@@ -445,7 +445,6 @@ def create_cohort_learner(
             "last_name": account["last_name"],
             "email": account["email"],
             "username": account["username"],
-            "date_of_birth": account["date_of_birth"],
             "track_id": body.track_id,
             "status": "pending_activation",
             "activation_expires_at": expires,
