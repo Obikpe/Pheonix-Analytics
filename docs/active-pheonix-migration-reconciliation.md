@@ -71,6 +71,8 @@ A read-only name-level comparison was performed between the `CREATE TABLE` decla
 | `community_qna` | `learnora_discussions` and `learnora_discussion_replies` exist | Likely evolved discussion model, but question/answer migration is unverified. |
 | `user_project_progress` | `projects` and `project_submissions` exist | Candidate project-workflow replacement; submission/completion semantics remain unverified. |
 
+The empty-database replay also exposed two missing bootstrap prerequisites: legacy migration 003 reads `public.users`, and migration 004 references `public.admins`, but neither table is created by the archived 001–003 sources. Their original bootstrap files were not found in repository history. Two clearly labelled, catalog-derived files (`002z_reconstructed_users_registry.sql` and `003z_reconstructed_admins_registry.sql`) have been added **only to the legacy replay archive** so the disposable rehearsal can progress. They are not active migrations and are not claimed as historical source recovery.
+
 The name-level column comparison also found drift in existing tables:
 
 - `courses`: legacy `track_id` and `duration` are absent from the current table; current columns include newer identifiers, track labels, publication state, timing and import metadata.
