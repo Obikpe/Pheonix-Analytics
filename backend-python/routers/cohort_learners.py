@@ -245,6 +245,55 @@ def list_cohort_tracks(
     return {"success": True, "tracks": tracks}
 
 
+@router.get("/api/organisations/{organisation_id}/cohorts/{cohort_id}/learners")
+def list_cohort_learners(
+    organisation_id: str,
+    cohort_id: str,
+    context: PermissionContext = Depends(require_permission("organisations.view")),
+):
+    """Return a safe roster for the organisation UI; never expose hashes or activation tokens."""
+    _scope(context, organisation_id)
+    _cohort_for_org(organisation_id, cohort_id)
+    accounts = (
+        supabase.table("cohort_accounts")
+        .select("id,cohort_id,organisation_id,first_name,last_name,email,username,status,activated_at,last_login_at,created_at")
+        .eq("organisation_id", organisation_id)
+        .eq("cohort_id", cohort_id)
+        .order("created_at")
+        .execute()
+    ).data or []
+    account_ids = [str(row["id"]) for row in accounts]
+    memberships = (
+        supabase.table("cohort_members")
+        .select("id,cohort_account_id,track_id,status,joined_at")
+        .eq("cohort_id", cohort_id)
+        .in_("cohort_account_id", account_ids)
+        .execute()
+    ).data or [] if account_ids else []
+    membership_by_account = {str(row["cohort_account_id"]): row for row in memberships if row.get("cohort_account_id")}
+    track_ids = list({str(row["track_id"]) for row in memberships if row.get("track_id")})
+    tracks = (
+        supabase.table("learnora_tracks")
+        .select("id,name,slug")
+        .in_("id", track_ids)
+        .execute()
+    ).data or [] if track_ids else []
+    track_by_id = {str(row["id"]): row for row in tracks}
+    roster = []
+    for account in accounts:
+        membership = membership_by_account.get(str(account["id"]))
+        track_id = membership.get("track_id") if membership else None
+        roster.append({
+            **account,
+            "member_id": membership.get("id") if membership else None,
+            "membership_status": membership.get("status") if membership else None,
+            "joined_at": membership.get("joined_at") if membership else None,
+            "track_id": track_id,
+            "track": track_by_id.get(str(track_id)) if track_id else None,
+        })
+    return {"success": True, "learners": roster}
+
+
 @router.post("/api/organisations/{organisation_id}/cohorts/{cohort_id}/learners", status_code=201)
 def create_cohort_learner(
     organisation_id: str,
