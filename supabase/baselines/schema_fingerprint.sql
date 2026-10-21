@@ -6,7 +6,6 @@ SELECT jsonb_build_object(
     SELECT jsonb_agg(jsonb_build_object(
       'table', c.table_name,
       'column', c.column_name,
-      'ordinal', c.ordinal_position,
       'type', c.data_type,
       'udt', c.udt_name,
       'nullable', c.is_nullable,
