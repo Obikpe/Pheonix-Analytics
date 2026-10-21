@@ -113,7 +113,7 @@ jobs:
           )"
           LAST_RESPONSE=""
           for attempt in $(seq 1 30); do
-            LAST_RESPONSE="$(curl --silent --show-error --write-out '\nHTTP_STATUS:%{http_code}' \
+            LAST_RESPONSE="$(curl --connect-timeout 2 --max-time 5 --silent --show-error --write-out '\nHTTP_STATUS:%{http_code}' \
               -H "Authorization: Bearer $STAGING_SERVICE_KEY" \
               -H "apikey: $STAGING_SERVICE_KEY" \
               "http://127.0.0.1:3000/rest/v1/cohorts?select=id&limit=0" || true)"
