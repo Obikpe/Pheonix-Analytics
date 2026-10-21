@@ -206,6 +206,22 @@ jobs:
             name text NOT NULL,
             "public" boolean NOT NULL DEFAULT false
           );
+          -- Reproduce the live managed-role default ACL as a regression fixture.
+          -- The current production postgres role cannot change this role's ACL;
+          -- the assertion below must stay red until the managed ACL is remediated.
+          DO $roles$
+          BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN CREATE ROLE anon NOLOGIN; END IF;
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN CREATE ROLE authenticated NOLOGIN; END IF;
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'supabase_admin') THEN CREATE ROLE supabase_admin NOLOGIN; END IF;
+          END
+          $roles$;
+          ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin IN SCHEMA public
+            GRANT ALL PRIVILEGES ON TABLES TO anon, authenticated;
+          ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin IN SCHEMA public
+            GRANT ALL PRIVILEGES ON SEQUENCES TO anon, authenticated;
+          ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin
+            GRANT EXECUTE ON FUNCTIONS TO anon, authenticated;
           SQL
           for migration in supabase/legacy_migrations/*.sql; do
             echo "Applying legacy bootstrap candidate: $migration"
