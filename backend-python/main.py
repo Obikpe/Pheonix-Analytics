@@ -26,8 +26,9 @@ app = FastAPI(
     title="Learnora - Python Backend",
     version="2.0.0-secure",
     lifespan=lifespan,
-    docs_url="/docs",
-    redoc_url="/redoc"
+    docs_url="/docs" if os.getenv("APP_ENV", "production").strip().lower() != "production" else None,
+    redoc_url="/redoc" if os.getenv("APP_ENV", "production").strip().lower() != "production" else None,
+    openapi_url="/openapi.json" if os.getenv("APP_ENV", "production").strip().lower() != "production" else None,
 )
 
 # Rate limiter middleware
@@ -60,9 +61,8 @@ if frontend and frontend not in origins:
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
-    # Permit preview deployments for these two Learnora apps on the connected Vercel team.
-    # Production domains remain explicitly listed above; API authentication still applies.
-    allow_origin_regex=r"https://(?:learnora|teamslearnora)-[a-z0-9-]+-obikpes-projects\.vercel\.app",
+    # Preview origins must be explicitly allow-listed; do not trust every deployment
+    # that happens to match a Vercel team naming convention.
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=[
@@ -79,6 +79,12 @@ async def add_security_headers(request: Request, call_next):
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    # API responses do not render active content; this policy also protects any
+    # accidental HTML/error response served by the API origin.
+    response.headers["Content-Security-Policy"] = "default-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'"
+    if request.url.scheme == "https":
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     return response
 
 # Routers
