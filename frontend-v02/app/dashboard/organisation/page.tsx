@@ -201,17 +201,199 @@ export default function OrganisationWorkspace() {
     finally { setBusy(false); }
   }
 
-  async function addCohortMember(cohortId: string) {
-    if (!user?.organisation_id || !cohortUserIds[cohortId]?.trim()) return;
+  async function createTrack(e: any) {
+    e.preventDefault();
+    if (!user?.organisation_id || !trackForm.name.trim()) return;
+    setBusy(true); setError(""); setNotice("");
+    try {
+      await request("/organisations/" + encodeURIComponent(user.organisation_id) + "/tracks", {
+        method: "POST",
+        body: JSON.stringify({ name: trackForm.name.trim(), description: trackForm.description || null }),
+      });
+      setTrackForm({ name: "", description: "" });
+      setNotice("Track created. Enable it on each cohort that should use it.");
+      await load();
+    } catch (e: any) { setError(e.message || "Track could not be created."); }
+    finally { setBusy(false); }
+  }
+
+  async function loadCohortDetail(cohortId: string, organisationId?: string) {
+    const orgId = organisationId || user?.organisation_id;
+    if (!orgId) return;
+    const root = "/organisations/" + encodeURIComponent(orgId) + "/cohorts/" + encodeURIComponent(cohortId);
+    try {
+      const [trackResult, learnerResult] = await Promise.all([
+        request<any>(root + "/tracks"),
+        request<any>(root + "/learners"),
+      ]);
+      const tracksForCohort = trackResult.tracks || [];
+      const learnersForCohort = learnerResult.learners || [];
+      const trackCoursePairs = await Promise.all(tracksForCohort.map(async (track: any) => {
+        try {
+          const result = await request<any>(root + "/tracks/" + encodeURIComponent(track.id) + "/courses");
+          return [String(track.id), result.courses || []] as const;
+        } catch {
+          return [String(track.id), []] as const;
+        }
+      }));
+      const assignmentPairs = await Promise.all(learnersForCohort.filter((learner: any) => learner.member_id).map(async (learner: any) => {
+        try {
+          const result = await request<any>(root + "/learners/" + encodeURIComponent(learner.member_id) + "/courses");
+          return [String(learner.member_id), result.assignments || []] as const;
+        } catch {
+          return [String(learner.member_id), []] as const;
+        }
+      }));
+      setCohortTracks((old) => ({ ...old, [cohortId]: tracksForCohort }));
+      setCohortLearners((old) => ({ ...old, [cohortId]: learnersForCohort }));
+      setCohortTrackCourses((old) => ({ ...old, [cohortId]: Object.fromEntries(trackCoursePairs) }));
+      setLearnerAssignments((old) => ({ ...old, [cohortId]: Object.fromEntries(assignmentPairs) }));
+    } catch (e: any) {
+      setError(e.message || "Cohort learning details could not be loaded.");
+    }
+  }
+
+  async function toggleCohortManagement(cohort: any) {
+    const cohortId = String(cohort.id);
+    const next = !expandedCohorts[cohortId];
+    setExpandedCohorts((old) => ({ ...old, [cohortId]: next }));
+    if (next) await loadCohortDetail(cohortId);
+  }
+
+  async function enableTrackForCohort(cohortId: string) {
+    const orgId = user?.organisation_id;
+    const trackId = trackSelections[cohortId];
+    if (!orgId || !trackId) return;
     setError(""); setNotice("");
     try {
-      await request("/organisations/" + encodeURIComponent(user.organisation_id) + "/cohorts/" + encodeURIComponent(cohortId) + "/members", {
-        method: "POST", body: JSON.stringify({ user_id: cohortUserIds[cohortId].trim() }),
+      await request("/organisations/" + encodeURIComponent(orgId) + "/cohorts/" + encodeURIComponent(cohortId) + "/tracks", {
+        method: "POST",
+        body: JSON.stringify({ track_id: trackId }),
       });
-      setCohortUserIds((old) => ({ ...old, [cohortId]: "" }));
-      setNotice("Learner added to cohort.");
+      setTrackSelections((old) => ({ ...old, [cohortId]: "" }));
+      setNotice("Track enabled for this cohort. Learners assigned to this track will keep it for the cohort's lifetime.");
+      await loadCohortDetail(cohortId);
+    } catch (e: any) { setError(e.message || "Track could not be enabled for this cohort."); }
+  }
+
+  async function createCohortLearner(cohortId: string) {
+    const orgId = user?.organisation_id;
+    const form = learnerForms[cohortId] || {};
+    if (!orgId || !form.first_name?.trim() || !form.last_name?.trim() || !form.email?.trim() || !form.date_of_birth || !form.track_id) {
+      setError("Complete the learner's name, email, date of birth and fixed track before creating the account.");
+      return;
+    }
+    setError(""); setNotice("");
+    try {
+      const result = await request<any>("/organisations/" + encodeURIComponent(orgId) + "/cohorts/" + encodeURIComponent(cohortId) + "/learners", {
+        method: "POST",
+        body: JSON.stringify({
+          first_name: form.first_name.trim(),
+          last_name: form.last_name.trim(),
+          email: form.email.trim(),
+          date_of_birth: form.date_of_birth,
+          track_id: form.track_id,
+        }),
+      });
+      const learner = result.learner || {};
+      setLearnerForms((old) => ({ ...old, [cohortId]: { first_name: "", last_name: "", email: "", date_of_birth: "", track_id: form.track_id } }));
+      setNotice("Cohort learner created. The activation link was sent to their email. Username: " + (learner.username || "see the learner roster") + ".");
+      await loadCohortDetail(cohortId);
+    } catch (e: any) { setError(e.message || "Cohort learner account could not be created."); }
+  }
+
+  async function enableCourseForTrack(cohortId: string, trackId: string) {
+    const orgId = user?.organisation_id;
+    const key = cohortId + ":" + trackId;
+    const courseId = trackCourseSelections[key];
+    if (!orgId || !courseId) return;
+    setError(""); setNotice("");
+    try {
+      await request("/organisations/" + encodeURIComponent(orgId) + "/cohorts/" + encodeURIComponent(cohortId) + "/tracks/" + encodeURIComponent(trackId) + "/courses", {
+        method: "POST",
+        body: JSON.stringify({ course_id: courseId }),
+      });
+      setTrackCourseSelections((old) => ({ ...old, [key]: "" }));
+      setNotice("Course enabled for this track. Assign it to individual learners and choose their lesson plan and tutor below.");
+      await loadCohortDetail(cohortId);
+    } catch (e: any) { setError(e.message || "Course could not be enabled for this track."); }
+  }
+
+  async function loadLearnerLessonOptions(cohortId: string, learner: any, courseId: string) {
+    const orgId = user?.organisation_id;
+    const memberId = String(learner.member_id || "");
+    if (!orgId || !memberId || !learner.track_id || !courseId) return;
+    const path = "/organisations/" + encodeURIComponent(orgId) + "/cohorts/" + encodeURIComponent(cohortId)
+      + "/tracks/" + encodeURIComponent(learner.track_id) + "/courses/" + encodeURIComponent(courseId) + "/lessons";
+    try {
+      const result = await request<any>(path);
+      const lessons = result.lessons || [];
+      setLessonOptions((old) => ({ ...old, [memberId]: lessons }));
+      setLearnerCourseForms((old) => ({
+        ...old,
+        [memberId]: {
+          ...(old[memberId] || {}),
+          course_id: courseId,
+          lesson_ids: lessons.map((lesson: any) => String(lesson.id)),
+        },
+      }));
+    } catch (e: any) {
+      setLessonOptions((old) => ({ ...old, [memberId]: [] }));
+      setError(e.message || "Published lessons could not be loaded for this course.");
+    }
+  }
+
+  async function assignCourseToLearner(cohortId: string, learner: any) {
+    const orgId = user?.organisation_id;
+    const memberId = String(learner.member_id || "");
+    const form = learnerCourseForms[memberId] || {};
+    if (!orgId || !memberId || !form.course_id) {
+      setError("Choose a course for this learner before saving the assignment.");
+      return;
+    }
+    setError(""); setNotice("");
+    try {
+      await request("/organisations/" + encodeURIComponent(orgId) + "/cohorts/" + encodeURIComponent(cohortId) + "/learners/" + encodeURIComponent(memberId) + "/courses", {
+        method: "POST",
+        body: JSON.stringify({
+          course_id: form.course_id,
+          tutor_user_id: form.tutor_user_id || null,
+          lesson_ids: Array.isArray(form.lesson_ids) ? form.lesson_ids : [],
+        }),
+      });
+      setNotice("Learner course, lesson plan and tutor assignment saved.");
+      await loadCohortDetail(cohortId);
+    } catch (e: any) { setError(e.message || "Learner course assignment could not be saved."); }
+  }
+
+  async function completeCohort(cohort: any) {
+    const orgId = user?.organisation_id;
+    if (!orgId) return;
+    setError(""); setNotice("");
+    try {
+      await request("/organisations/" + encodeURIComponent(orgId) + "/cohorts/" + encodeURIComponent(cohort.id), {
+        method: "PATCH",
+        body: JSON.stringify({ status: "completed" }),
+      });
+      setExpandedCohorts((old) => ({ ...old, [String(cohort.id)]: false }));
+      setNotice("Cohort marked completed. Archive it when you are ready to retire learner access and preserve the cohort history.");
       await load();
-    } catch (e: any) { setError(e.message || "Learner could not be added to the cohort."); }
+    } catch (e: any) { setError(e.message || "Cohort could not be marked completed."); }
+  }
+
+  async function archiveCohort(cohort: any) {
+    const orgId = user?.organisation_id;
+    if (!orgId || !window.confirm("Archive this cohort? Learner access will be retired, active cohort memberships removed, and a history snapshot preserved.")) return;
+    setError(""); setNotice("");
+    try {
+      const result = await request<any>("/organisations/" + encodeURIComponent(orgId) + "/cohorts/" + encodeURIComponent(cohort.id) + "/archive", {
+        method: "POST",
+        body: JSON.stringify({ reason: "Archived by the organisation administrator." }),
+      });
+      setExpandedCohorts((old) => ({ ...old, [String(cohort.id)]: false }));
+      setNotice("Cohort archived. " + (result.archived_members ?? 0) + " learner history record(s) preserved and access retired.");
+      await load();
+    } catch (e: any) { setError(e.message || "Cohort could not be archived."); }
   }
 
   async function assignCourseToOrganisation() {
@@ -225,22 +407,6 @@ export default function OrganisationWorkspace() {
       setOrgCourseSelection("");
       await load();
     } catch (e: any) { setError(e.message || "Course could not be assigned to the organisation."); }
-  }
-
-  async function assignCourseToCohort(cohortId: string) {
-    if (!user?.organisation_id || !courseSelections[cohortId]) return;
-    setError("");
-    setNotice("");
-    try {
-      const result = await request<any>("/organisations/" + encodeURIComponent(user.organisation_id) + "/cohorts/" + encodeURIComponent(cohortId) + "/courses", {
-        method: "POST",
-        body: JSON.stringify({ course_id: courseSelections[cohortId] }),
-      });
-      setNotice("Course assigned. " + (result.enrolments_created || 0) + " new learner enrolments created.");
-      await load();
-    } catch (e: any) {
-      setError(e.message || "Course could not be assigned to this cohort.");
-    }
   }
 
   async function addTeamMember(teamId: string) {
