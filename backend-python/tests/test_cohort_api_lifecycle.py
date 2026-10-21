@@ -21,8 +21,14 @@ class CohortAuthenticatedApiJourney(unittest.TestCase):
         from routers.auth import hash_password, supabase
 
         cls.client = TestClient(app)
+        cls.client.__enter__()  # Run FastAPI lifespan startup for the real app.
         cls.db = supabase
         cls.hash_password = hash_password
+
+    @classmethod
+    def tearDownClass(cls):
+        if hasattr(cls, "client"):
+            cls.client.__exit__(None, None, None)
 
     def setUp(self):
         self.suffix = uuid.uuid4().hex[:10]
