@@ -22,6 +22,7 @@ The empty-database rehearsal has exposed five pre-existing prerequisites absent 
 The original sources for these five prerequisites were not found in repository history. All five supplemental files are explicitly catalog-derived, not original historical sources, and are kept outside the active migration directory.
 
 The replay also bootstraps a minimal `storage.buckets` table in the disposable CI database because hosted Supabase supplies the Storage schema as a managed service; this CI-only table is not a project migration.
+The replay also applies a service-role-only grants baseline after the historical migrations. The replayed chain does not reproduce the active project's current default grants on its own. This grant adjustment is applied only to the disposable API-test database and is not represented as a recovered historical migration.
 
 ## Required before promoting any legacy file
 
