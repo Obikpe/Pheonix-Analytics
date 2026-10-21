@@ -100,30 +100,13 @@ jobs:
             --env PGRST_SERVER_ROOT=/rest/v1 \
             --env PGRST_SERVER_PORT=3000 \
             postgrest/postgrest:v12.2.3
-          STAGING_SERVICE_KEY="$(python - <<'PY'
-          import os, time
-          from jose import jwt
-          now = int(time.time())
-          print(jwt.encode(
-              {"role": "service_role", "iss": "supabase", "iat": now, "exp": now + 3600},
-              os.environ["PGRST_JWT_SECRET"],
-              algorithm="HS256",
-          ))
-          PY
-          )"
-          LAST_RESPONSE=""
           for attempt in $(seq 1 30); do
-            LAST_RESPONSE="$(curl --connect-timeout 2 --max-time 5 --silent --show-error --write-out '\nHTTP_STATUS:%{http_code}' \
-              -H "Authorization: Bearer $STAGING_SERVICE_KEY" \
-              -H "apikey: $STAGING_SERVICE_KEY" \
-              "http://127.0.0.1:3000/rest/v1/cohorts?select=id&limit=0" || true)"
-            if [[ "$LAST_RESPONSE" == *"HTTP_STATUS:200" ]]; then
-              echo "PostgREST is ready and accepts the isolated service-role token"
+            if docker logs cohort-postgrest 2>&1 | grep -q "Schema cache loaded"; then
+              echo "PostgREST is connected and has loaded the disposable staging schema"
               exit 0
             fi
             sleep 2
           done
-          echo "$LAST_RESPONSE"
           docker logs cohort-postgrest
           exit 1
       - name: Run full authenticated cohort lifecycle API journey
