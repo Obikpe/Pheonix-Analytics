@@ -39,8 +39,8 @@ class CohortAuthenticatedApiJourney(unittest.TestCase):
         self.module_id = str(uuid.uuid4())
         self.lesson_id = str(uuid.uuid4())
         self.unassigned_lesson_id = str(uuid.uuid4())
-        self.owner_email = f"cohort-owner-{self.suffix}@example.invalid"
-        self.tutor_email = f"cohort-tutor-{self.suffix}@example.invalid"
+        self.owner_email = f"cohort-owner-{self.suffix}@example.com"
+        self.tutor_email = f"cohort-tutor-{self.suffix}@example.com"
         self.owner_password = "Owner-Test-Password-2026!"
         self.learner_password = "Learner-Test-Password-2026!"
 
@@ -225,7 +225,7 @@ class CohortAuthenticatedApiJourney(unittest.TestCase):
                 json={
                     "first_name": "Ada",
                     "last_name": f"Learner{self.suffix}",
-                    "email": f"ada-{self.suffix}@example.invalid",
+                    "email": f"ada-{self.suffix}@example.com",
                     "date_of_birth": "2001-02-03",
                     "track_id": track_id,
                 },
