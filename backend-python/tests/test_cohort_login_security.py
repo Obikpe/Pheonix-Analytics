@@ -50,8 +50,8 @@ class CohortLoginSecurityTests(unittest.TestCase):
     def test_wildcard_and_invalid_usernames_return_generic_401_without_query(self):
         with patch.object(cohort, "supabase", self.db), \
              patch.object(cohort, "_get_client_ip", return_value="203.0.113.44"), \
-             patch.object(cohort, "_limited", return_value=False), \
-             patch.object(cohort, "_record_failure") as record_failure, \
+             patch.object(cohort, "_cohort_rate_limited", return_value=False), \
+             patch.object(cohort, "_cohort_record_failure") as record_failure, \
              patch.object(cohort, "verify_password", return_value=(False, False)) as verify:
             for username in ("%", "a%", "_"):
                 with self.subTest(username=username):
@@ -81,7 +81,7 @@ class CohortLoginSecurityTests(unittest.TestCase):
     def test_five_bad_attempts_block_the_sixth_for_same_username_and_ip(self):
         with patch.object(cohort, "supabase", self.db), \
              patch.object(cohort, "_get_client_ip", return_value="203.0.113.44"), \
-             patch.object(cohort, "verify_password", return_value=(False, False)):
+             patch.object(cohort, "verify_password", return_value=(False, False)):\n            original_limited = cohort._cohort_rate_limited\n            original_record = cohort._cohort_record_failure\n            failures = {}\n            def limited(key):\n                return failures.get(key, 0) >= cohort.COHORT_LOGIN_MAX_FAILS\n            def record(key):\n                failures[key] = failures.get(key, 0) + 1\n            cohort._cohort_rate_limited = limited\n            cohort._cohort_record_failure = record\n            self.addCleanup(setattr, cohort, "_cohort_rate_limited", original_limited)\n            self.addCleanup(setattr, cohort, "_cohort_record_failure", original_record)
             for _ in range(auth.MAX_FAILS):
                 with self.assertRaises(HTTPException) as raised:
                     cohort.login_cohort_account(

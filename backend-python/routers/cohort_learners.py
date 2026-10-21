@@ -5,6 +5,7 @@ have a distinct account for each cohort without weakening normal Learnora's
 unique-email constraint.
 """
 import os
+import hashlib
 import re
 import secrets
 from html import escape
@@ -46,6 +47,43 @@ ACTIVATION_TTL_MINUTES = 60
 # execute the same expensive password verification path as known accounts.
 # The dummy credential is never associated with a real account.
 DUMMY_COHORT_PASSWORD_HASH = hash_password(secrets.token_urlsafe(32))
+
+# Persistent cohort-login throttling: shared across serverless instances.
+COHORT_LOGIN_MAX_FAILS = 5
+COHORT_LOGIN_WINDOW_SECONDS = 900
+
+
+def _cohort_rate_hash(key: str) -> str:
+    return hashlib.sha256(key.encode("utf-8")).hexdigest()
+
+
+def _cohort_rate_limited(key: str) -> bool:
+    result = supabase.rpc("cohort_login_is_limited", {
+        "p_key_hash": _cohort_rate_hash(key),
+        "p_max_failures": COHORT_LOGIN_MAX_FAILS,
+        "p_window_seconds": COHORT_LOGIN_WINDOW_SECONDS,
+    }).execute()
+    value = result.data
+    if isinstance(value, list):
+        value = value[0] if value else False
+    if isinstance(value, dict):
+        value = value.get("cohort_login_is_limited", False)
+    return bool(value)
+
+
+def _cohort_record_failure(key: str) -> None:
+    supabase.rpc("cohort_login_record_failure", {
+        "p_key_hash": _cohort_rate_hash(key),
+        "p_max_failures": COHORT_LOGIN_MAX_FAILS,
+        "p_window_seconds": COHORT_LOGIN_WINDOW_SECONDS,
+    }).execute()
+
+
+def _cohort_clear_failures(key: str) -> None:
+    supabase.rpc("cohort_login_clear_failure", {
+        "p_key_hash": _cohort_rate_hash(key),
+    }).execute()
+
 
 
 class TrackCreate(BaseModel):
@@ -589,13 +627,13 @@ def login_cohort_account(body: CohortLogin, request: Request):
 
     # A client-wide bucket prevents username rotation from bypassing the
     # per-account bucket. Both checks run before any account lookup.
-    if _limited(rate_key) or _limited(ip_rate_key):
+    if _cohort_rate_limited(rate_key) or _cohort_rate_limited(ip_rate_key):
         raise HTTPException(429, "Too many failed login attempts. Try again later.")
 
     if not re.fullmatch(r"[a-z0-9.-]{2,160}", username):
         verify_password(body.password, DUMMY_COHORT_PASSWORD_HASH)
-        _record_failure(rate_key)
-        _record_failure(ip_rate_key)
+        _cohort_record_failure(rate_key)
+        _cohort_record_failure(ip_rate_key)
         raise HTTPException(401, "Invalid username or password.")
 
     result = (
@@ -624,7 +662,7 @@ def login_cohort_account(body: CohortLogin, request: Request):
         raise HTTPException(403, "This cohort has ended and the account is no longer available.")
     # Clear only this account's bucket. The client-wide bucket intentionally
     # remains so successful login to another account cannot reset spray limits.
-    _clear_failures(rate_key)
+    _cohort_clear_failures(rate_key)
     now = datetime.now(timezone.utc).isoformat()
     supabase.table("cohort_accounts").update({"last_login_at": now}).eq("id", account["id"]).execute()
     token_now = int(datetime.now(timezone.utc).timestamp())

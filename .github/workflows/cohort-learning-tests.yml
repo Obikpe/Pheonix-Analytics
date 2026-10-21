@@ -95,7 +95,8 @@ jobs:
           for migration in \
             supabase/migrations/20261021183000_revoke_browser_table_grants.sql \
             supabase/migrations/20261021183500_process_creator_payout_atomically.sql \
-            supabase/migrations/20261021184000_encrypt_cohort_date_of_birth.sql
+            supabase/migrations/20261021184000_encrypt_cohort_date_of_birth.sql \\
+            supabase/migrations/20261021200000_cohort_login_rate_limits.sql
           do
             psql "$API_TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -f "$migration"
           done
