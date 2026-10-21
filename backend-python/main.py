@@ -80,9 +80,10 @@ async def add_security_headers(request: Request, call_next):
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
-    # API responses do not render active content; this policy also protects any
-    # accidental HTML/error response served by the API origin.
-    response.headers["Content-Security-Policy"] = "default-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'"
+    # The production API does not serve interactive docs; constrain any
+    # accidental HTML/error response without breaking local Swagger tooling.
+    if os.getenv("APP_ENV", "production").strip().lower() == "production":
+        response.headers["Content-Security-Policy"] = "default-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'"
     if request.url.scheme == "https":
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     return response
