@@ -203,3 +203,46 @@ jobs:
             psql "$LEGACY_REPLAY_DATABASE_URL" -v ON_ERROR_STOP=1 -f "$migration"
           done
           echo "Legacy plus timestamped migration replay completed."
+
+      - name: Compare replayed schema with the catalog snapshot
+        if: steps.legacy_replay.outcome == 'success'
+        env:
+          SNAPSHOT_DATABASE_URL: postgresql://postgres:cohort-ci-only@localhost:5432/cohort_api_staging
+          LEGACY_REPLAY_DATABASE_URL: postgresql://postgres:cohort-ci-only@localhost:5432/legacy_replay_staging
+        run: |
+          psql "$SNAPSHOT_DATABASE_URL" -X -qAt -v ON_ERROR_STOP=1 -f supabase/baselines/schema_fingerprint.sql > "$RUNNER_TEMP/catalog-schema.json"
+          psql "$LEGACY_REPLAY_DATABASE_URL" -X -qAt -v ON_ERROR_STOP=1 -f supabase/baselines/schema_fingerprint.sql > "$RUNNER_TEMP/replayed-schema.json"
+          python - "$RUNNER_TEMP/catalog-schema.json" "$RUNNER_TEMP/replayed-schema.json" <<'PY'
+          import json
+          import sys
+
+          with open(sys.argv[1], encoding="utf-8") as handle:
+              expected = json.load(handle)
+          with open(sys.argv[2], encoding="utf-8") as handle:
+              actual = json.load(handle)
+
+          failed = False
+          for category in sorted(expected):
+              left = expected[category]
+              right = actual.get(category, [])
+              if left == right:
+                  print(f"PASS {category}: {len(left)} objects match")
+                  continue
+              failed = True
+              left_map = {json.dumps(item, sort_keys=True): item for item in left}
+              right_map = {json.dumps(item, sort_keys=True): item for item in right}
+              missing = [item for key, item in left_map.items() if key not in right_map]
+              extra = [item for key, item in right_map.items() if key not in left_map]
+              print(
+                  f"DIFF {category}: catalog={len(left)} replay={len(right)} "
+                  f"missing_from_replay={len(missing)} extra_in_replay={len(extra)}"
+              )
+              for item in missing[:8]:
+                  print("  MISSING", json.dumps(item, sort_keys=True)[:700])
+              for item in extra[:8]:
+                  print("  EXTRA", json.dumps(item, sort_keys=True)[:700])
+
+          if failed:
+              raise SystemExit("Replayed schema does not yet match the catalog snapshot.")
+          print("All compared public schema objects match the catalog snapshot.")
+          PY
