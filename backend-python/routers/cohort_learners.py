@@ -6,6 +6,7 @@ unique-email constraint.
 """
 import re
 import secrets
+from html import escape
 from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 
@@ -118,11 +119,13 @@ def _send_activation(*, email: str, first_name: str, username: str, token: str) 
         f"This one-time link expires in {ACTIVATION_TTL_MINUTES} minutes.\n"
         "Do not share this link.\n\nLearnora"
     )
+    safe_first_name = escape(first_name)
+    safe_username = escape(username)
     html_body = (
         '<div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;padding:28px;color:#111827">'
-        f"<h1>Activate your Learnora account</h1><p>Hi {first_name},</p>"
+        f"<h1>Activate your Learnora account</h1><p>Hi {safe_first_name},</p>"
         "<p>Your organisation has created a cohort account for you.</p>"
-        f"<p><strong>Username:</strong> {username}</p>"
+        f"<p><strong>Username:</strong> {safe_username}</p>"
         f'<p><a href="{url}" style="display:inline-block;padding:12px 18px;background:#111827;color:white;text-decoration:none;border-radius:8px">Activate account</a></p>'
         f"<p>This one-time link expires in {ACTIVATION_TTL_MINUTES} minutes. Do not share it.</p>"
         "</div>"
