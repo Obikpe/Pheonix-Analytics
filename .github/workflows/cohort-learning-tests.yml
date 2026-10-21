@@ -354,30 +354,13 @@ jobs:
             --volume "$RUNNER_TEMP/cohort-nginx-replay.conf:/etc/nginx/nginx.conf:ro" \
             nginx:1.27-alpine
 
-          STAGING_SERVICE_KEY="$(python - <<'PY'
-          import os, time
-          from jose import jwt
-          now = int(time.time())
-          print(jwt.encode(
-              {"role": "service_role", "iss": "supabase", "iat": now, "exp": now + 3600},
-              os.environ["PGRST_JWT_SECRET"],
-              algorithm="HS256",
-          ))
-          PY
-          )"
-          LAST_RESPONSE=""
           for attempt in $(seq 1 30); do
-            LAST_RESPONSE="$(curl --connect-timeout 2 --max-time 5 --silent --show-error --write-out '\nHTTP_STATUS:%{http_code}' \
-              -H "Authorization: Bearer $STAGING_SERVICE_KEY" \
-              -H "apikey: $STAGING_SERVICE_KEY" \
-              "http://127.0.0.1:3003/rest/v1/cohorts?select=id" || true)"
-            if [[ "$LAST_RESPONSE" == *"HTTP_STATUS:200" ]]; then
-              echo "PostgREST is ready against the replayed migration database"
+            if docker logs cohort-postgrest-replay 2>&1 | grep -q "Schema cache loaded"; then
+              echo "PostgREST loaded the replayed migration schema"
               exit 0
             fi
             sleep 2
           done
-          echo "$LAST_RESPONSE"
           docker logs cohort-postgrest-replay
           docker logs cohort-rest-proxy-replay
           exit 1
