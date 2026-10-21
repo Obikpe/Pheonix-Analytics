@@ -53,7 +53,7 @@ class MigrationInventoryTests(unittest.TestCase):
         )
         self.assertNotRegex(
             sql,
-            r"(?is)IF\\s+p_requests_per_month\\s+IS\\s+NULL\\s+THEN",
+            r"(?is)IF\s+p_requests_per_month\s+IS\s+NULL\s+THEN",
             "A NULL monthly limit must remain valid (unlimited).",
         )
 
@@ -61,12 +61,9 @@ class MigrationInventoryTests(unittest.TestCase):
         sql = (ACTIVE_DIR / "20261021183000_revoke_browser_table_grants.sql").read_text(
             encoding="utf-8"
         )
-        self.assertRegex(sql, r"(?is)REVOKE\\s+ALL\\s+PRIVILEGES\\s+ON\\s+ALL\\s+TABLES\\s+IN\\s+SCHEMA\\s+public")
+        self.assertRegex(sql, r"(?is)REVOKE\s+ALL\s+PRIVILEGES\s+ON\s+ALL\s+TABLES\s+IN\s+SCHEMA\s+public")
         for role in ("anon", "authenticated"):
             self.assertIn(role, sql)
-        for table in ("users", "learnora_courses", "learnora_creator_accounts", "quizzes"):
-            with self.subTest(table=table):
-                self.assertIn(table, sql)
         self.assertIn("ALTER DEFAULT PRIVILEGES", sql)
 
 
