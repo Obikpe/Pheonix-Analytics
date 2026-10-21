@@ -255,11 +255,15 @@ No live migration, production-data change, PR merge, or deployment was performed
 
 ## Live remediation applied — 2026-10-21
 
-The following four release migrations were applied to the active Pheonix Supabase project in order and recorded in the migration ledger using the versions below:
+The following five release migrations were applied to the active Pheonix Supabase project in order and recorded in the migration ledger using the versions below:
 
 - `20261021220303_revoke_browser_table_grants`
 - `20261021220321_process_creator_payout_atomically`
 - `20261021220327_encrypt_cohort_date_of_birth`
 - `20261021220333_cohort_login_rate_limits`
+- `20261021220849_revoke_trigger_function_browser_execute`
 
 Post-migration verification confirmed zero explicit public-table grant rows for `anon` and `authenticated`. The managed `supabase_admin` default ACL remains unresolved because the connected role cannot alter that role's defaults. The DOB schema change is live and `COHORT_DOB_ENCRYPTION_KEY` is provisioned in Vercel production and preview. The active `cohort_accounts` table currently has zero rows, so there are no existing plaintext DOB records to backfill. Application deployment remains separate from this database migration.
+
+
+The trigger-function hardening migration also removed direct `EXECUTE` rights from browser roles for trigger-only functions, including `update_admins_updated_at`, `set_updated_at`, and the cohort validation triggers. Live verification confirms browser roles cannot execute the protected trigger functions; PostgreSQL triggers continue to execute them normally.
