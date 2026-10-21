@@ -67,8 +67,8 @@ jobs:
             supabase/migrations/20261021114859_harden_cohort_assignment_revocation.sql \
             supabase/migrations/20261021115303_pin_cohort_assignment_trigger_search_path.sql \
             supabase/migrations/20261021161009_cohort_archive_and_atomic_closure.sql \
-            supabase/migrations/20261021161130_fix_cohort_archive_enrolment_status.sql \
-            supabase/migrations/20261021161300_cohort_archive_fk_indexes.sql \
+            supabase/migrations/20261021161056_fix_cohort_archive_enrolment_status.sql \
+            supabase/migrations/20261021161237_cohort_archive_fk_indexes.sql \
             supabase/migrations/20261021182222_cohort_step5_restrict_lifecycle_and_trigger_function_access.sql
           do
             test -f "$migration" || { echo "Missing required migration: $migration"; exit 1; }
