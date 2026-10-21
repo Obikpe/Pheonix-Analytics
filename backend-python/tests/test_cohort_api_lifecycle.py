@@ -95,16 +95,41 @@ class CohortAuthenticatedApiJourney(unittest.TestCase):
             "courses.create",
             "courses.assign",
         ):
-            permission = self.db.table("learnora_permissions").insert({
-                "permission_key": key,
-                "name": key,
-                "description": "Disposable API integration permission",
-                "category": "organisation",
-            }).execute().data[0]
-            self.db.table("learnora_organisation_role_permissions").insert({
-                "organisation_role": "owner",
-                "permission_id": permission["id"],
-            }).execute()
+            existing = (
+                self.db.table("learnora_permissions")
+                .select("id")
+                .eq("permission_key", key)
+                .limit(1)
+                .execute()
+                .data
+                or []
+            )
+            if existing:
+                permission_id = existing[0]["id"]
+            else:
+                permission = self.db.table("learnora_permissions").insert({
+                    "permission_key": key,
+                    "name": key,
+                    "description": "Disposable API integration permission",
+                    "category": "organisation",
+                }).execute().data[0]
+                permission_id = permission["id"]
+
+            mapping = (
+                self.db.table("learnora_organisation_role_permissions")
+                .select("permission_id")
+                .eq("organisation_role", "owner")
+                .eq("permission_id", permission_id)
+                .limit(1)
+                .execute()
+                .data
+                or []
+            )
+            if not mapping:
+                self.db.table("learnora_organisation_role_permissions").insert({
+                    "organisation_role": "owner",
+                    "permission_id": permission_id,
+                }).execute()
 
         login = self.client.post("/api/auth/login", json={
             "email": self.owner_email,
