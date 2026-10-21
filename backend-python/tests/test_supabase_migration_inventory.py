@@ -37,11 +37,12 @@ EXPECTED_VERSIONS = [
     "20261021182222",
     "20261021183000",
     "20261021183500",
+    "20261021184000",
 ]
 
 
 class SupabaseMigrationInventoryTests(unittest.TestCase):
-    def test_active_migration_directory_matches_timestamped_ledger_inventory(self):
+    def test_repository_migration_inventory_includes_reviewed_pending_versions(self):
         files = sorted(ACTIVE_MIGRATIONS.glob("*.sql"))
         versions = [path.name.split("_", 1)[0] for path in files]
         self.assertEqual(versions, EXPECTED_VERSIONS)
