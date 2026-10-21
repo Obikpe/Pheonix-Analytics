@@ -300,7 +300,7 @@ jobs:
           )"
           if [[ "$default_privileges" != "0" ]]; then
             echo "Found $default_privileges unsafe public-schema default privilege entries."
-            psql "$LEGACY_REPLAY_DATABASE_URL" -x -c "SELECT d.defaclobjtype, pg_get_userbyid(d.defaclrole) AS owner_role, acl.grantee, acl.privilege_type FROM pg_default_acl d CROSS JOIN LATERAL aclexplode(d.defaclacl) acl WHERE d.defaclnamespace IN (0, 'public'::regnamespace) AND (acl.grantee = 0 OR acl.grantee IN (SELECT oid FROM pg_roles WHERE rolname IN ('anon', 'authenticated')));"
+            psql "$LEGACY_REPLAY_DATABASE_URL" -x -c "SELECT d.defaclobjtype, pg_get_userbyid(d.defaclrole) AS owner_role, CASE WHEN acl.grantee = 0 THEN 'PUBLIC' ELSE grantee.rolname END AS grantee, acl.privilege_type FROM pg_default_acl d CROSS JOIN LATERAL aclexplode(d.defaclacl) acl LEFT JOIN pg_roles grantee ON grantee.oid = acl.grantee WHERE d.defaclnamespace IN (0, 'public'::regnamespace) AND (acl.grantee = 0 OR grantee.rolname IN ('anon', 'authenticated'));"
             exit 1
           fi
           trigger_execute="$(psql "$LEGACY_REPLAY_DATABASE_URL" -X -qAt -v ON_ERROR_STOP=1 <<'SQL'
