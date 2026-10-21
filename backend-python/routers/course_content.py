@@ -28,6 +28,7 @@ from .permissions import (
     get_permission_context,
     require_permission,
 )
+from services.capacity import entitlement_limit
 
 
 router = APIRouter(
@@ -259,6 +260,340 @@ def _check_course_access(
         )
 
 
+def _organisation_has_course_entitlement(organisation_id: str) -> bool:
+    """Fail closed when the tenant has no current course entitlement."""
+    try:
+        limit = entitlement_limit(organisation_id, "courses")
+    except HTTPException:
+        return False
+    except Exception:
+        raise HTTPException(503, "Organisation course entitlement could not be verified.")
+    return limit is None or int(limit) > 0
+
+
+def _has_active_scoped_course_source(user_id: str, organisation_id: str, course_id: str, enrolment: dict) -> bool:
+    """Require a live, tenant-scoped source for organisation-scoped enrolments.
+
+    Organisation-wide grants are handled separately by course_access.access_type
+    == 'assigned'. Explicit individual assignments remain valid; team/cohort
+    enrolments remain valid only while the learner has a matching active
+    membership and the team/cohort still has this course assigned.
+    """
+    active_workspace = (
+        supabase.table("organisations")
+        .select("id")
+        .eq("id", organisation_id)
+        .eq("is_active", True)
+        .limit(1)
+        .execute()
+    ).data or []
+    if not active_workspace:
+        return False
+
+    learner_membership = (
+        supabase.table("organisation_members")
+        .select("id")
+        .eq("organisation_id", organisation_id)
+        .eq("user_id", user_id)
+        .eq("role", "learner")
+        .eq("status", "active")
+        .limit(1)
+        .execute()
+    ).data or []
+    if not learner_membership or not _organisation_has_course_entitlement(organisation_id):
+        return False
+
+    if str(enrolment.get("source_type") or "").strip().lower() == "individual_assignment":
+        return True
+
+    cohort_memberships = (
+        supabase.table("cohort_members")
+        .select("cohort_id")
+        .eq("user_id", user_id)
+        .eq("status", "active")
+        .execute()
+    ).data or []
+    cohort_ids = list({str(row["cohort_id"]) for row in cohort_memberships if row.get("cohort_id")})
+    if cohort_ids:
+        valid_cohorts = (
+            supabase.table("cohorts")
+            .select("id")
+            .eq("organisation_id", organisation_id)
+            .in_("id", cohort_ids)
+            .in_("status", ["draft", "upcoming", "active", "ending"])
+            .execute()
+        ).data or []
+        valid_cohort_ids = [str(row["id"]) for row in valid_cohorts]
+        if valid_cohort_ids:
+            cohort_assignments = (
+                supabase.table("cohort_course_assignments")
+                .select("id")
+                .in_("cohort_id", valid_cohort_ids)
+                .eq("course_id", course_id)
+                .eq("status", "active")
+                .limit(1)
+                .execute()
+            ).data or []
+            if cohort_assignments:
+                return True
+
+    team_memberships = (
+        supabase.table("organisation_team_members")
+        .select("team_id")
+        .eq("user_id", user_id)
+        .eq("status", "active")
+        .execute()
+    ).data or []
+    team_ids = list({str(row["team_id"]) for row in team_memberships if row.get("team_id")})
+    if team_ids:
+        valid_teams = (
+            supabase.table("organisation_teams")
+            .select("id")
+            .eq("organisation_id", organisation_id)
+            .eq("status", "active")
+            .in_("id", team_ids)
+            .execute()
+        ).data or []
+        valid_team_ids = [str(row["id"]) for row in valid_teams]
+        if valid_team_ids:
+            team_assignments = (
+                supabase.table("team_course_assignments")
+                .select("id")
+                .in_("team_id", valid_team_ids)
+                .eq("course_id", course_id)
+                .eq("status", "active")
+                .limit(1)
+                .execute()
+            ).data or []
+            if team_assignments:
+                return True
+
+    return False
+
+
+def _check_course_view_access(
+    context: PermissionContext,
+    course: dict,
+):
+    """
+    Authorise reading course content without confusing ownership with access.
+
+    Platform admins may read globally. Organisation-owned content is limited
+    to its owning organisation. Learnora-owned content requires an active
+    organisation course-access grant or an active individual enrolment.
+    """
+    if context.is_platform_admin:
+        return
+
+    course_id = str(course.get("id") or "")
+    ownership = str(course.get("ownership") or "").strip().lower()
+    course_org = course.get("organisation_id")
+    organisation_id = context.organisation_id
+
+    # Organisation/creator-owned content must never cross an organisation
+    # boundary. A user with no organisation can only access an unscoped course
+    # through an individual enrolment below.
+    if ownership != "learnora":
+        if course_org is not None:
+            if not organisation_id or str(course_org) != str(organisation_id):
+                raise HTTPException(403, "You do not have access to this course.")
+            role = (context.organisation_role or "").strip().lower()
+            legacy_role = str(getattr(context.user, "role", "") or "").strip().lower()
+            if role not in {"learner"} and legacy_role not in {"normal", "witstart", "learner"}:
+                return
+            grant = (
+                supabase.table("course_access")
+                .select("id")
+                .eq("course_id", course_id)
+                .eq("organisation_id", str(organisation_id))
+                .eq("status", "active")
+                .eq("access_type", "assigned")
+                .limit(1)
+                .execute()
+            ).data or []
+            enrolments = (
+                supabase.table("learnora_enrolments")
+                .select("id,source_type,cohort_id,organisation_id,status")
+                .eq("course_id", course_id)
+                .eq("user_id", str(context.user_id))
+                .eq("organisation_id", str(organisation_id))
+                .in_("status", ["active", "completed"])
+                .limit(20)
+                .execute()
+            ).data or []
+            is_learner = (
+                (context.organisation_role or "").strip().lower() == "learner"
+                or str(getattr(context.user, "role", "") or "").strip().lower() in {"normal", "witstart", "learner"}
+            )
+            if grant:
+                if is_learner:
+                    active_workspace = (
+                        supabase.table("organisations")
+                        .select("id")
+                        .eq("id", str(organisation_id))
+                        .eq("is_active", True)
+                        .limit(1)
+                        .execute()
+                    ).data or []
+                    active_learner = (
+                        supabase.table("organisation_members")
+                        .select("id")
+                        .eq("organisation_id", str(organisation_id))
+                        .eq("user_id", str(context.user_id))
+                        .eq("role", "learner")
+                        .eq("status", "active")
+                        .limit(1)
+                        .execute()
+                    ).data or []
+                    if not active_workspace or not active_learner:
+                        raise HTTPException(403, "An active learner membership in an active organisation is required for this course.")
+                    if not _organisation_has_course_entitlement(str(organisation_id)):
+                        raise HTTPException(403, "The organisation does not have an active course entitlement.")
+                return
+            if any(_has_active_scoped_course_source(str(context.user_id), str(organisation_id), course_id, row) for row in enrolments):
+                return
+            raise HTTPException(403, "You are not enrolled in or assigned to this course.")
+
+    # Learnora-owned catalogue content is available to an organisation only
+    # when that organisation has an active course-access record.
+    if ownership == "learnora" and organisation_id:
+        try:
+            access_result = (
+                supabase
+                .table("course_access")
+                .select("id")
+                .eq("course_id", course_id)
+                .eq("organisation_id", str(organisation_id))
+                .eq("status", "active")
+                .eq("access_type", "assigned")
+                .limit(1)
+                .execute()
+            )
+        except Exception:
+            # Fail closed if the access grant cannot be verified.
+            raise HTTPException(
+                status_code=503,
+                detail="Course access could not be verified.",
+            )
+
+        if access_result.data:
+            is_learner = (
+                (context.organisation_role or "").strip().lower() == "learner"
+                or str(getattr(context.user, "role", "") or "").strip().lower() in {"normal", "witstart", "learner"}
+            )
+            if is_learner:
+                active_workspace = (
+                    supabase.table("organisations")
+                    .select("id")
+                    .eq("id", str(organisation_id))
+                    .eq("is_active", True)
+                    .limit(1)
+                    .execute()
+                ).data or []
+                active_learner = (
+                    supabase.table("organisation_members")
+                    .select("id")
+                    .eq("organisation_id", str(organisation_id))
+                    .eq("user_id", str(context.user_id))
+                    .eq("role", "learner")
+                    .eq("status", "active")
+                    .limit(1)
+                    .execute()
+                ).data or []
+                if not active_workspace or not active_learner:
+                    raise HTTPException(403, "An active learner membership in an active organisation is required for this course.")
+                if not _organisation_has_course_entitlement(str(organisation_id)):
+                    raise HTTPException(403, "The organisation does not have an active course entitlement.")
+            return
+
+    # Preserve individual course enrolments, including enrolments without an
+    # organisation. Never accept an enrolment scoped to a different tenant.
+    user_id = context.user_id
+    if user_id:
+        try:
+            enrolment_result = (
+                supabase
+                .table("learnora_enrolments")
+                .select("id,organisation_id,source_type,cohort_id,status")
+                .eq("course_id", course_id)
+                .eq("user_id", str(user_id))
+                .in_("status", ["active", "completed"])
+                .limit(20)
+                .execute()
+            )
+        except Exception:
+            raise HTTPException(
+                status_code=503,
+                detail="Course enrolment could not be verified.",
+            )
+
+        for enrolment in enrolment_result.data or []:
+            enrolment_org = enrolment.get("organisation_id")
+            if organisation_id:
+                if enrolment_org is None:
+                    return
+                if str(enrolment_org) == str(organisation_id) and _has_active_scoped_course_source(
+                    str(user_id), str(organisation_id), course_id, enrolment
+                ):
+                    return
+            elif enrolment_org is None:
+                return
+
+    raise HTTPException(
+        status_code=403,
+        detail="You do not have access to this course.",
+    )
+
+
+def _assert_module_unlocked(context: PermissionContext, module: dict):
+    """Learners must pass every prior module assessment at 70% or higher."""
+    if context.is_platform_admin:
+        return
+    role = (context.organisation_role or "").strip().lower()
+    legacy_role = str(getattr(context.user, "role", "") or "").strip().lower()
+    if role != "learner" and legacy_role not in {"normal", "witstart", "learner"}:
+        return
+
+    previous_modules = (
+        supabase.table("course_modules")
+        .select("id,title,order_index")
+        .eq("course_id", str(module["course_id"]))
+        .lt("order_index", module["order_index"])
+        .neq("status", "archived")
+        .order("order_index")
+        .execute()
+    ).data or []
+    for previous in previous_modules:
+        quizzes = (
+            supabase.table("quizzes")
+            .select("id")
+            .eq("module_id", str(previous["id"]))
+            .eq("is_published", True)
+            .execute()
+        ).data or []
+        if not quizzes:
+            raise HTTPException(
+                status_code=409,
+                detail=f'Module "{previous.get("title") or "previous module"}" has no published assessment yet.',
+            )
+        for quiz in quizzes:
+            attempts = (
+                supabase.table("quiz_attempts")
+                .select("id")
+                .eq("quiz_id", str(quiz["id"]))
+                .eq("user_id", str(context.user_id))
+                .eq("passed", True)
+                .gte("score", 70)
+                .limit(1)
+                .execute()
+            ).data or []
+            if not attempts:
+                raise HTTPException(
+                    status_code=423,
+                    detail=f'Pass the assessment for "{previous.get("title") or "the previous module"}" with at least 70% to unlock this module.',
+                )
+
+
 def _validate_module_status(status: str):
     if status not in MODULE_STATUSES:
         raise HTTPException(
@@ -311,6 +646,8 @@ def list_modules(
             detail="Course not found.",
         )
 
+    _check_course_view_access(context, course)
+
     try:
         result = (
             supabase
@@ -360,6 +697,16 @@ def get_module(
             status_code=404,
             detail="Module not found.",
         )
+
+    _assert_module_unlocked(context, module)
+
+    course = _get_course(str(module["course_id"]))
+    if not course:
+        raise HTTPException(
+            status_code=404,
+            detail="Course not found.",
+        )
+    _check_course_view_access(context, course)
 
     return {
         "success": True,
@@ -581,6 +928,16 @@ def list_lessons(
             detail="Module not found.",
         )
 
+    _assert_module_unlocked(context, module)
+
+    course = _get_course(str(module["course_id"]))
+    if not course:
+        raise HTTPException(
+            status_code=404,
+            detail="Course not found.",
+        )
+    _check_course_view_access(context, course)
+
     try:
         result = (
             supabase
@@ -635,6 +992,21 @@ def get_lesson(
             status_code=404,
             detail="Lesson not found.",
         )
+
+    module = _get_module(str(lesson["module_id"]))
+    if not module:
+        raise HTTPException(
+            status_code=404,
+            detail="Module not found.",
+        )
+    _assert_module_unlocked(context, module)
+    course = _get_course(str(module["course_id"]))
+    if not course:
+        raise HTTPException(
+            status_code=404,
+            detail="Course not found.",
+        )
+    _check_course_view_access(context, course)
 
     return {
         "success": True,
@@ -988,6 +1360,8 @@ def get_course_structure(
             status_code=404,
             detail="Course not found.",
         )
+
+    _check_course_view_access(context, course)
 
     try:
         # --------------------------------------------------------
