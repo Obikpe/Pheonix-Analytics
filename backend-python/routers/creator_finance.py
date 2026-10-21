@@ -392,7 +392,7 @@ def process_payout(
     payout_id: str,
     status: str,
     context: PermissionContext = Depends(
-        require_permission("users.update")
+        require_permission("creator_payouts.process")
     ),
 ):
     if status not in {
@@ -403,55 +403,28 @@ def process_payout(
     }:
         raise HTTPException(400, "Invalid payout status.")
 
-    current = (
-        supabase
-        .table("learnora_creator_payouts")
-        .select("*")
-        .eq("id", payout_id)
-        .limit(1)
-        .execute()
-    )
-    if not current.data:
+    # The SQL RPC locks the payout row and writes its ledger entry in the same
+    # transaction. A ledger failure rolls back the status transition.
+    response = supabase.rpc(
+        "process_learnora_creator_payout",
+        {"p_payout_id": payout_id, "p_status": status},
+    ).execute()
+    result = response.data
+    if isinstance(result, list) and result:
+        result = result[0]
+    if not isinstance(result, dict):
+        raise HTTPException(500, "Payout processing returned an invalid response.")
+
+    error = result.get("error")
+    if error == "not_found":
         raise HTTPException(404, "Payout not found.")
-
-    row = current.data[0]
-    if row["status"] == "paid":
+    if error == "already_paid":
         raise HTTPException(409, "Payout is already paid.")
-
-    now = datetime.now(timezone.utc).isoformat()
-
-    result = (
-        supabase
-        .table("learnora_creator_payouts")
-        .update({
-            "status": status,
-            "processed_at": now
-            if status in {"paid", "failed", "cancelled"}
-            else None,
-        })
-        .eq("id", payout_id)
-        .eq("status", row["status"])
-        .execute()
-    )
-    if not result.data:
+    if error == "state_changed":
         raise HTTPException(409, "Payout state changed; retry with the current state.")
+    if error == "invalid_status":
+        raise HTTPException(400, "Invalid payout status.")
+    if error:
+        raise HTTPException(500, "Payout processing failed.")
 
-    if status == "paid":
-        payout = result.data[0]
-        ledger = (
-            supabase
-            .table("learnora_creator_ledger")
-            .insert({
-                "creator_id": payout["creator_id"],
-                "entry_type": "payout",
-                "amount_minor": payout["amount_minor"],
-                "currency": payout["currency"],
-                "available_at": now,
-                "metadata": {"payout_id": payout_id},
-            })
-            .execute()
-        )
-        if not ledger.data:
-            raise HTTPException(500, "Unable to create payout ledger entry.")
-
-    return {"success": True, "payout": result.data[0]}
+    return result
