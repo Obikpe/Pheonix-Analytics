@@ -49,11 +49,9 @@ class SupabaseMigrationInventoryTests(unittest.TestCase):
     def test_unreconciled_legacy_candidates_are_not_active_migrations(self):
         self.assertFalse(any(ACTIVE_MIGRATIONS.glob("00[1-9]_*.sql")))
         self.assertFalse(any(ACTIVE_MIGRATIONS.glob("01[0-5]_*.sql")))
-        for version in range(1, 16):
-            self.assertTrue(
-                (LEGACY_MIGRATIONS / f"{version:03d}_").exists() is False,
-                "The legacy archive is expected to preserve the original descriptive filenames, not bare version placeholders.",
-            )
+        legacy_names = {path.name for path in LEGACY_MIGRATIONS.glob("*.sql")}
+        self.assertEqual(len(legacy_names), 15)
+        self.assertTrue(all(re.match(r"^\d{3}_", name) for name in legacy_names))
         self.assertTrue((LEGACY_MIGRATIONS / "001_initial.sql").is_file())
         self.assertTrue((LEGACY_MIGRATIONS / "015_learnora_ai_permissions.sql").is_file())
 
