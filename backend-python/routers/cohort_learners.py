@@ -11,7 +11,7 @@ from html import escape
 from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 
-from cryptography.fernet import Fernet, InvalidToken
+from cryptography.fernet import Fernet
 from fastapi import APIRouter, Depends, HTTPException, Request
 from jose import jwt
 from pydantic import BaseModel, EmailStr, Field
