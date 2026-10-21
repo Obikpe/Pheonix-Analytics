@@ -11,6 +11,11 @@ on:
 jobs:
   cohort-learning-tests:
     runs-on: ubuntu-latest
+    env:
+      APP_ENV: development
+      SUPABASE_URL: https://example.supabase.co
+      SUPABASE_SERVICE_ROLE_KEY: test-service-role-key
+      JWT_SECRET: cohort-tests-only-secret
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
