@@ -231,6 +231,50 @@ jobs:
           fi
           echo "Permission keys match the active catalog baseline; AI provider seed count matches; contract templates and clauses are empty as expected."
 
+      - name: Assert browser roles have no public-table privileges or unsafe defaults
+        if: steps.legacy_replay.outcome == 'success' && steps.seed_check.outcome == 'success'
+        env:
+          LEGACY_REPLAY_DATABASE_URL: postgresql://postgres:cohort-ci-only@localhost:5432/legacy_replay_staging
+        run: |
+          table_privileges="$(psql "$LEGACY_REPLAY_DATABASE_URL" -X -qAt -v ON_ERROR_STOP=1 <<'SQL'
+          SELECT count(*)
+          FROM pg_class c
+          JOIN pg_namespace n ON n.oid = c.relnamespace
+          CROSS JOIN (VALUES ('anon'), ('authenticated')) AS browser_roles(role_name)
+          WHERE n.nspname = 'public'
+            AND c.relkind IN ('r', 'p', 'v', 'm', 'f')
+            AND (
+              has_table_privilege(browser_roles.role_name, c.oid, 'SELECT')
+              OR has_table_privilege(browser_roles.role_name, c.oid, 'INSERT')
+              OR has_table_privilege(browser_roles.role_name, c.oid, 'UPDATE')
+              OR has_table_privilege(browser_roles.role_name, c.oid, 'DELETE')
+              OR has_table_privilege(browser_roles.role_name, c.oid, 'TRUNCATE')
+              OR has_table_privilege(browser_roles.role_name, c.oid, 'REFERENCES')
+              OR has_table_privilege(browser_roles.role_name, c.oid, 'TRIGGER')
+            );
+          SQL
+          )"
+          if [[ "$table_privileges" != "0" ]]; then
+            echo "Browser roles still have effective privileges on $table_privileges public table/view role pairs."
+            exit 1
+          fi
+
+          default_privileges="$(psql "$LEGACY_REPLAY_DATABASE_URL" -X -qAt -v ON_ERROR_STOP=1 <<'SQL'
+          SELECT count(*)
+          FROM pg_default_acl d
+          CROSS JOIN LATERAL aclexplode(d.defaclacl) acl
+          LEFT JOIN pg_roles grantee ON grantee.oid = acl.grantee
+          WHERE d.defaclnamespace = 'public'::regnamespace
+            AND (acl.grantee = 0 OR grantee.rolname IN ('anon', 'authenticated'));
+          SQL
+          )"
+          if [[ "$default_privileges" != "0" ]]; then
+            echo "Found $default_privileges unsafe public-schema default privilege entries."
+            psql "$LEGACY_REPLAY_DATABASE_URL" -x -c "SELECT d.defaclobjtype, pg_get_userbyid(d.defaclrole) AS owner_role, acl.grantee, acl.privilege_type FROM pg_default_acl d CROSS JOIN LATERAL aclexplode(d.defaclacl) acl WHERE d.defaclnamespace = 'public'::regnamespace AND (acl.grantee = 0 OR acl.grantee IN (SELECT oid FROM pg_roles WHERE rolname IN ('anon', 'authenticated')));"
+            exit 1
+          fi
+          echo "PASS: anon/authenticated have no effective privileges on public tables/views and no public-schema default ACL grants."
+
       - name: Apply current service-role grants to disposable replay
         if: steps.legacy_replay.outcome == 'success' && steps.seed_check.outcome == 'success'
         env:
