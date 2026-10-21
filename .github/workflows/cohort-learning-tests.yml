@@ -183,6 +183,16 @@ jobs:
           LEGACY_REPLAY_DATABASE_URL: postgresql://postgres:cohort-ci-only@localhost:5432/legacy_replay_staging
         run: |
           psql "postgresql://postgres:cohort-ci-only@localhost:5432/postgres" -v ON_ERROR_STOP=1 -c "CREATE DATABASE legacy_replay_staging"
+          # Supabase Storage is a managed schema in the hosted project, not part of vanilla PostgreSQL.
+          # Provide only the bucket metadata needed by the legacy seed migration in this disposable replay.
+          psql "$LEGACY_REPLAY_DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE SCHEMA IF NOT EXISTS storage;
+          CREATE TABLE storage.buckets (
+            id text PRIMARY KEY,
+            name text NOT NULL,
+            "public" boolean NOT NULL DEFAULT false
+          );
+          SQL
           for migration in supabase/legacy_migrations/[0-9]*.sql; do
             echo "Applying legacy bootstrap candidate: $migration"
             psql "$LEGACY_REPLAY_DATABASE_URL" -v ON_ERROR_STOP=1 -f "$migration"
