@@ -18,14 +18,23 @@ export default function OrganisationWorkspace() {
   const [cohorts, setCohorts] = useState<any[]>([]);
   const [teams, setTeams] = useState<any[]>([]);
   const [courseCatalogue, setCourseCatalogue] = useState<any[]>([]);
-  const [cohortCourses, setCohortCourses] = useState<any[]>([]);
+  const [trackCatalogue, setTrackCatalogue] = useState<any[]>([]);
+  const [cohortTracks, setCohortTracks] = useState<Record<string, any[]>>({});
+  const [cohortLearners, setCohortLearners] = useState<Record<string, any[]>>({});
+  const [cohortTrackCourses, setCohortTrackCourses] = useState<Record<string, Record<string, any[]>>>({});
+  const [learnerAssignments, setLearnerAssignments] = useState<Record<string, Record<string, any[]>>>({});
   const [assignedCourses, setAssignedCourses] = useState<any[]>([]);
   const [orgCourseSelection, setOrgCourseSelection] = useState("");
-  const [courseSelections, setCourseSelections] = useState<Record<string, string>>({});
+  const [trackSelections, setTrackSelections] = useState<Record<string, string>>({});
+  const [trackCourseSelections, setTrackCourseSelections] = useState<Record<string, string>>({});
+  const [learnerForms, setLearnerForms] = useState<Record<string, any>>({});
+  const [learnerCourseForms, setLearnerCourseForms] = useState<Record<string, any>>({});
+  const [lessonOptions, setLessonOptions] = useState<Record<string, any[]>>({});
+  const [expandedCohorts, setExpandedCohorts] = useState<Record<string, boolean>>({});
+  const [trackForm, setTrackForm] = useState<any>({ name: "", description: "" });
   const [programmeForm, setProgrammeForm] = useState<any>({ name: "", description: "", start_date: "", end_date: "" });
   const [cohortForm, setCohortForm] = useState<any>({ name: "", description: "", programme_id: "", start_date: "", end_date: "", capacity: "", instructor_capacity: "" });
   const [teamForm, setTeamForm] = useState<any>({ name: "", slug: "", description: "", manager_user_id: "" });
-  const [cohortUserIds, setCohortUserIds] = useState<Record<string, string>>({});
   const [teamUserIds, setTeamUserIds] = useState<Record<string, string>>({});
   const [teamRoles, setTeamRoles] = useState<Record<string, string>>({});
   const [summary, setSummary] = useState<any>({});
@@ -68,7 +77,7 @@ export default function OrganisationWorkspace() {
       setUser(me);
       setNeedsOrgSelection(false);
       const id = encodeURIComponent(selected.organisation_id);
-      const [orgResult, memberResult, summaryResult, contractResult, capacityResult, programmeResult, cohortResult, teamResult, cohortCourseResult, publicCourseResult, assignedCourseResult] = await Promise.all([
+      const [orgResult, memberResult, summaryResult, contractResult, capacityResult, programmeResult, cohortResult, teamResult, publicCourseResult, assignedCourseResult, trackResult] = await Promise.all([
         request<any>("/organisations/" + id),
         request<any>("/organisations/" + id + "/members"),
         request<any>("/organisations/" + id + "/members/summary"),
@@ -77,9 +86,9 @@ export default function OrganisationWorkspace() {
         request<any>("/organisations/" + id + "/programmes"),
         request<any>("/organisations/" + id + "/cohorts"),
         request<any>("/organisations/" + id + "/teams"),
-        request<any>("/organisations/" + id + "/cohort-courses"),
         request<any>("/organisations/" + id + "/available-courses"),
         request<any>("/organisations/" + id + "/assigned-courses"),
+        request<any>("/organisations/" + id + "/tracks").catch(() => ({ tracks: [] })),
       ]);
       setOrg(orgResult.organisation || orgResult);
       setMembers(memberResult.members || []);
@@ -89,9 +98,11 @@ export default function OrganisationWorkspace() {
       setProgrammes(programmeResult.programmes || []);
       setCohorts(cohortResult.cohorts || []);
       setTeams(teamResult.teams || []);
-      setCohortCourses(cohortCourseResult.assignments || []);
       setCourseCatalogue(publicCourseResult.courses || []);
+      setTrackCatalogue(trackResult.tracks || []);
       setAssignedCourses(assignedCourseResult.courses || []);
+      const openCohorts = (cohortResult.cohorts || []).filter((cohort: any) => ["draft", "upcoming", "active"].includes(cohort.status));
+      await Promise.all(openCohorts.filter((cohort: any) => expandedCohorts[String(cohort.id)]).map((cohort: any) => loadCohortDetail(String(cohort.id), String(selected.organisation_id))));
     } catch (e: any) {
       setError(e.message || "The organisation workspace could not be loaded.");
     } finally {
