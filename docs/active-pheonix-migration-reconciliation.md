@@ -120,9 +120,9 @@ Only the outbound activation-email transport is replaced with a test token captu
 
 The existing migration-integration job remains separate: it applies the 12 cohort migrations to a minimal synthetic legacy schema and runs SQL invariant assertions. The authenticated journey now runs once against the catalog-derived full current schema snapshot and once against the replayed historical-plus-timestamped chain, with the staging-only service-role grants noted above.
 
-## Verification completed on the current branch
+## Previous verification before the revised staging policy
 
-The latest full code verification before this run was on commit `cc40e7d51d91937142d218e468c5921b290235ad`. The latest verified run on 2026-10-21 is on commit `56aa678a7d5d5a02c2c9e61642581d2b60d9c500`:
+The following runs are historical evidence from commit `56aa678a7d5d5a02c2c9e61642581d2b60d9c500`, before the revised workflow restricted authenticated API acceptance to the catalog-derived snapshot:
 
 - [Cohort Learning Access Tests](https://github.com/Obikpe/Pheonix-Analytics/actions/runs/39671419293) — **passed**. The 12 cohort migrations and SQL invariants passed; the authenticated lifecycle journey passed against both disposable database variants; deterministic permission and AI-provider seed checks passed. The schema fingerprint step reports the known global drift and is non-blocking.
 - [Learnora Backend Verification](https://github.com/Obikpe/Pheonix-Analytics/actions/runs/39671419719) — **passed**.
@@ -158,3 +158,15 @@ The CI workflow now follows the explicit staging policy:
 4. **No automatic parity claim:** schema fingerprint differences remain visible and non-blocking for the historical-analysis job. They must be reviewed explicitly before any release migration plan is approved.
 
 The workflow change was committed on the draft PR branch at `0ac16ef271b8a9cc2011114a1d6fa55e377ff782`. A fresh CI run is required to verify this final workflow edit.
+
+
+## Verification of revised staging policy — commit `0ac16ef271b8a9cc2011114a1d6fa55e377ff782`
+
+The latest workflow runs for the revised staging policy are:
+
+- [Cohort Learning Access Tests](https://github.com/Obikpe/Pheonix-Analytics/actions/runs/39676949757) — **passed**. The authenticated FastAPI/PostgREST lifecycle runs against the catalog-derived disposable snapshot only. The legacy chain is replayed separately for seed checks and report-only schema comparison; it is not used for API acceptance.
+- [Learnora Backend Verification](https://github.com/Obikpe/Pheonix-Analytics/actions/runs/39676949661) — **passed**, including compilation, imports, static checks and runtime API smoke test.
+- [Learnora frontends](https://github.com/Obikpe/Pheonix-Analytics/actions/runs/39676949219) — **passed** for both frontend builds.
+- [Learnora quality checks](https://github.com/Obikpe/Pheonix-Analytics/actions/runs/39676949150) — **cancelled** overall. Its individual frontend build and backend syntax steps completed successfully, but this workflow must be rerun cleanly before it can be marked passed.
+
+No active Supabase schema, migration ledger, production rows, or Vercel deployment was changed. No merge or deployment was performed.
