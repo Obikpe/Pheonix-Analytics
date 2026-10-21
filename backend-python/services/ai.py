@@ -93,25 +93,63 @@ def _effective_limits(user_id, organisation_id, feature):
             if actual_feature not in (None, "*", wanted_feature):
                 continue
 
+            limit_feature = "*" if actual_feature == "*" else feature
             return {
                 "enabled": True,
-                "requests_per_day": row.get("requests_per_day") or 20,
-                "requests_per_month": row.get("requests_per_month"),
-                "max_input_chars": _int(
-                    row.get("max_input_chars"), 12000
+                "scope_type": scope_type,
+                "scope_id": str(actual_scope) if actual_scope not in (None, "") else None,
+                "limit_feature": limit_feature,
+                "requests_per_day": _int(row.get("requests_per_day"), 20),
+                "requests_per_month": (
+                    _int(row.get("requests_per_month"), 0)
+                    if row.get("requests_per_month") is not None
+                    else None
                 ),
-                "max_output_tokens": _int(
-                    row.get("max_output_tokens"), 1200
-                ),
+                "max_input_chars": _int(row.get("max_input_chars"), 12000),
+                "max_output_tokens": _int(row.get("max_output_tokens"), 1200),
             }
 
     return {
         "enabled": True,
+        "scope_type": "user",
+        "scope_id": str(user_id),
+        "limit_feature": feature,
         "requests_per_day": 20,
         "requests_per_month": None,
         "max_input_chars": 12000,
         "max_output_tokens": 1200,
     }
+
+
+def _reserve_quota(user_id, organisation_id, feature, limits):
+    """Atomically reserve an AI request quota in PostgreSQL.
+
+    Fail closed if the RPC is missing or errors. A local count of usage logs is
+    not concurrency-safe and cannot enforce limits across serverless instances.
+    """
+    try:
+        response = supabase.rpc(
+            "reserve_learnora_ai_quota",
+            {
+                "p_user_id": str(user_id),
+                "p_organisation_id": str(organisation_id) if organisation_id else None,
+                "p_feature": feature,
+                "p_scope_type": limits["scope_type"],
+                "p_scope_id": limits.get("scope_id"),
+                "p_limit_feature": limits["limit_feature"],
+                "p_requests_per_day": limits["requests_per_day"],
+                "p_requests_per_month": limits["requests_per_month"],
+            },
+        ).execute()
+        data = response.data
+        if isinstance(data, list) and data:
+            data = data[0]
+        if not isinstance(data, dict) or "allowed" not in data:
+            raise RuntimeError("Quota RPC returned an invalid response")
+        return bool(data["allowed"]), data.get("limit_scope")
+    except Exception as exc:
+        print(f"AI quota reservation failed: {type(exc).__name__}")
+        return None, None
 
 
 def _daily_usage(user_id):
@@ -319,14 +357,6 @@ async def generate(
             "model": None,
         }
 
-    if _daily_usage(user_id) >= limits["requests_per_day"]:
-        return {
-            "status": "rate_limited",
-            "content": _fallback(feature, message),
-            "provider": "rules",
-            "model": None,
-        }
-
     if len(message) > limits["max_input_chars"]:
         return {
             "status": "input_too_large",
@@ -336,6 +366,28 @@ async def generate(
             ),
             "provider": "rules",
             "model": None,
+        }
+
+    allowed, limit_scope = _reserve_quota(
+        user_id,
+        organisation_id,
+        feature,
+        limits,
+    )
+    if allowed is None:
+        return {
+            "status": "quota_unavailable",
+            "content": "AI quota enforcement is temporarily unavailable. Please try again later.",
+            "provider": "rules",
+            "model": None,
+        }
+    if not allowed:
+        return {
+            "status": "rate_limited",
+            "content": _fallback(feature, message),
+            "provider": "rules",
+            "model": None,
+            "limit_scope": limit_scope,
         }
 
     started = time.perf_counter()
