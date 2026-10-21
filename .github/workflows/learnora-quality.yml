@@ -21,7 +21,8 @@ permissions:
 
 concurrency:
   group: learnora-quality-${{ github.ref }}
-  cancel-in-progress: true
+  # Preserve required CI evidence: queue newer runs instead of cancelling active checks.
+  cancel-in-progress: false
 
 jobs:
   backend-syntax:

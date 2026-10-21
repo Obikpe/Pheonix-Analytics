@@ -27,6 +27,7 @@ from .permissions import (
     PermissionContext,
     require_permission,
 )
+from services.capacity import ensure_org_capacity
 
 
 router = APIRouter(
@@ -388,6 +389,11 @@ def assign_course(
                 status_code=404,
                 detail="Course not found.",
             )
+        if course.get("status") != "published":
+            raise HTTPException(
+                status_code=409,
+                detail="Only published courses can be assigned to an organisation.",
+            )
 
         # --------------------------------------------------------
         # Verify organisation
@@ -510,6 +516,9 @@ def assign_course(
             # Reactivate previously inactive access
             # ----------------------------------------------------
 
+            if course.get("ownership") != "organisation":
+                ensure_org_capacity(organisation_id, "courses", 1)
+
             try:
                 result = (
                     supabase
@@ -563,6 +572,9 @@ def assign_course(
         # --------------------------------------------------------
         # Create new access record
         # --------------------------------------------------------
+
+        if course.get("ownership") != "organisation":
+            ensure_org_capacity(organisation_id, "courses", 1)
 
         insert_data = {
             "course_id": course_id,
@@ -672,6 +684,16 @@ def update_course_access(
                 payload.status
             )
         )
+
+    if updates.get("status") == "active" and record.get("status") != "active":
+        organisation = _get_organisation(record["organisation_id"])
+        if not organisation or not organisation.get("is_active"):
+            raise HTTPException(409, "Inactive organisations cannot reactivate course access.")
+        course = _get_course(record["course_id"])
+        if not course or course.get("status") != "published":
+            raise HTTPException(409, "Only published courses can have active organisation access.")
+        if course.get("ownership") != "organisation":
+            ensure_org_capacity(str(record["organisation_id"]), "courses", 1)
 
     if not updates:
         raise HTTPException(

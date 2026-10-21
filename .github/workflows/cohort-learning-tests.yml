@@ -1,0 +1,414 @@
+name: Cohort Learning Access Tests
+
+on:
+  pull_request:
+    paths:
+      - "backend-python/**"
+      - "supabase/migrations/**"
+      - "supabase/legacy_migrations/**"
+      - "supabase/baselines/**"
+      - "frontend-v02/app/dashboard/organisation/**"
+      - ".github/workflows/cohort-learning-tests.yml"
+  workflow_dispatch:
+
+jobs:
+  cohort-learning-tests:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: cohort_ci
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: cohort-ci-only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d cohort_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      APP_ENV: development
+      SUPABASE_URL: https://example.supabase.co
+      SUPABASE_SERVICE_ROLE_KEY: test-service-role-key
+      JWT_SECRET: cohort-tests-only-secret
+      # Non-production fixture key only; production must set its own secret.
+      COHORT_DOB_ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+      TEST_DATABASE_URL: postgresql://postgres:cohort-ci-only@localhost:5432/cohort_ci
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: backend-python/requirements.txt
+      - name: Install backend dependencies
+        working-directory: backend-python
+        run: python -m pip install -r requirements.txt
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install --yes postgresql-client
+      - name: Compile backend modules
+        working-directory: backend-python
+        run: python -m compileall -q routers services
+      - name: Run existing cohort workflow unit tests
+        working-directory: backend-python
+        run: python -m unittest discover -s tests -v
+      - name: Bootstrap isolated PostgreSQL fixture
+        run: psql "$TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -f backend-python/tests/db/cohort_baseline.sql
+      - name: Apply cohort migrations in order
+        shell: bash
+        run: |
+          set -euo pipefail
+          for migration in \
+            supabase/migrations/20261021112845_cohort_account_track_assignment.sql \
+            supabase/migrations/20261021113145_enforce_cohort_member_track_scope.sql \
+            supabase/migrations/20261021113310_allow_cohort_only_membership.sql \
+            supabase/migrations/20261021113447_cohort_step2_fk_indexes.sql \
+            supabase/migrations/20261021113710_validate_cohort_account_scope.sql \
+            supabase/migrations/20261021114646_cohort_member_course_lesson_access.sql \
+            supabase/migrations/20261021114859_harden_cohort_assignment_revocation.sql \
+            supabase/migrations/20261021115303_pin_cohort_assignment_trigger_search_path.sql \
+            supabase/migrations/20261021161009_cohort_archive_and_atomic_closure.sql \
+            supabase/migrations/20261021161056_fix_cohort_archive_enrolment_status.sql \
+            supabase/migrations/20261021161237_cohort_archive_fk_indexes.sql \
+            supabase/migrations/20261021182222_cohort_step5_restrict_lifecycle_and_trigger_function_access.sql
+          do
+            test -f "$migration" || { echo "Missing required migration: $migration"; exit 1; }
+            echo "Applying $migration"
+            psql "$TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -f "$migration"
+          done
+      - name: Run database-backed cohort lifecycle assertions
+        run: psql "$TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -f backend-python/tests/db/cohort_lifecycle_assertions.sql
+      - name: Create separate disposable API staging database
+        run: |
+          psql "postgresql://postgres:cohort-ci-only@localhost:5432/postgres" -v ON_ERROR_STOP=1 -c "CREATE DATABASE cohort_api_staging"
+      - name: Restore catalog-derived schema into disposable current-schema API staging
+        env:
+          API_TEST_DATABASE_URL: postgresql://postgres:cohort-ci-only@localhost:5432/cohort_api_staging
+        run: |
+          psql "$API_TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/baselines/active-pheonix-public-schema.sql
+          # Apply only the new release-candidate migrations on top of the catalog
+          # snapshot so the API test exercises the exact post-migration schema.
+          for migration in \
+            supabase/migrations/20261021220303_revoke_browser_table_grants.sql \
+            supabase/migrations/20261021220321_process_creator_payout_atomically.sql \
+            supabase/migrations/20261021220327_encrypt_cohort_date_of_birth.sql \
+            supabase/migrations/20261021220333_cohort_login_rate_limits.sql \
+            supabase/migrations/20261021220849_revoke_trigger_function_browser_execute.sql
+          do
+            psql "$API_TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -f "$migration"
+          done
+          psql "$API_TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -c "NOTIFY pgrst, 'reload schema'"
+      - name: Start local PostgREST and Supabase REST path proxy
+        env:
+          PGRST_JWT_SECRET: local-postgrest-jwt-secret-for-ci-only-2026
+        run: |
+          docker run --detach --name cohort-postgrest --network host \
+            --env PGRST_DB_URI=postgres://postgres:cohort-ci-only@127.0.0.1:5432/cohort_api_staging \
+            --env PGRST_DB_SCHEMAS=public \
+            --env PGRST_DB_ANON_ROLE=anon \
+            --env PGRST_JWT_SECRET="$PGRST_JWT_SECRET" \
+            --env PGRST_SERVER_PORT=3000 \
+            postgrest/postgrest:v12.2.3
+
+          cat > "$RUNNER_TEMP/cohort-nginx.conf" <<'NGINX'
+          events {}
+          http {
+            server {
+              listen 3001;
+              location /rest/v1/ {
+                proxy_pass http://127.0.0.1:3000/;
+                proxy_set_header Host $host;
+                proxy_set_header Authorization $http_authorization;
+                proxy_set_header apikey $http_apikey;
+              }
+              location = /rest/v1 {
+                return 301 /rest/v1/;
+              }
+            }
+          }
+          NGINX
+          docker run --detach --name cohort-rest-proxy --network host \
+            --volume "$RUNNER_TEMP/cohort-nginx.conf:/etc/nginx/nginx.conf:ro" \
+            nginx:1.27-alpine
+
+          STAGING_SERVICE_KEY="$(python - <<'PY'
+          import os, time
+          from jose import jwt
+          now = int(time.time())
+          print(jwt.encode(
+              {"role": "service_role", "iss": "supabase", "iat": now, "exp": now + 3600},
+              os.environ["PGRST_JWT_SECRET"],
+              algorithm="HS256",
+          ))
+          PY
+          )"
+          LAST_RESPONSE=""
+          for attempt in $(seq 1 30); do
+            LAST_RESPONSE="$(curl --connect-timeout 2 --max-time 5 --silent --show-error --write-out '\nHTTP_STATUS:%{http_code}' \
+              -H "Authorization: Bearer $STAGING_SERVICE_KEY" \
+              -H "apikey: $STAGING_SERVICE_KEY" \
+              "http://127.0.0.1:3001/rest/v1/cohorts?select=id" || true)"
+            if [[ "$LAST_RESPONSE" == *"HTTP_STATUS:200" ]]; then
+              echo "PostgREST and the Supabase REST path proxy are ready"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "$LAST_RESPONSE"
+          docker logs cohort-postgrest
+          docker logs cohort-rest-proxy
+          exit 1
+      - name: Run full authenticated cohort lifecycle API journey
+        working-directory: backend-python
+        env:
+          RUN_COHORT_API_INTEGRATION: "1"
+          SUPABASE_URL: http://127.0.0.1:3001
+          API_TEST_DATABASE_URL: postgresql://postgres:cohort-ci-only@localhost:5432/cohort_api_staging
+          PGRST_JWT_SECRET: local-postgrest-jwt-secret-for-ci-only-2026
+          JWT_SECRET: cohort-tests-only-secret
+          APP_ENV: development
+        run: |
+          python -m pip install "httpx<0.28"
+          export SUPABASE_SERVICE_ROLE_KEY="$(python - <<'PY'
+          import os, time
+          from jose import jwt
+          now = int(time.time())
+          print(jwt.encode(
+              {"role": "service_role", "iss": "supabase", "iat": now, "exp": now + 3600},
+              os.environ["PGRST_JWT_SECRET"],
+              algorithm="HS256",
+          ))
+          PY
+          )"
+          python -m unittest discover -s tests -p 'test_cohort_api_lifecycle.py' -v
+      - name: Stop disposable PostgREST
+        if: always()
+        run: docker rm -f cohort-postgrest cohort-rest-proxy || true
+
+      # This replay uses only the ephemeral PostgreSQL service in this GitHub Actions job.
+      # It does not connect to Supabase or use production credentials.
+      - name: Preserve and rehearse legacy migration chain for historical analysis only
+        id: legacy_replay
+        env:
+          LEGACY_REPLAY_DATABASE_URL: postgresql://postgres:cohort-ci-only@localhost:5432/legacy_replay_staging
+        run: |
+          psql "postgresql://postgres:cohort-ci-only@localhost:5432/postgres" -v ON_ERROR_STOP=1 -c "CREATE DATABASE legacy_replay_staging"
+          # Supabase Storage is a managed schema in the hosted project, not part of vanilla PostgreSQL.
+          # Provide only the bucket metadata needed by the legacy seed migration in this disposable replay.
+          psql "$LEGACY_REPLAY_DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE SCHEMA IF NOT EXISTS storage;
+          CREATE TABLE storage.buckets (
+            id text PRIMARY KEY,
+            name text NOT NULL,
+            "public" boolean NOT NULL DEFAULT false
+          );
+          SQL
+          for migration in supabase/legacy_migrations/*.sql; do
+            echo "Applying legacy bootstrap candidate: $migration"
+            psql "$LEGACY_REPLAY_DATABASE_URL" -v ON_ERROR_STOP=1 -f "$migration"
+          done
+          for migration in supabase/migrations/[0-9]*.sql; do
+            echo "Applying timestamped migration: $migration"
+            psql "$LEGACY_REPLAY_DATABASE_URL" -v ON_ERROR_STOP=1 -f "$migration"
+          done
+          echo "Legacy plus timestamped migration replay completed."
+
+      - name: Compare deterministic migration seed data
+        id: seed_check
+        if: steps.legacy_replay.outcome == 'success'
+        env:
+          LEGACY_REPLAY_DATABASE_URL: postgresql://postgres:cohort-ci-only@localhost:5432/legacy_replay_staging
+        run: |
+          psql "$LEGACY_REPLAY_DATABASE_URL" -X -qAt -v ON_ERROR_STOP=1 \
+            -c "SELECT permission_key FROM public.learnora_permissions ORDER BY permission_key" \
+            > "$RUNNER_TEMP/replayed-permission-keys.txt"
+          diff -u supabase/baselines/expected_permission_keys.txt "$RUNNER_TEMP/replayed-permission-keys.txt"
+          provider_count="$(psql "$LEGACY_REPLAY_DATABASE_URL" -X -qAt -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM public.learnora_ai_providers")"
+          if [[ "$provider_count" != "1" ]]; then
+            echo "Expected one deterministic AI provider seed row; found $provider_count"
+            exit 1
+          fi
+          template_count="$(psql "$LEGACY_REPLAY_DATABASE_URL" -X -qAt -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM public.learnora_contract_templates")"
+          if [[ "$template_count" != "0" ]]; then
+            echo "Expected no contract-template seed rows; found $template_count"
+            exit 1
+          fi
+          clause_count="$(psql "$LEGACY_REPLAY_DATABASE_URL" -X -qAt -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM public.learnora_contract_clauses")"
+          if [[ "$clause_count" != "0" ]]; then
+            echo "Expected no contract-clause seed rows; found $clause_count"
+            exit 1
+          fi
+          echo "Permission keys match the active catalog baseline; AI provider seed count matches; contract templates and clauses are empty as expected."
+
+      - name: Assert browser roles have no public-table privileges or unsafe defaults
+        if: steps.legacy_replay.outcome == 'success' && steps.seed_check.outcome == 'success'
+        env:
+          LEGACY_REPLAY_DATABASE_URL: postgresql://postgres:cohort-ci-only@localhost:5432/legacy_replay_staging
+        run: |
+          table_privileges="$(psql "$LEGACY_REPLAY_DATABASE_URL" -X -qAt -v ON_ERROR_STOP=1 <<'SQL'
+          SELECT count(*)
+          FROM pg_class c
+          JOIN pg_namespace n ON n.oid = c.relnamespace
+          CROSS JOIN (VALUES ('anon'), ('authenticated')) AS browser_roles(role_name)
+          WHERE n.nspname = 'public'
+            AND c.relkind IN ('r', 'p', 'v', 'm', 'f')
+            AND (
+              has_table_privilege(browser_roles.role_name, c.oid, 'SELECT')
+              OR has_table_privilege(browser_roles.role_name, c.oid, 'INSERT')
+              OR has_table_privilege(browser_roles.role_name, c.oid, 'UPDATE')
+              OR has_table_privilege(browser_roles.role_name, c.oid, 'DELETE')
+              OR has_table_privilege(browser_roles.role_name, c.oid, 'TRUNCATE')
+              OR has_table_privilege(browser_roles.role_name, c.oid, 'REFERENCES')
+              OR has_table_privilege(browser_roles.role_name, c.oid, 'TRIGGER')
+            );
+          SQL
+          )"
+          if [[ "$table_privileges" != "0" ]]; then
+            echo "Browser roles still have effective privileges on $table_privileges public table/view role pairs."
+            exit 1
+          fi
+
+          default_privileges="$(psql "$LEGACY_REPLAY_DATABASE_URL" -X -qAt -v ON_ERROR_STOP=1 <<'SQL'
+          SELECT count(*)
+          FROM pg_default_acl d
+          CROSS JOIN LATERAL aclexplode(d.defaclacl) acl
+          LEFT JOIN pg_roles grantee ON grantee.oid = acl.grantee
+          WHERE d.defaclnamespace IN (0, 'public'::regnamespace)
+            AND (acl.grantee = 0 OR grantee.rolname IN ('anon', 'authenticated'));
+          SQL
+          )"
+          if [[ "$default_privileges" != "0" ]]; then
+            echo "Found $default_privileges unsafe public-schema default privilege entries."
+            psql "$LEGACY_REPLAY_DATABASE_URL" -x -c "SELECT d.defaclobjtype, pg_get_userbyid(d.defaclrole) AS owner_role, acl.grantee, acl.privilege_type FROM pg_default_acl d CROSS JOIN LATERAL aclexplode(d.defaclacl) acl WHERE d.defaclnamespace IN (0, 'public'::regnamespace) AND (acl.grantee = 0 OR acl.grantee IN (SELECT oid FROM pg_roles WHERE rolname IN ('anon', 'authenticated')));"
+            exit 1
+          fi
+          trigger_execute="$(psql "$LEGACY_REPLAY_DATABASE_URL" -X -qAt -v ON_ERROR_STOP=1 <<'SQL'
+          SELECT count(*)
+          FROM pg_trigger t
+          JOIN pg_proc p ON p.oid = t.tgfoid
+          JOIN pg_namespace n ON n.oid = p.pronamespace
+          CROSS JOIN (VALUES ('anon'), ('authenticated')) AS browser_roles(role_name)
+          WHERE NOT t.tgisinternal
+            AND n.nspname = 'public'
+            AND has_function_privilege(browser_roles.role_name, p.oid, 'EXECUTE');
+          SQL
+          )"
+          if [[ "$trigger_execute" != "0" ]]; then
+            echo "Browser roles can execute $trigger_execute trigger functions directly."
+            exit 1
+          fi
+          echo "PASS: anon/authenticated have no public-table privileges, unsafe default ACL grants, or direct trigger-function execute rights."
+
+      - name: Apply current service-role grants to disposable replay
+        if: steps.legacy_replay.outcome == 'success' && steps.seed_check.outcome == 'success'
+        env:
+          LEGACY_REPLAY_DATABASE_URL: postgresql://postgres:cohort-ci-only@localhost:5432/legacy_replay_staging
+        run: |
+          # The historical migration chain does not reproduce Supabase's current default service_role grants.
+          # Align only this disposable replay database with the catalog snapshot's service-role-only harness.
+          psql "$LEGACY_REPLAY_DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
+          REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM PUBLIC, anon, authenticated;
+          REVOKE ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public FROM PUBLIC, anon, authenticated;
+          REVOKE ALL PRIVILEGES ON ALL FUNCTIONS IN SCHEMA public FROM PUBLIC, anon, authenticated;
+          GRANT USAGE ON SCHEMA public TO service_role;
+          GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO service_role;
+          GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO service_role;
+          GRANT ALL PRIVILEGES ON ALL FUNCTIONS IN SCHEMA public TO service_role;
+          SQL
+
+      - name: Report historical replay differences against the catalog snapshot (non-blocking)
+        if: always() && steps.legacy_replay.outcome == 'success'
+        continue-on-error: true
+        env:
+          SNAPSHOT_DATABASE_URL: postgresql://postgres:cohort-ci-only@localhost:5432/cohort_api_staging
+          LEGACY_REPLAY_DATABASE_URL: postgresql://postgres:cohort-ci-only@localhost:5432/legacy_replay_staging
+        run: |
+          psql "$SNAPSHOT_DATABASE_URL" -X -qAt -v ON_ERROR_STOP=1 -f supabase/baselines/schema_fingerprint.sql > "$RUNNER_TEMP/catalog-schema.json"
+          psql "$LEGACY_REPLAY_DATABASE_URL" -X -qAt -v ON_ERROR_STOP=1 -f supabase/baselines/schema_fingerprint.sql > "$RUNNER_TEMP/replayed-schema.json"
+          python - "$RUNNER_TEMP/catalog-schema.json" "$RUNNER_TEMP/replayed-schema.json" <<'PY'
+          import json
+          import re
+          import sys
+
+          with open(sys.argv[1], encoding="utf-8") as handle:
+              expected = json.load(handle)
+          with open(sys.argv[2], encoding="utf-8") as handle:
+              actual = json.load(handle)
+
+          def canonical(category, items):
+              normalized = []
+              for original in items:
+                  item = dict(original)
+                  if category == "columns" and item.get("default"):
+                      item["default"] = re.sub(r"\s+", " ", item["default"]).strip()
+                      item["default"] = item["default"].replace("public.gen_random_uuid()", "gen_random_uuid()")
+                  if category in {"functions", "indexes", "constraints", "triggers", "views"}:
+                      key = "definition"
+                      if item.get(key):
+                          item[key] = re.sub(r"\s+", " ", item[key]).strip()
+                  if category == "policies":
+                      for key in ("using", "check"):
+                          if item.get(key):
+                              item[key] = re.sub(r"\s+", " ", item[key]).strip()
+                  normalized.append(item)
+              return sorted(normalized, key=lambda item: json.dumps(item, sort_keys=True))
+
+          def object_key(category, item):
+              if category == "columns":
+                  return f"{item.get('table')}.{item.get('column')}"
+              if category in {"constraints", "indexes", "triggers", "policies"}:
+                  return f"{item.get('table')}.{item.get('name')}"
+              if category == "functions":
+                  return f"{item.get('name')}({item.get('arguments', '')})"
+              return item.get("name") or item.get("table") or json.dumps(item, sort_keys=True)
+
+          failed = False
+          table_categories = {"columns", "constraints", "indexes", "triggers", "rls", "policies"}
+          for category in sorted(expected):
+              left = canonical(category, expected[category])
+              right = canonical(category, actual.get(category, []))
+              if left == right:
+                  print(f"PASS {category}: {len(left)} objects match")
+                  continue
+
+              failed = True
+              left_map = {json.dumps(item, sort_keys=True): item for item in left}
+              right_map = {json.dumps(item, sort_keys=True): item for item in right}
+              missing = [item for key, item in left_map.items() if key not in right_map]
+              extra = [item for key, item in right_map.items() if key not in left_map]
+              print(
+                  f"DIFF {category}: catalog={len(left)} replay={len(right)} "
+                  f"missing_from_replay={len(missing)} extra_in_replay={len(extra)}"
+              )
+
+              if category in table_categories:
+                  grouped = {}
+                  for item in missing:
+                      grouped.setdefault(item.get("table", "<unknown>"), {"missing": [], "extra": []})["missing"].append(item)
+                  for item in extra:
+                      grouped.setdefault(item.get("table", "<unknown>"), {"missing": [], "extra": []})["extra"].append(item)
+                  ranked = sorted(grouped.items(), key=lambda pair: -(len(pair[1]["missing"]) + len(pair[1]["extra"])))
+                  for table, group in ranked[:35]:
+                      missing_keys = [object_key(category, item) for item in group["missing"]]
+                      extra_keys = [object_key(category, item) for item in group["extra"]]
+                      print(f"  {table}: missing={len(missing_keys)} extra={len(extra_keys)}")
+                      if missing_keys:
+                          print("    missing keys:", ", ".join(missing_keys[:25]))
+                      if extra_keys:
+                          print("    extra keys:", ", ".join(extra_keys[:25]))
+              else:
+                  print("  missing:", ", ".join(object_key(category, item) for item in missing[:30]))
+                  print("  extra:", ", ".join(object_key(category, item) for item in extra[:30]))
+
+          if failed:
+              raise SystemExit("Replayed schema does not yet match the catalog snapshot.")
+          print("All compared public schema objects match the catalog snapshot.")
+          PY
+
+      # The catalog snapshot is the only schema used for authenticated API staging.
+      # The legacy replay remains a historical migration-analysis artifact only.
+      # Do not run API acceptance tests against the replayed legacy schema or infer parity from it.

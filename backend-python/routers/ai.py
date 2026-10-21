@@ -55,48 +55,98 @@ ALLOWED = {
 }
 
 
+AI_ENTITLEMENT_KEYS = {
+    "tutor": ("ai_tutor", "ai.tutor", "ai_access"),
+    "coach": ("ai_coach", "ai.coach", "ai_access"),
+    "practice": ("ai_practice", "ai.practice", "ai_access"),
+    "project": ("ai_project", "ai.project", "ai_access"),
+    "summarise": ("ai_summarise", "ai.summarise", "ai_access"),
+    "instructor": ("ai_instructor_assistant", "ai.instructor", "ai_access"),
+    "organisation": ("ai_organisation_assistant", "ai.organisation", "ai_access"),
+}
+
+
 def _authorise_feature(
     feature: str,
     context: PermissionContext,
 ):
     if feature not in ALLOWED:
-        raise HTTPException(
-            400,
-            "Unsupported AI feature.",
-        )
-
-    if feature == "organisation":
-        if not context.has_permission("analytics.organisation"):
-            raise HTTPException(
-                403,
-                "You are not authorised to use the organisation AI assistant.",
-            )
-        return
-
-    if feature == "instructor":
-        if not context.has_permission("ai.view"):
-            raise HTTPException(
-                403,
-                "You are not authorised to use the instructor AI assistant.",
-            )
-        return
+        raise HTTPException(400, "Unsupported AI feature.")
 
     if context.is_platform_admin:
         return
 
-    if context.organisation_role in {
-        "learner",
-        "instructor",
-        "admin",
-        "owner",
-    }:
+    role = (context.organisation_role or "").strip().lower()
+    if role not in {"learner", "instructor", "admin", "owner"}:
+        if not context.has_permission("ai.view"):
+            raise HTTPException(403, "AI access is not available for this account.")
+
+    if feature == "instructor" and role not in {"instructor", "admin", "owner"}:
+        raise HTTPException(403, "The instructor AI assistant is restricted to instructors and organisation administrators.")
+
+    if feature == "organisation":
+        if role not in {"admin", "owner"} and not context.has_permission("analytics.organisation"):
+            raise HTTPException(403, "You are not authorised to use the organisation AI assistant.")
+
+
+def _assert_contract_ai_entitlement(organisation_id: str | None, feature: str):
+    """Require an enabled feature entitlement for non-pilot organisations."""
+    if not organisation_id:
         return
 
-    if not context.has_permission("ai.view"):
-        raise HTTPException(
-            403,
-            "AI access is not available for this account.",
-        )
+    try:
+        organisation = (
+            supabase.table("organisations")
+            .select("settings,is_active")
+            .eq("id", organisation_id)
+            .limit(1)
+            .execute()
+        ).data or []
+        if not organisation or not organisation[0].get("is_active", True):
+            raise HTTPException(403, "This organisation is inactive or unavailable.")
+        if (organisation[0].get("settings") or {}).get("pilot_mode") is True:
+            return
+
+        contracts = (
+            supabase.table("learnora_contracts")
+            .select("id,status,start_date,end_date")
+            .eq("organisation_id", organisation_id)
+            .in_("status", ["signed", "active", "expiring"])
+            .order("created_at", desc=True)
+            .limit(10)
+            .execute()
+        ).data or []
+        today = datetime.now(timezone.utc).date()
+        active_contracts = [
+            row for row in contracts
+            if (not row.get("start_date") or str(row["start_date"]) <= today.isoformat())
+            and (not row.get("end_date") or str(row["end_date"]) >= today.isoformat())
+        ]
+        if not active_contracts:
+            raise HTTPException(403, "An active Learnora contract is required for organisation AI access.")
+
+        keys = AI_ENTITLEMENT_KEYS.get(feature, ("ai_access",))
+        for contract in active_contracts:
+            entitlements = (
+                supabase.table("learnora_contract_entitlements")
+                .select("entitlement_key,enabled,metadata")
+                .eq("contract_id", contract["id"])
+                .eq("enabled", True)
+                .execute()
+            ).data or []
+            for entitlement in entitlements:
+                key = str(entitlement.get("entitlement_key") or "").strip().lower()
+                metadata = entitlement.get("metadata") or {}
+                declared_features = metadata.get("features", []) if isinstance(metadata, dict) else []
+                if key in keys or feature in declared_features:
+                    return
+    except HTTPException:
+        raise
+    except Exception as exc:
+        print(f"AI contract entitlement verification failed: {type(exc).__name__}")
+        raise HTTPException(503, "AI access could not be verified. Please try again later.")
+
+    raise HTTPException(403, f"Your organisation contract does not include the AI feature: {feature}.")
 
 
 @router.post("/ask")
@@ -121,6 +171,8 @@ async def ask(
         context.organisation_id
         or (body.organisation_id if context.is_platform_admin else None)
     )
+
+    _assert_contract_ai_entitlement(org_id, body.feature)
 
     conversation_id = body.conversation_id
 
@@ -195,6 +247,9 @@ async def ask(
         org_id,
         conversation_id,
     )
+
+    if result["status"] == "quota_unavailable":
+        raise HTTPException(503, "AI quota enforcement is unavailable. Please try again later.")
 
     if result["status"] == "rate_limited":
         raise HTTPException(

@@ -7,7 +7,7 @@ ENV_PATH = Path(__file__).parent / ".env"
 load_dotenv(dotenv_path=ENV_PATH, override=True)
 
 # 2. NOW import routers
-from routers import auth, grading, progress, billing, webhooks, community, grader, admin, organisations, organisation_members, courses, course_access, course_content, internal_auth, internal_staff, internal_teams, commercial, creator, lifecycle, learning_structure, media, access, organisation_teams, ai, creator_finance, evidence, internal_operations, internal_content, ai_profiles, public_directory, learner_onboarding, notifications as notifications_router
+from routers import auth, grading, progress, billing, webhooks, community, grader, admin, organisations, organisation_members, courses, course_access, course_content, internal_auth, internal_staff, internal_teams, commercial, creator, lifecycle, learning_structure, media, access, organisation_teams, ai, creator_finance, evidence, internal_operations, internal_content, ai_profiles, public_directory, learner_onboarding, cohort_learners, cohort_learning, notifications as notifications_router
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -26,8 +26,9 @@ app = FastAPI(
     title="Learnora - Python Backend",
     version="2.0.0-secure",
     lifespan=lifespan,
-    docs_url="/docs",
-    redoc_url="/redoc"
+    docs_url="/docs" if os.getenv("APP_ENV", "production").strip().lower() != "production" else None,
+    redoc_url="/redoc" if os.getenv("APP_ENV", "production").strip().lower() != "production" else None,
+    openapi_url="/openapi.json" if os.getenv("APP_ENV", "production").strip().lower() != "production" else None,
 )
 
 # Rate limiter middleware
@@ -41,13 +42,15 @@ async def rate_limit_handler(request, exc):
 
 # CORS Middleware (Correctly placed to handle preflight OPTIONS requests)
 origins = [
-    "http://localhost:3000",
     "https://thepheonixanalytics.com",
     "https://www.thepheonixanalytics.com",
     "https://learnora-me.vercel.app",
     "https://teamslearnora.vercel.app",
     "https://learnora-me-v02.vercel.app",
 ]
+
+if os.getenv("APP_ENV", "production").strip().lower() != "production":
+    origins.append("http://localhost:3000")
 
 internal_frontend = os.getenv("INTERNAL_FRONTEND_URL", "").rstrip("/")
 if internal_frontend and internal_frontend not in origins:
@@ -60,9 +63,8 @@ if frontend and frontend not in origins:
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
-    # Permit preview deployments for these two Learnora apps on the connected Vercel team.
-    # Production domains remain explicitly listed above; API authentication still applies.
-    allow_origin_regex=r"https://(?:learnora|teamslearnora)-[a-z0-9-]+-obikpes-projects\.vercel\.app",
+    # Preview origins must be explicitly allow-listed; do not trust every deployment
+    # that happens to match a Vercel team naming convention.
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=[
@@ -79,6 +81,13 @@ async def add_security_headers(request: Request, call_next):
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    # The production API does not serve interactive docs; constrain any
+    # accidental HTML/error response without breaking local Swagger tooling.
+    if os.getenv("APP_ENV", "production").strip().lower() == "production":
+        response.headers["Content-Security-Policy"] = "default-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'"
+    if request.url.scheme == "https":
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     return response
 
 # Routers
@@ -96,6 +105,8 @@ app.include_router(grader.router, prefix="/api/grader", tags=["grader"])
 
 # Learnora V1 organisation architecture
 app.include_router(organisations.router)
+app.include_router(cohort_learners.router)
+app.include_router(cohort_learning.router)
 app.include_router(organisation_members.router)
 app.include_router(courses.router)
 app.include_router(course_access.router)

@@ -46,6 +46,7 @@ export default function Login() {
         </div>
         <div className="mt-6 text-xs text-slate-500"><a className="gold hover:underline" href="/forgot-password">Forgot password?</a></div>
         <div className="mt-8 border-t border-white/[.1] pt-6 text-sm text-slate-500">New to Learnora? <a className="ml-1 font-semibold gold hover:underline" href="/register">Create an account</a></div>
+        <div className="mt-4 text-xs text-slate-500">Joining through an organisation cohort? <a className="ml-1 font-semibold gold hover:underline" href="/cohort-login">Cohort learner sign in</a></div>
         <p className="mt-8 text-[10px] leading-5 text-slate-600">Use only your own account. Access to organisation and internal workspaces depends on your assigned permissions.</p>
       </form>
     </section>
