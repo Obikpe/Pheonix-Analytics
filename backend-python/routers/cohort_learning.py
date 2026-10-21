@@ -55,7 +55,7 @@ def _cohort(organisation_id: str, cohort_id: str) -> dict:
 def _published_course(course_id: str, organisation_id: str) -> dict:
     result = (
         supabase.table("learnora_courses")
-        .select("id,title,slug,short_description,description,ownership,organisation_id,status,thumbnail_url,estimated_hours")
+        .select("id,title,slug,short_description,description,ownership,organisation_id,status,thumbnail_url,estimated_hours,creator_id")
         .eq("id", course_id)
         .limit(1)
         .execute()
@@ -393,6 +393,15 @@ def _active_cohort_member(user: CurrentUser) -> tuple[dict, dict]:
     )
     if not cohort_result.data or cohort_result.data[0].get("status") not in {"draft", "upcoming", "active"}:
         raise HTTPException(403, "This cohort is closed.")
+    organisation = (
+        supabase.table("organisations")
+        .select("id,is_active")
+        .eq("id", account["organisation_id"])
+        .limit(1)
+        .execute()
+    )
+    if not organisation.data or not organisation.data[0].get("is_active"):
+        raise HTTPException(403, "This organisation is inactive.")
     member_result = (
         supabase.table("cohort_members")
         .select("id,cohort_id,cohort_account_id,track_id,status")
