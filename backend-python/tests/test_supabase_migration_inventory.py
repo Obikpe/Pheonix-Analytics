@@ -50,7 +50,7 @@ class SupabaseMigrationInventoryTests(unittest.TestCase):
         self.assertFalse(any(ACTIVE_MIGRATIONS.glob("00[1-9]_*.sql")))
         self.assertFalse(any(ACTIVE_MIGRATIONS.glob("01[0-5]_*.sql")))
         legacy_names = {path.name for path in LEGACY_MIGRATIONS.glob("*.sql")}
-        self.assertEqual(len(legacy_names), 18)
+        self.assertEqual(len(legacy_names), 19)
         original_legacy_names = {name for name in legacy_names if re.match(r"^\d{3}_", name)}
         self.assertEqual(len(original_legacy_names), 15)
         self.assertTrue((LEGACY_MIGRATIONS / "001_initial.sql").is_file())
@@ -58,9 +58,11 @@ class SupabaseMigrationInventoryTests(unittest.TestCase):
         users_bootstrap = (LEGACY_MIGRATIONS / "002z_reconstructed_users_registry.sql").read_text(encoding="utf-8")
         admins_bootstrap = (LEGACY_MIGRATIONS / "003z_reconstructed_admins_registry.sql").read_text(encoding="utf-8")
         timestamp_bootstrap = (LEGACY_MIGRATIONS / "zz_reconstructed_set_updated_at.sql").read_text(encoding="utf-8")
+        contract_templates = (LEGACY_MIGRATIONS / "zz_reconstructed_contract_templates.sql").read_text(encoding="utf-8")
         self.assertIn("CATALOG-RECONSTRUCTED prerequisite", users_bootstrap)
         self.assertIn("CATALOG-RECONSTRUCTED prerequisite", admins_bootstrap)
         self.assertIn("CATALOG-RECONSTRUCTED prerequisite", timestamp_bootstrap)
+        self.assertIn("CATALOG-RECONSTRUCTED prerequisite", contract_templates)
 
     def test_catalog_reconstructed_sources_are_not_misrepresented_as_original(self):
         for name in (
