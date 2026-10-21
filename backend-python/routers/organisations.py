@@ -384,9 +384,12 @@ def add_cohort_member(
         raise HTTPException(404, "Cohort not found.")
     if cohort.data[0].get("status") not in {"draft", "upcoming", "active"}:
         raise HTTPException(409, "This cohort is closed to new members.")
-    member = supabase.table("organisation_members").select("id,role,status").eq("organisation_id", organisation_id).eq("user_id", body.user_id).eq("status", "active").limit(1).execute()
-    if not member.data or member.data[0].get("role") != "learner":
-        raise HTTPException(400, "Only active learners in this organisation can be added to a cohort.")
+    # Cohort membership is authoritative for cohort learners. Do not require a
+    # separate organisation_members row: this duplicates membership and blocks
+    # the agreed cohort-only learner workflow. We still verify the account exists.
+    user = supabase.table("users").select("id").eq("id", body.user_id).limit(1).execute()
+    if not user.data:
+        raise HTTPException(404, "Learner account not found.")
     existing = supabase.table("cohort_members").select("id,status").eq("cohort_id", cohort_id).eq("user_id", body.user_id).limit(1).execute()
     now = datetime.now(timezone.utc).isoformat()
     if existing.data:
