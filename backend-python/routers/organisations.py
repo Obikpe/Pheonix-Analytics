@@ -22,6 +22,7 @@ from .permissions import (
     require_permission,
 )
 from services.capacity import ensure_org_capacity, ensure_cohort_capacity
+from services.cohort_membership import upsert_cohort_membership
 
 
 router = APIRouter(
@@ -390,25 +391,8 @@ def add_cohort_member(
     user = supabase.table("users").select("id").eq("id", body.user_id).limit(1).execute()
     if not user.data:
         raise HTTPException(404, "Learner account not found.")
-    existing = supabase.table("cohort_members").select("id,status").eq("cohort_id", cohort_id).eq("user_id", body.user_id).limit(1).execute()
-    now = datetime.now(timezone.utc).isoformat()
-    if existing.data:
-        if existing.data[0].get("status") != "active":
-            membership = supabase.table("cohort_members").update({"status": "active", "joined_at": now}).eq("id", existing.data[0]["id"]).execute()
-            member_row = (membership.data or [existing.data[0]])[0]
-        else:
-            member_row = existing.data[0]
-    else:
-        ensure_cohort_capacity(cohort_id)
-        membership = supabase.table("cohort_members").insert({
-            "cohort_id": cohort_id,
-            "user_id": body.user_id,
-            "joined_at": now,
-            "status": "active",
-        }).execute()
-        if not membership.data:
-            raise HTTPException(500, "Cohort membership could not be saved.")
-        member_row = membership.data[0]
+    ensure_cohort_capacity(cohort_id)
+    member_row = upsert_cohort_membership(cohort_id, body.user_id)
 
     assignments = supabase.table("cohort_course_assignments").select("course_id").eq("cohort_id", cohort_id).eq("status", "active").execute()
     created_enrolments = 0
