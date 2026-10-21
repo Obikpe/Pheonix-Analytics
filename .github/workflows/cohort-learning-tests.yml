@@ -100,9 +100,23 @@ jobs:
             --env PGRST_SERVER_ROOT=/rest/v1 \
             --env PGRST_SERVER_PORT=3000 \
             postgrest/postgrest:v12.2.3
+          STAGING_SERVICE_KEY="$(python - <<'PY'
+          import os, time
+          from jose import jwt
+          now = int(time.time())
+          print(jwt.encode(
+              {"role": "service_role", "iss": "supabase", "iat": now, "exp": now + 3600},
+              os.environ["PGRST_JWT_SECRET"],
+              algorithm="HS256",
+          ))
+          PY
+          )"
           for attempt in $(seq 1 30); do
-            if curl --fail --silent http://127.0.0.1:3000/rest/v1/ >/dev/null; then
-              echo "PostgREST is ready"
+            if curl --fail --silent \
+              -H "Authorization: Bearer $STAGING_SERVICE_KEY" \
+              -H "apikey: $STAGING_SERVICE_KEY" \
+              "http://127.0.0.1:3000/rest/v1/cohorts?select=id&limit=0" >/dev/null; then
+              echo "PostgREST is ready and accepts the isolated service-role token"
               exit 0
             fi
             sleep 2
