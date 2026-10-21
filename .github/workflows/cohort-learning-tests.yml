@@ -77,3 +77,57 @@ jobs:
           done
       - name: Run database-backed cohort lifecycle assertions
         run: psql "$TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -f backend-python/tests/db/cohort_lifecycle_assertions.sql
+      - name: Create separate disposable API staging database
+        run: |
+          psql "postgresql://postgres:cohort-ci-only@localhost:5432/postgres" -v ON_ERROR_STOP=1 -c "CREATE DATABASE cohort_api_staging"
+      - name: Restore catalog-derived schema into disposable API staging
+        env:
+          API_TEST_DATABASE_URL: postgresql://postgres:cohort-ci-only@localhost:5432/cohort_api_staging
+        run: |
+          psql "$API_TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/baselines/active-pheonix-public-schema.sql
+          psql "$API_TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -c "NOTIFY pgrst, 'reload schema'"
+      - name: Start local PostgREST for authenticated API staging
+        env:
+          PGRST_JWT_SECRET: local-postgrest-jwt-secret-for-ci-only-2026
+        run: |
+          docker run --detach --name cohort-postgrest --network host \
+            --env PGRST_DB_URI=postgres://postgres:cohort-ci-only@127.0.0.1:5432/cohort_api_staging \
+            --env PGRST_DB_SCHEMAS=public \
+            --env PGRST_DB_ANON_ROLE=anon \
+            --env PGRST_JWT_SECRET="$PGRST_JWT_SECRET" \
+            --env PGRST_SERVER_PORT=3000 \
+            postgrest/postgrest:v12.2.3
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:3000/ >/dev/null; then
+              echo "PostgREST is ready"
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs cohort-postgrest
+          exit 1
+      - name: Run full authenticated cohort lifecycle API journey
+        working-directory: backend-python
+        env:
+          RUN_COHORT_API_INTEGRATION: "1"
+          SUPABASE_URL: http://127.0.0.1:3000
+          API_TEST_DATABASE_URL: postgresql://postgres:cohort-ci-only@localhost:5432/cohort_api_staging
+          PGRST_JWT_SECRET: local-postgrest-jwt-secret-for-ci-only-2026
+          JWT_SECRET: cohort-tests-only-secret
+          APP_ENV: development
+        run: |
+          export SUPABASE_SERVICE_ROLE_KEY="$(python - <<'PY'
+          import os, time
+          from jose import jwt
+          now = int(time.time())
+          print(jwt.encode(
+              {"role": "service_role", "iss": "supabase", "iat": now, "exp": now + 3600},
+              os.environ["PGRST_JWT_SECRET"],
+              algorithm="HS256",
+          ))
+          PY
+          )"
+          python -m unittest discover -s tests -p 'test_cohort_api_lifecycle.py' -v
+      - name: Stop disposable PostgREST
+        if: always()
+        run: docker rm -f cohort-postgrest || true
