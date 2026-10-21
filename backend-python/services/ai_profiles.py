@@ -120,10 +120,13 @@ def _effective_limits(user_id, organisation_id, feature):
 
             return {
                 "enabled": True,
-                "requests_per_day": row.get("requests_per_day") or 20,
+                "requests_per_day": row.get("requests_per_day") if row.get("requests_per_day") is not None else 20,
                 "requests_per_month": row.get("requests_per_month"),
                 "max_input_chars": _int(row.get("max_input_chars"), 12000),
                 "max_output_tokens": _int(row.get("max_output_tokens"), 1200),
+                "scope_type": scope_type,
+                "scope_id": actual_scope,
+                "limit_feature": actual_feature or wanted_feature,
             }
 
     return {
@@ -132,6 +135,9 @@ def _effective_limits(user_id, organisation_id, feature):
         "requests_per_month": None,
         "max_input_chars": 12000,
         "max_output_tokens": 1200,
+        "scope_type": "user",
+        "scope_id": str(user_id),
+        "limit_feature": feature,
     }
 
 
@@ -158,6 +164,32 @@ def _usage_window_start(days: int):
         1,
         tzinfo=timezone.utc,
     ).isoformat()
+
+
+def _reserve_quota(user_id, organisation_id, feature, limits):
+    """Atomically reserve one request against user/organisation quota windows.
+
+    The database function serialises concurrent requests and records every
+    admitted attempt, including requests whose upstream generation later fails.
+    """
+    response = supabase.rpc("reserve_learnora_ai_quota", {
+        "p_user_id": str(user_id),
+        "p_organisation_id": str(organisation_id) if organisation_id else None,
+        "p_feature": str(feature),
+        "p_scope_type": str(limits.get("scope_type") or "user"),
+        "p_scope_id": str(limits.get("scope_id")) if limits.get("scope_id") is not None else None,
+        "p_limit_feature": str(limits.get("limit_feature") or feature),
+        "p_requests_per_day": limits.get("requests_per_day"),
+        "p_requests_per_month": limits.get("requests_per_month"),
+    }).execute()
+    data = getattr(response, "data", None)
+    if isinstance(data, list) and data:
+        data = data[0]
+    if isinstance(data, dict):
+        return data
+    if isinstance(data, bool):
+        return {"allowed": data}
+    raise RuntimeError("Quota reservation returned an invalid response")
 
 
 def _fallback(feature, message):
@@ -348,32 +380,6 @@ async def generate(
             "model": None,
         }
 
-    daily_limit = limits.get("requests_per_day")
-    if daily_limit is not None and _usage_since(
-        user_id,
-        _usage_window_start(1),
-    ) >= int(daily_limit):
-        return {
-            "status": "rate_limited",
-            "content": _fallback(feature, message),
-            "provider": "rules",
-            "model": None,
-            "limit_scope": "day",
-        }
-
-    monthly_limit = limits.get("requests_per_month")
-    if monthly_limit is not None and _usage_since(
-        user_id,
-        _usage_window_start(30),
-    ) >= int(monthly_limit):
-        return {
-            "status": "rate_limited",
-            "content": _fallback(feature, message),
-            "provider": "rules",
-            "model": None,
-            "limit_scope": "month",
-        }
-
     if len(message) > limits["max_input_chars"]:
         return {
             "status": "input_too_large",
@@ -383,6 +389,26 @@ async def generate(
             ),
             "provider": "rules",
             "model": None,
+        }
+
+    try:
+        reservation = _reserve_quota(user_id, organisation_id, feature, limits)
+    except Exception as exc:
+        print(f"AI quota reservation failed: {type(exc).__name__}")
+        return {
+            "status": "quota_unavailable",
+            "content": _fallback(feature, message),
+            "provider": "rules",
+            "model": None,
+        }
+
+    if not reservation.get("allowed"):
+        return {
+            "status": "rate_limited",
+            "content": _fallback(feature, message),
+            "provider": "rules",
+            "model": None,
+            "limit_scope": reservation.get("limit_scope", "quota"),
         }
 
     started = time.perf_counter()

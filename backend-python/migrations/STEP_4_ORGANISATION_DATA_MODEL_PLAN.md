@@ -1,0 +1,179 @@
+# Step 4 — Organisation data model and migration plan
+
+## Scope and safety
+
+Target database confirmed by the user: active Supabase project **Pheonix**, project reference `gihfupzvdpyrmynqgukz`.
+
+This plan began as a proposal. On 2026-10-20, the user explicitly requested applying the migration to actual Pheonix. The SQL was dry-run inside a transaction and rolled back, then applied with the Supabase migration tool. Live migration versions `20261020230826` and `20261020230906` record the audit remediation and a follow-up scope/privilege correction. Post-migration verification passed the checks recorded below. The deployed Vercel backend's Supabase URL/key has not been independently inspected, so it remains unconfirmed whether the running deployment uses this project.
+
+Only customer-organisation workflows are in scope: organisation owner/manager, team, cohort, programme, tutor, learner, course access, contracts/entitlements, AI use and progression. Learnora's internal platform administrator and internal team-member workflows are out of scope.
+
+## 1. Live schema inventory
+
+The active project already contains the following structures; reuse them rather than creating parallel equivalents.
+
+| Concern | Existing structures |
+|---|---|
+| Organisation and tenant membership | `organisations`, `organisation_members` |
+| Team membership | `organisation_teams`, `organisation_team_members` |
+| Cohorts and membership | `cohorts`, `cohort_members`, `learnora_cohort_lifecycle`, `learnora_cohort_lifecycle_events` |
+| Programmes and course ordering | `learnora_programmes`, `learnora_programme_courses` |
+| Cohort course assignment | `cohort_course_assignments` |
+| Organisation course access | `course_access`, `learnora_access_entitlements`, `learnora_enrolments` |
+| Contract and entitlements | `learnora_contracts`, `learnora_contract_entitlements`, `learnora_contract_versions`, `learnora_contract_clauses` |
+| Capacity reservation records | `learnora_capacity_reservations` (resource type, quantity, used quantity, status, expiry) |
+| AI limits and usage | `learnora_ai_limits`, `ai_usage_logs` |
+| Assessment and progress | `quizzes`, `quiz_attempts`, `course_modules`, `learnora_lessons` |
+
+Before applying this work, the live database had nine registered migration records (through `20261011051442`, `learner_onboarding_profiles`). The current live registry has eleven records after adding `20261020230826` (`learnora_audit_remediation`) and `20261020230906` (`restore_shared_learner_grants_and_lock_trigger_routines`). The registered names for `learnora_organisation_portal` and migrations `017`–`022` align with repository files `016`–`022`, but the live registry does not contain matching entries for repository migrations `001`–`015`. The first live record is named `add_learnora_ai_profiles`, not `014_learnora_ai_foundation` or `015_learnora_ai_permissions`; the schema contains AI profile/provider tables, but that is not enough to prove the scripts were applied as-is. The live `learner_onboarding_profiles` record also has no matching numbered file among repository migrations `001`–`022`.
+
+This is migration-history drift, not a safe basis for replaying SQL. The repository's normal numbered migration chain is under `supabase/migrations/`, while the proposed remediation remains in `backend-python/migrations/` as a review artifact until the registry is reconciled. Do not move it into the active migration chain or run the Supabase CLI against the directory until the earlier scripts have an explicit applied/not-applied mapping; otherwise old migrations may be replayed. Do not infer that a numbered script is already applied solely because it exists in GitHub.
+
+The live object inventory also does not contain the legacy tables `tracks`, `enrollments`, `user_progress`, `user_project_progress` and `community_qna` defined in `001_initial.sql`; newer Learnora structures such as `learnora_learning_paths`, `learnora_enrolments`, `learnora_lesson_progress` and `learnora_discussions` exist instead. This may be intentional replacement, but it must be confirmed against code references and data lineage before declaring the old migration obsolete. Several shared legacy tables (`courses`, `lessons`, `audit_logs`, and others) still exist alongside Learnora-prefixed tables, so migrations must be reconciled by object/constraint/function state, not filenames alone.
+
+## 2. Confirmed gaps and risks
+
+### A. Tenant integrity is mostly enforced in application code
+
+The current foreign keys prove that a team, cohort, course, or user exists, but by themselves they do not prove the linked records belong to the same organisation. The organisation API now validates active membership before team/cohort enrolment and filters stale team/cohort memberships before creating enrolments. The applied migration adds database-side validation because backend checks alone cannot protect future write paths.
+
+**Proposed database protection:** add database-side integrity checks for:
+- active team membership → active membership in the same organisation as the team;
+- active cohort membership → active learner membership in the cohort's organisation;
+- cohort programme → programme from the same organisation;
+- cohort/team course assignment → a course the organisation is permitted to use; organisation-owned courses must belong to that same organisation;
+- team manager → an active member of that organisation.
+
+Prefer composite foreign keys only where the schema can represent the tenant key without duplicating inconsistent data. For cross-table status rules and relationships that cannot be expressed by a foreign key, use a carefully scoped trigger or transactional RPC. Preflight existing rows before adding constraints; do not delete or silently rewrite conflicting rows.
+
+### B. Team membership endpoint accepted users without verifying tenant membership
+
+The team endpoints previously upserted a user into `organisation_team_members` after checking the team's organisation, but did not consistently check active membership in that same organisation, validate team-specific roles, or reject inactive teams. Both `/api/organisation-teams` and `/api/organisations/{organisation_id}/teams/...` now enforce those checks. The cohort update/reactivation routes now check active learner membership and capacity; team/course enrolment routes filter stale memberships; organisation course assignments avoid double-counting a course already owned by that organisation. Regression tests cover cross-tenant team additions, unpublished course assignment, and cohort reactivation. Database-side protection remains necessary for writes outside these endpoints.
+
+### C. Team course assignments are missing
+
+The live schema has cohort course assignments, but no `team_course_assignments` table. A team-first corporate workflow needs an explicit relation rather than pretending team assignments are cohort assignments. Migration 023 introduced this table on Pheonix; post-apply checks confirm it exists.
+
+### D. Scoped course assignments were being treated as organisation-wide access
+
+The backend used the same active course_access row for organisation-wide, individual, team and cohort assignments. Course-content reads treated any active row as an organisation-wide grant, so a team/cohort assignment could grant every learner in that organisation access to the course. This is a real authorisation gap, even though the current live snapshot has zero active organisation-scoped enrolments.
+
+The backend now distinguishes course_access.access_type = 'assigned' (explicit organisation-wide access) from access_type = 'scoped' (licence/access record supporting individual/team/cohort assignments). Course-content reads do not treat scoped rows as organisation-wide grants. Scoped access requires an active learner membership plus a valid individual assignment, or a matching active cohort/team membership and course assignment. A removed/suspended team/cohort membership therefore no longer authorises content just because an enrolment row remains. Explicit organisation-wide assignment upgrades a scoped record to assigned; scoped workflows do not downgrade an existing organisation-wide grant.
+
+The organisation, team and cohort assignment routes also scope enrolment de-duplication to the same organisation. A user enrolled in the same course under a different tenant no longer prevents creation of the correct tenant-specific enrolment. Tests cover scoped grants, team/cohort membership requirements and inactive learner membership.
+
+### E. Capacity checks are race-prone in Python alone
+
+The current `services/capacity.py` reads current counts and then the route writes a new row. Concurrent requests can both pass that check. The live schema also contains `learnora_capacity_reservations` with resource type, quantity, used quantity, status and expiry, but the inspected capacity service reads live table counts and contract entitlements rather than using that table; no live capacity trigger/routine was found. Before deciding whether that table represents reserved contract allocation or should participate in enforcement, inspect its writers and contract workflow. Do not double-count its quantities alongside live member/course counts.
+
+The SQL capacity trigger applied in migration 023 serialises capacity checks with transaction-scoped advisory locks. It covers organisation membership, teams, cohorts, programmes, organisation-owned courses, organisation course grants, team course assignments and cohort course assignments. Course slots are counted as distinct courses across these access paths, avoiding double-counting when the same course is assigned to multiple teams/cohorts or is already organisation-owned. Its update fast paths have been hardened so moving an active record between organisations or changing a course cannot bypass the destination capacity check. The Python check remains for friendly errors; the database is the concurrency authority once the migration is reviewed and applied.
+
+Cohort member capacity is enforced in the same transaction as insertion/reactivation. Lowering a cohort capacity below current active membership is rejected; it must not silently remove learners. The migration also adds validated checks for positive learner capacity, non-negative instructor capacity, and valid cohort/programme date ranges; post-apply checks found zero violations.
+
+### F. AI quota reservations are missing
+
+The live schema has `learnora_ai_limits` and `ai_usage_logs`, but no `learnora_ai_quota_reservations` or `reserve_learnora_ai_quota` routine at inspection time. The applied migration backfilled three existing usage-log records into atomic reservations and added the quota RPC. Quota identity/lock-key consistency, daily/monthly boundaries, per-user versus organisation aggregation, failed AI requests, and duplicate retries still need dedicated concurrency/integration tests. Reservation must be recorded before calling the provider, and failures must follow an explicit policy so retries cannot evade limits.
+
+### G. RLS enabled with no table-specific policies
+
+The Security Advisor reported numerous tables with RLS enabled but no policies, including organisation tables. A read-only grant audit confirmed that `anon` and `authenticated` currently have broad table privileges (including SELECT/INSERT/UPDATE/DELETE) on the inspected organisation, cohort, course-access, contract, enrolment and AI-limit tables. With RLS enabled and no policies, these roles are currently default-denied at the row-policy layer; this is not proof of current row exposure. However, broad grants create a latent risk if a policy is added later. The backend uses a privileged Supabase client, so RLS does not replace application tenant checks for backend requests. Do not add broad `USING (true)` policies. Migration 023 revoked table privileges from `PUBLIC`, `anon` and `authenticated` for the organisation, course catalogue/creator, contract, enrolment, AI quota, course mapping, discussion/learning-path and assessment/progress tables, while retaining server-side `service_role` access. Because the catalogue/creator, discussion/learning-path and assessment/progress tables were outside the requested organisation-only permission scope, migration 024 restored their prior `anon`/`authenticated` table grants while keeping RLS enabled and adding no policies. Organisation/contract/AI/access tables remain denied to browser roles by grants, and the four SECURITY DEFINER routines have no browser-role EXECUTE grants. The inspected tables had no `PUBLIC` table grants, so the PUBLIC revoke is defensive hardening rather than remediation of an observed PUBLIC grant. The inspected RLS policy count is zero, so browser roles are already denied by RLS; the revokes remove the latent broad-grant risk if someone later adds a policy. Any future direct-client path must be deliberately designed with narrow grants and RLS policies rather than relying on the current broad defaults.
+
+Reference: https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy
+
+### H. Mutable search path warnings
+
+The Security Advisor reported three functions with mutable `search_path`. Migration 023 pins `learnora_set_updated_at`, which is used by organisation and Learnora course/cohort records, plus the new security-definer functions. Migration 024 revokes browser EXECUTE on the four SECURITY DEFINER routines. The other two findings (`set_updated_at`, also used by internal staff/team tables, and `update_admins_updated_at`, used by internal administrator records) remain outside this organisation-workspace scope. Re-run the Security Advisor after migration to confirm the remaining findings are understood and tracked.
+
+### I. Resource-scoped roles need a representation
+
+The organisation membership role check currently represents `owner`, `admin`, `instructor`, and `learner`. Team manager, cohort manager and programme manager should not become tenant-wide admin roles just to grant local responsibility. No equivalent customer-organisation resource-role assignment table was found; the existing `learnora_staff_role_assignments` is for internal staff and is out of scope.
+
+**Proposed additive table for the role/permission implementation step:** `learnora_organisation_resource_assignments` with `id uuid primary key`, `organisation_id uuid not null references organisations(id)`, `resource_type text` constrained to `team|cohort|programme`, `resource_id uuid not null`, `user_id uuid not null references users(id)`, `resource_role text` constrained by resource type (`team: lead|manager`; `cohort: tutor|manager`; `programme: tutor|manager`), `status active|inactive`, `created_by`, `created_at`, and `updated_at`; unique key `(organisation_id, resource_type, resource_id, user_id, resource_role)`. Add an index on `(organisation_id, resource_type, resource_id, status)` and `(user_id, status)`. A trigger must prove the resource belongs to `organisation_id` and the assignee is an active member of that same organisation. Keep inactive assignments for audit/history; reactivation updates the existing unique row. Backend permission resolution must read this table in the workflow implementation step before these roles are treated as authorising any action. Keep contract entitlements separate from permissions.
+
+### J. Migration history and deployment target need reconciliation
+
+Only nine timestamped migration records were registered in the live project. An initial mapping found exact registered-name matches for the organisation portal and migrations 017–022, while 001–015 and the learner-onboarding record remain unresolved against the repository chain. The live schema also lacks five legacy tables from 001 while newer Learnora equivalents exist. This mismatch is documented, but a complete applied/not-applied mapping still requires reviewing each older script and its data lineage. Do not manually mark a migration applied or replay an old SQL file blindly. Verify the Vercel backend project reference before production rollout.
+
+## 3. Migration execution record and remaining work
+
+Migrations 023 and 024 are applied to the confirmed Pheonix project and recorded as live versions `20261020230826` and `20261020230906`. The first migration added tenant/capacity/quota enforcement, team course assignments, quiz threshold constraints and organisation-table grant hardening. The follow-up restored pre-existing browser-role grants on shared learner/catalogue/progress tables outside the organisation-only scope and removed browser EXECUTE on the SECURITY DEFINER routines. No RLS policies were added.
+
+1. **Completed — preflight and dry run:** read-only schema/history inspection, tenant/capacity/date preflight, then transaction-wrapped SQL dry run with rollback before applying.
+2. **Completed — production migration:** both migration records are present; post-apply checks confirm the new tables/routines/triggers and no current tenant/capacity/quiz-threshold violations.
+3. **Still required — workflow regression tests:** exercise tenant mismatch rejection, inactive memberships, cross-tenant course access and published-course enforcement through actual backend routes.
+4. **Still required — concurrency tests:** concurrent last-slot capacity claims, cohort capacity reductions, daily/monthly AI quota boundaries, retry semantics and failed provider calls.
+5. **Still required — deployment alignment:** verify the deployed Vercel backend's Supabase project reference, finish CI checks, and deploy compatible backend code only after that confirmation.
+6. **Still required — historical migration reconciliation:** prove applied/not-applied status of repository migrations 001–015 from exact SQL/object evidence. Do not replay them or fabricate history rows based on names alone.
+7. **Future design — resource-scoped role assignments:** implement the proposed role assignment table only when Step 3's role-resolution workflow is wired end-to-end; this was not part of migrations 023/024.
+
+## 4. Backend workflow audit checklist
+
+| Workflow | Required invariants |
+|---|---|
+| Create/update organisation | Validate organisation type; enforce unique slug at DB level; reject inactive workspace mutations; require contract/pilot state for contracted features |
+| Team creation and membership | Scope by tenant; validate active org membership for manager/member; validate team role/status; prevent cross-tenant membership |
+| Cohort creation and membership | Programme belongs to same organisation; only active org learners can join; prevent duplicate active membership; enforce cohort and contract capacity atomically |
+| Programme/course mapping | Programme, cohort and assigned course must be tenant-consistent; preserve ordering and assignment history |
+| Individual/team/cohort assignment | No implied access; active grant/enrolment must match organisation; organisation-private courses cannot cross tenants |
+| Contract entitlements | Resolve the current valid contract by date and status; disabled/missing entitlement means denied; a null limit means unlimited only when the entitlement is explicitly enabled |
+| AI | Enforce role + feature entitlement + active contract + atomic quota; do not trust caller-supplied organisation IDs |
+| Assessment/progression | Minimum passing score 70%; apply the same gate at lesson/module/media/assignment/progress APIs; do not leak locked content in responses |
+| RLS and backend access | Tenant and permission checks in every privileged route; no blanket policies; service-role secrets remain server-only |
+| Lifecycle/history | Deactivate access without deleting historical progress, attempts, memberships or audit records |
+
+## 5. Verification status
+
+- Live schema and registered migration history inspected read-only.
+- Security Advisor inspected.
+- The expanded read-only live-data preflight returned **zero issues across 15 checks** covering active team/cohort membership integrity, cohort/programme tenant alignment, foreign-organisation course assignments/access, team manager membership, supported organisation types, quiz passing-score bounds, cohort capacity, duplicate active team memberships, active organisation enrolments, and cohort/programme capacity/date validity. Team-course-assignment checks are in verify_post_migration.sql because that table does not yet exist in the live schema. These are point-in-time counts and do not prevent future invalid writes without the proposed guards.
+- The snapshot contained one organisation (`academy`), one global AI limit row (`scope_type=global`, wildcard feature), no quiz rows, and no rows in `learnora_capacity_reservations`. The zero quiz/reservation counts do not mean those features are unused in future; they only describe this inspection snapshot.
+- `learnora_capacity_reservations` exists and must be reconciled with the actual contract-capacity workflow before any migration or runtime refactor.
+- Production migrations 023 and 024 were applied and are recorded in the live migration registry.
+- Post-apply read-only checks confirmed: both new tables exist; four routines exist; 17 new triggers are present; three AI usage reservations were backfilled; zero active team/cohort membership tenant violations; zero cohorts over capacity; zero quiz passing-score violations; zero browser-role grants on organisation/contract/AI/access tables; and no browser EXECUTE grants on the four SECURITY DEFINER routines.
+- The Security Advisor still reports 92 RLS-enabled tables without policies across the project and two mutable-search-path warnings on out-of-scope functions (`set_updated_at`, `update_admins_updated_at`). The no-policy findings are broader platform debt, not fixed by this organisation migration.
+- Remaining work: reconcile historical repository migrations 001–015 by exact object-level evidence; run concurrent quota/capacity and end-to-end tenant tests; verify the deployed backend points to Pheonix; finish CI checks before merge/deployment.
+
+
+## 8. Migration reconciliation decision ledger (read-only inspection)
+
+The live Supabase migration registry originally contained nine records. After applying this work, it contains those nine plus the two new records below:
+
+| Live version | Live name | Repository candidate | Decision |
+|---|---|---|---|
+| `20261008100924` | `add_learnora_ai_profiles` | No exact filename; AI foundation files `014` and `015` are candidates only | **Unresolved.** Do not equate by topic or insert a synthetic history row. Compare the applied schema/functions with both files and Git history. |
+| `20261009225421` | `learnora_organisation_portal` | `016_learnora_organisation_portal.sql` | Name/topic match; confirm SQL hash/effects before recording this as exact equivalence. |
+| `20261009230311` | `individual_learner_enrolments` | `017_individual_learner_enrolments.sql` | Name/topic match; confirm SQL hash/effects. |
+| `20261009230330` | `learner_lesson_notes` | `018_learner_lesson_notes.sql` | Name/topic match; confirm SQL hash/effects. |
+| `20261009230703` | `ai_lesson_summariser_profile` | `019_ai_lesson_summariser_profile.sql` | Name/topic match; confirm SQL hash/effects. |
+| `20261009231536` | `mark_witstart_pilot_mode` | `020_mark_witstart_pilot_mode.sql` | Name/topic match; confirm SQL hash/effects. |
+| `20261009231754` | `cohort_course_assignments` | `021_cohort_course_assignments.sql` | Name/topic match; confirm SQL hash/effects. |
+| `20261009232328` | `community_discussions` | `022_community_discussions.sql` | Name/topic match; confirm SQL hash/effects. |
+| `20261011051442` | `learner_onboarding_profiles` | No numbered file among `001`–`022` | **Unresolved.** Find the original SQL/commit or inspect the object definition and provenance; do not fabricate a replacement migration. |
+| `20261020230826` | `learnora_audit_remediation` | `backend-python/migrations/023_learnora_audit_remediation.sql` | Applied; SQL dry-run and post-migration checks completed. |
+| `20261020230906` | `restore_shared_learner_grants_and_lock_trigger_routines` | `backend-python/migrations/024_restore_shared_learner_grants_and_lock_trigger_routines.sql` | Applied; restores prior shared learner/course/progression grants and removes browser EXECUTE on internal SECURITY DEFINER routines. |
+
+### Repository files without a corresponding live registry row
+
+- `001_initial.sql` through `013_learnora_lifecycle_constraints.sql): no matching registry rows were returned. This does **not** prove they were never applied; live objects may have been created manually, through another migration path, or by later scripts.
+- `014_learnora_ai_foundation.sql` and `015_learnora_ai_permissions.sql`: no exact registry entries. The live `add_learnora_ai_profiles` row is not proof that either file ran.
+- `023_learnora_audit_remediation.sql`: applied to Pheonix as live version `20261020230826`.
+- `024_restore_shared_learner_grants_and_lock_trigger_routines.sql`: applied to Pheonix as live version `20261020230906`.
+
+### Reconciliation rule
+
+Do not insert fake rows into `supabase_migrations.schema_migrations`, do not rename the historical files to force a match, and do not run `supabase db push` or replay `001`–`015` against Pheonix while their state is unknown. A migration name is not proof of equivalent SQL. Preserve the current nine live records as the factual baseline.
+
+Before production rollout, build a per-file evidence record with: (1) the exact repository commit/blob hash; (2) the SQL statements/objects from that file; (3) the live object's definition and relevant constraints/policies/triggers; (4) whether effects match, partially match, or are absent; and (5) the reviewed action. Where an old file's effects are present but history is missing, prepare a separately reviewed history-repair procedure only after proving exact equivalence and confirming Supabase's supported migration-repair workflow. Where effects are partially present, write a new forward-only corrective migration rather than replaying the old file.
+
+### Validation boundary and remaining release gate
+
+Read-only validation confirms that the existing organisation-related base tables and referenced course/assessment tables exist, while the proposed `team_course_assignments`, `learnora_ai_quota_reservations` and three new routines are not present yet. This is expected for a proposal. It is **not** proof that the SQL parses or executes successfully.
+
+Although the SQL transaction dry-run and production application succeeded, no isolated production-like branch or concurrency harness has been used. Still test:
+- duplicate/retry behaviour and AI quota daily/monthly boundaries under concurrent requests;
+- concurrent last-slot capacity claims, membership moves/suspensions, and cohort capacity reductions;
+- tenant mismatch attempts for team/cohort/course assignments and enrolments;
+- existing usage-log backfill and constraint validation against a representative data copy;
+- grants/RLS after the migration, including a non-organisation learner regression check.
+
+The last known GitHub runs were still in progress on the newest branch head when inspected; the immediately preceding backend regression run passed, but the newest commit is not yet fully verified. The production database migration is complete. Merge and any additional deployment remain separate approval gates.
