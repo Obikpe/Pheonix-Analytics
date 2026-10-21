@@ -170,3 +170,27 @@ The latest workflow runs for the revised staging policy are:
 - [Learnora quality checks](https://github.com/Obikpe/Pheonix-Analytics/actions/runs/39676949150) — **cancelled** overall. Its individual frontend build and backend syntax steps completed successfully, but this workflow must be rerun cleanly before it can be marked passed.
 
 No active Supabase schema, migration ledger, production rows, or Vercel deployment was changed. No merge or deployment was performed.
+
+
+## Follow-up remediation — CI cancellation fixed (2026-10-21)
+
+The quality workflow used `cancel-in-progress: true`, which could cancel a run while another check was starting. This was changed to `cancel-in-progress: false` so checks queue rather than canceling required evidence. The change is in commit `be306d17c44d01965e0756cb5679da87db040ae1`.
+
+All four workflows completed successfully on that exact commit:
+
+- [Learnora quality checks](https://github.com/Obikpe/Pheonix-Analytics/actions/runs/39677648997) — **passed**, including backend syntax and both frontend build jobs.
+- [Learnora frontends](https://github.com/Obikpe/Pheonix-Analytics/actions/runs/39677648948) — **passed**, both frontend builds.
+- [Learnora Backend Verification](https://github.com/Obikpe/Pheonix-Analytics/actions/runs/39677648952) — **passed**.
+- [Cohort Learning Access Tests](https://github.com/Obikpe/Pheonix-Analytics/actions/runs/39677648786) — **passed** under the revised staging policy.
+
+## Remaining issues that cannot be safely auto-fixed from repository evidence alone
+
+The following are intentionally release-blocking rather than silently "fixed" by schema coercion:
+
+1. **Historical migration source provenance:** GitHub commit searches for the two catalog-reconstructed migrations and a representative 20 October timestamped migration found no original source commit. The original SQL cannot be reconstructed with certainty from the current catalog because catalog state does not preserve all historical DDL, seed data, or migration side effects. Obtain trusted backup/author copies or formally approve the clearly labelled reconstructed sources after semantic review.
+2. **Legacy/current data lineage:** the Witstart identity-set mismatch and likely successor-table mappings require record-level business confirmation. No rows have been moved, deleted, or remapped.
+3. **Schema parity:** the report-only fingerprint still exposes missing/extra columns, constraints, indexes, triggers, RLS states, one policy, and one view. The replay is historical-analysis evidence, not a valid current-state bootstrap. Do not "fix" this by copying current object names into the legacy chain or dropping old objects.
+4. **Fresh-environment bootstrap:** the catalog SQL snapshot remains a CI-only fixture. Before release, create and validate a dedicated reviewed baseline/squash artifact for new environments, including the correct grants, managed Supabase dependencies, functions, triggers, RLS, constraints, and any required reference/seed data. Do not place the staging snapshot into the active migration directory or apply it to the live project.
+5. **Browser acceptance:** CI confirms builds and API-level cohort lifecycle behavior, not a real browser interaction with a deployed preview. Run the organisation workflow in an isolated preview with disposable test identities before merge; validate visible errors and refresh behaviour.
+
+No live Supabase schema, migration ledger, production data, or Vercel deployment was changed. No merge or deployment was performed.
