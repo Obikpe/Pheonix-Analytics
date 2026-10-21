@@ -8,6 +8,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 ACTIVE_MIGRATIONS = REPO_ROOT / "supabase" / "migrations"
 LEGACY_MIGRATIONS = REPO_ROOT / "supabase" / "legacy_migrations"
 
+# These timestamps are checked against the active project's migration ledger; the last four entries were applied during the 2026-10-21 security rollout.
 EXPECTED_VERSIONS = [
     "20261008100924",
     "20261009225421",
