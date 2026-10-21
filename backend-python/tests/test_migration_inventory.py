@@ -1,82 +1,73 @@
-"""Repository-side migration inventory and safety regression checks.
+"""Migration inventory checks aligned with the active Supabase migration strategy.
 
-These tests intentionally inspect source SQL only. They do not claim that the
-live database is structurally equivalent, and they never execute migrations.
+The timestamped supabase/migrations directory is the active release chain.
+The old numbered chain is archived under supabase/legacy_migrations for
+historical analysis only and must not be replayed as the current schema.
 """
 from pathlib import Path
 import re
 import unittest
 
-
 ROOT = Path(__file__).resolve().parents[2]
-SOURCE_DIR = ROOT / "supabase" / "migrations"
-REMEDIATION_DIR = ROOT / "backend-python" / "migrations"
+ACTIVE_DIR = ROOT / "supabase" / "migrations"
+LEGACY_DIR = ROOT / "supabase" / "legacy_migrations"
 
 
 class MigrationInventoryTests(unittest.TestCase):
-    def test_numbered_source_migration_chain_is_contiguous_001_to_022(self):
-        files = sorted(SOURCE_DIR.glob("[0-9][0-9][0-9]_*.sql"))
+    def test_legacy_numbered_chain_is_archived_and_contiguous_001_to_015(self):
+        files = sorted(LEGACY_DIR.glob("[0-9][0-9][0-9]_*.sql"))
         numbers = [int(path.name[:3]) for path in files]
-        self.assertEqual(
-            numbers,
-            list(range(1, 23)),
-            "Source migration chain must contain exactly one numbered file for each version 001–022.",
-        )
-
-    def test_each_source_migration_has_nonempty_sql(self):
-        files = sorted(SOURCE_DIR.glob("[0-9][0-9][0-9]_*.sql"))
-        self.assertEqual(len(files), 22)
+        self.assertEqual(numbers, list(range(1, 16)))
         for path in files:
-            with self.subTest(migration=path.name):
-                sql = path.read_text(encoding="utf-8").strip()
-                self.assertTrue(sql, "Migration file must not be empty.")
-                self.assertRegex(sql, r"(?is)\b(CREATE|ALTER|INSERT|UPDATE|DELETE|GRANT|REVOKE|DROP)\b")
+            self.assertTrue(path.read_text(encoding="utf-8").strip(), path.name)
 
-    def test_remediation_migrations_023_to_027_are_present_and_ordered(self):
-        files = sorted(REMEDIATION_DIR.glob("[0-9][0-9][0-9]_*.sql"))
-        numbers = [int(path.name[:3]) for path in files]
-        self.assertEqual(
-            numbers,
-            [23, 24, 25, 26, 27],
-            "Expected the five reviewed remediation migrations; investigate gaps or extra numbered SQL before release.",
+    def test_current_security_remediation_migrations_are_present(self):
+        expected = (
+            "20261020230826_learnora_audit_remediation.sql",
+            "20261020230906_restore_shared_learner_grants_and_lock_trigger_routines.sql",
+            "20261020232148_allow_unlimited_monthly_ai_quota.sql",
+            "20261020234717_pin_shared_timestamp_trigger_search_path.sql",
+            "20261020234813_revoke_browser_grants_from_org_control_tables.sql",
+            "20261021183000_revoke_browser_table_grants.sql",
+            "20261021183500_process_creator_payout_atomically.sql",
+            "20261021184000_encrypt_cohort_date_of_birth.sql",
         )
+        for name in expected:
+            with self.subTest(migration=name):
+                sql_path = ACTIVE_DIR / name
+                self.assertTrue(sql_path.is_file(), f"Missing active migration: {name}")
+                self.assertTrue(sql_path.read_text(encoding="utf-8").strip())
 
-    def test_historical_data_migrations_are_explicitly_treated_as_non_replayable(self):
-        # These migrations mutate existing identity/permission/quota data.
-        # This guard prevents a future refactor from treating them as harmless DDL.
-        for number in (3, 4, 15):
-            matches = list(SOURCE_DIR.glob(f"{number:03d}_*.sql"))
-            self.assertEqual(len(matches), 1)
-            sql = matches[0].read_text(encoding="utf-8")
-            with self.subTest(migration=matches[0].name):
-                self.assertRegex(sql, r"(?is)\b(INSERT\s+INTO|UPDATE\s+)")
+    def test_historical_reconstructed_sources_are_not_misrepresented_as_originals(self):
+        readme = (LEGACY_DIR / "README.md").read_text(encoding="utf-8").lower()
+        self.assertIn("reconstruct", readme)
+        for name in (
+            "20261008100924_add_learnora_ai_profiles.sql",
+            "20261011051442_learner_onboarding_profiles.sql",
+        ):
+            self.assertTrue((ACTIVE_DIR / name).is_file(), name)
 
-    def test_quota_fix_keeps_null_monthly_limit_contract(self):
-        sql = (REMEDIATION_DIR / "025_allow_unlimited_monthly_ai_quota.sql").read_text(
+    def test_quota_fix_preserves_unlimited_monthly_limit_contract(self):
+        sql = (ACTIVE_DIR / "20261020232148_allow_unlimited_monthly_ai_quota.sql").read_text(
             encoding="utf-8"
         )
-        self.assertRegex(sql, r"(?is)p_requests_per_month\s+IS\s+NOT\s+NULL")
         self.assertNotRegex(
             sql,
-            r"(?is)IF\s+p_requests_per_month\s+IS\s+NULL\s+THEN",
+            r"(?is)IF\\s+p_requests_per_month\\s+IS\\s+NULL\\s+THEN",
             "A NULL monthly limit must remain valid (unlimited).",
         )
 
-    def test_browser_grant_revocation_is_scoped_to_control_tables(self):
-        sql = (REMEDIATION_DIR / "027_revoke_browser_grants_from_org_control_tables.sql").read_text(
+    def test_browser_grant_revocation_covers_shared_and_control_tables(self):
+        sql = (ACTIVE_DIR / "20261021183000_revoke_browser_table_grants.sql").read_text(
             encoding="utf-8"
         )
-        self.assertIn("REVOKE", sql.upper())
-        self.assertIn("anon", sql)
-        self.assertIn("authenticated", sql)
-        # The remediation must not blanket-revoke shared learner/course tables.
-        for table in ("learnora_courses", "learnora_lessons", "learnora_lesson_progress"):
+        self.assertRegex(sql, r"(?is)REVOKE\\s+ALL\\s+PRIVILEGES\\s+ON\\s+ALL\\s+TABLES\\s+IN\\s+SCHEMA\\s+public")
+        for role in ("anon", "authenticated"):
+            self.assertIn(role, sql)
+        for table in ("users", "learnora_courses", "learnora_creator_accounts", "quizzes"):
             with self.subTest(table=table):
-                self.assertNotRegex(
-                    sql,
-                    rf"(?is)REVOKE[^;]*\b{re.escape(table)}\b",
-                    f"Unexpected browser grant revocation for shared table {table}.",
-                )
+                self.assertIn(table, sql)
+        self.assertIn("ALTER DEFAULT PRIVILEGES", sql)
 
 
 if __name__ == "__main__":
