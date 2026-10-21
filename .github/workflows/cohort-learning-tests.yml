@@ -224,7 +224,12 @@ jobs:
             echo "Expected no contract-template seed rows; found $template_count"
             exit 1
           fi
-          echo "Permission keys match the active catalog baseline; AI provider seed count matches; no contract-template rows are expected."
+          clause_count="$(psql "$LEGACY_REPLAY_DATABASE_URL" -X -qAt -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM public.learnora_contract_clauses")"
+          if [[ "$clause_count" != "0" ]]; then
+            echo "Expected no contract-clause seed rows; found $clause_count"
+            exit 1
+          fi
+          echo "Permission keys match the active catalog baseline; AI provider seed count matches; contract templates and clauses are empty as expected."
 
       - name: Compare replayed schema with the catalog snapshot
         if: always() && steps.legacy_replay.outcome == 'success'
