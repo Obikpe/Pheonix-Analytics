@@ -33,6 +33,8 @@ jobs:
       SUPABASE_URL: https://example.supabase.co
       SUPABASE_SERVICE_ROLE_KEY: test-service-role-key
       JWT_SECRET: cohort-tests-only-secret
+      # Non-production fixture key only; production must set its own secret.
+      COHORT_DOB_ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
       TEST_DATABASE_URL: postgresql://postgres:cohort-ci-only@localhost:5432/cohort_ci
     steps:
       - name: Check out repository
