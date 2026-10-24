@@ -73,6 +73,77 @@ def _enrolment(user_id: str, course_id: str):
     return result.data[0] if result.data else None
 
 
+def effective_passing_score(quiz: dict) -> float:
+    """A quiz's configured threshold may be stricter, never below 70%."""
+    return max(70.0, float(quiz.get("passing_score") or 70))
+
+
+def _module_for_lesson(lesson_id: str):
+    result = (
+        supabase.table("learnora_lessons")
+        .select("id,module_id")
+        .eq("id", lesson_id)
+        .limit(1)
+        .execute()
+    )
+    if not result.data:
+        raise HTTPException(404, "Lesson not found.")
+    return str(result.data[0]["module_id"])
+
+
+def _assert_module_unlocked(user_id: str, module_id: str):
+    """Require a passed >=70% assessment for every earlier module."""
+    current = (
+        supabase.table("course_modules")
+        .select("id,course_id,order_index")
+        .eq("id", module_id)
+        .limit(1)
+        .execute()
+    ).data or []
+    if not current:
+        raise HTTPException(404, "Module not found.")
+    module = current[0]
+    previous_modules = (
+        supabase.table("course_modules")
+        .select("id,title,order_index")
+        .eq("course_id", module["course_id"])
+        .lt("order_index", module["order_index"])
+        .neq("status", "archived")
+        .order("order_index")
+        .execute()
+    ).data or []
+
+    for previous in previous_modules:
+        quizzes = (
+            supabase.table("quizzes")
+            .select("id,title")
+            .eq("module_id", previous["id"])
+            .eq("is_published", True)
+            .execute()
+        ).data or []
+        if not quizzes:
+            raise HTTPException(
+                409,
+                f'Module "{previous.get("title") or "previous module"}" has no published assessment yet. Contact your instructor or organisation administrator.',
+            )
+        for quiz in quizzes:
+            attempts = (
+                supabase.table("quiz_attempts")
+                .select("id,score,passed")
+                .eq("quiz_id", quiz["id"])
+                .eq("user_id", user_id)
+                .eq("passed", True)
+                .gte("score", 70)
+                .limit(1)
+                .execute()
+            ).data or []
+            if not attempts:
+                raise HTTPException(
+                    423,
+                    f'Pass the assessment for "{previous.get("title") or "the previous module"}" with at least 70% to unlock the next module.',
+                )
+
+
 def _course_summary(user_id: str, course_id: str):
     enrolment = _enrolment(user_id, course_id)
     if not enrolment:
@@ -134,6 +205,29 @@ def _course_summary(user_id: str, course_id: str):
     total = len(lessons)
     percent = round((completed / total) * 100) if total else 0
 
+    module_views = []
+    for module in modules:
+        locked = False
+        try:
+            _assert_module_unlocked(user_id, str(module["id"]))
+        except HTTPException as exc:
+            if exc.status_code in (409, 423):
+                locked = True
+            else:
+                raise
+        module_lessons = []
+        for lesson in lessons:
+            if str(lesson["module_id"]) != str(module["id"]):
+                continue
+            lesson_view = {
+                **lesson,
+                "progress": progress_map.get(str(lesson["id"])),
+            }
+            if locked:
+                lesson_view["content"] = None
+            module_lessons.append(lesson_view)
+        module_views.append({**module, "locked": locked, "lessons": module_lessons})
+
     return {
         "course_id": course_id,
         "enrolment": enrolment,
@@ -141,22 +235,7 @@ def _course_summary(user_id: str, course_id: str):
         "completed_lessons": completed,
         "progress_percent": percent,
         "completed": total > 0 and completed == total,
-        "modules": [
-            {
-                **module,
-                "lessons": [
-                    {
-                        **lesson,
-                        "progress": progress_map.get(
-                            str(lesson["id"])
-                        ),
-                    }
-                    for lesson in lessons
-                    if str(lesson["module_id"]) == str(module["id"])
-                ],
-            }
-            for module in modules
-        ],
+        "modules": module_views,
     }
 
 
@@ -165,6 +244,7 @@ def get_lesson_note(lesson_id: str, user: CurrentUser = Depends(get_current_user
     course_id = _course_for_lesson(lesson_id)
     if not _enrolment(str(user.id), course_id):
         raise HTTPException(403, "You are not enrolled in this course.")
+    _assert_module_unlocked(str(user.id), _module_for_lesson(lesson_id))
     result = supabase.table("learner_lesson_notes").select(
         "id,content,created_at,updated_at"
     ).eq("user_id", user.id).eq("lesson_id", lesson_id).limit(1).execute()
@@ -176,6 +256,7 @@ def save_lesson_note(lesson_id: str, body: LessonNoteIn, user: CurrentUser = Dep
     course_id = _course_for_lesson(lesson_id)
     if not _enrolment(str(user.id), course_id):
         raise HTTPException(403, "You are not enrolled in this course.")
+    _assert_module_unlocked(str(user.id), _module_for_lesson(lesson_id))
     now = datetime.now(timezone.utc).isoformat()
     result = supabase.table("learner_lesson_notes").upsert({
         "user_id": user.id,
@@ -211,13 +292,15 @@ def course_activities(course_id: str, user: CurrentUser = Depends(get_current_us
 @router.get("/quizzes/{quiz_id}")
 def get_quiz(quiz_id: str, user: CurrentUser = Depends(get_current_user)):
     result = (supabase.table("quizzes")
-        .select("id,lesson_id,course_id,title,description,passing_score,max_attempts,is_published")
+        .select("id,lesson_id,module_id,course_id,title,description,passing_score,max_attempts,is_published")
         .eq("id", quiz_id).eq("is_published", True).limit(1).execute())
     if not result.data:
         raise HTTPException(404, "Published quiz not found.")
     quiz = result.data[0]
     if not _enrolment(str(user.id), str(quiz["course_id"])):
         raise HTTPException(403, "You are not enrolled in this course.")
+    if quiz.get("module_id"):
+        _assert_module_unlocked(str(user.id), str(quiz["module_id"]))
     questions = (supabase.table("quiz_questions")
         .select("id,question,question_type,options,points,order_index")
         .eq("quiz_id", quiz_id).order("order_index").execute()).data or []
@@ -231,13 +314,15 @@ def get_quiz(quiz_id: str, user: CurrentUser = Depends(get_current_user)):
 @router.post("/quizzes/{quiz_id}/attempts", status_code=201)
 def submit_quiz_attempt(quiz_id: str, body: QuizAttemptIn, user: CurrentUser = Depends(get_current_user)):
     result = (supabase.table("quizzes")
-        .select("id,course_id,title,passing_score,max_attempts,is_published")
+        .select("id,lesson_id,module_id,course_id,title,passing_score,max_attempts,is_published")
         .eq("id", quiz_id).eq("is_published", True).limit(1).execute())
     if not result.data:
         raise HTTPException(404, "Published quiz not found.")
     quiz = result.data[0]
     if not _enrolment(str(user.id), str(quiz["course_id"])):
         raise HTTPException(403, "You are not enrolled in this course.")
+    if quiz.get("module_id"):
+        _assert_module_unlocked(str(user.id), str(quiz["module_id"]))
     previous = (supabase.table("quiz_attempts")
         .select("id,score,passed,submitted_at")
         .eq("quiz_id", quiz_id).eq("user_id", user.id)
@@ -278,7 +363,8 @@ def submit_quiz_attempt(quiz_id: str, body: QuizAttemptIn, user: CurrentUser = D
             "points_possible": points,
         })
     score = round((earned / total_points) * 100, 2) if total_points else 0
-    passed = score >= float(quiz.get("passing_score") or 70)
+    passing_score = effective_passing_score(quiz)
+    passed = score >= passing_score
     now = datetime.now(timezone.utc).isoformat()
     inserted = (supabase.table("quiz_attempts").insert({
         "quiz_id": quiz_id,
@@ -291,7 +377,7 @@ def submit_quiz_attempt(quiz_id: str, body: QuizAttemptIn, user: CurrentUser = D
     }).execute())
     if not inserted.data:
         raise HTTPException(500, "Unable to save quiz attempt.")
-    return {"success": True, "attempt": inserted.data[0], "review": review, "passing_score": quiz.get("passing_score") or 70}
+    return {"success": True, "attempt": inserted.data[0], "review": review, "passing_score": passing_score}
 
 
 @router.get("/assignments/{assignment_id}")
@@ -304,6 +390,8 @@ def get_assignment(assignment_id: str, user: CurrentUser = Depends(get_current_u
     assignment = result.data[0]
     if not _enrolment(str(user.id), str(assignment["course_id"])):
         raise HTTPException(403, "You are not enrolled in this course.")
+    if assignment.get("lesson_id"):
+        _assert_module_unlocked(str(user.id), _module_for_lesson(str(assignment["lesson_id"])))
     submissions = (supabase.table("assignment_submissions")
         .select("id,submission_text,file_url,status,score,feedback,submitted_at,graded_at")
         .eq("assignment_id", assignment_id).eq("user_id", user.id)
@@ -314,13 +402,15 @@ def get_assignment(assignment_id: str, user: CurrentUser = Depends(get_current_u
 @router.post("/assignments/{assignment_id}/submissions", status_code=201)
 def submit_assignment(assignment_id: str, body: AssignmentSubmissionIn, user: CurrentUser = Depends(get_current_user)):
     result = (supabase.table("assignments")
-        .select("id,course_id,is_published")
+        .select("id,lesson_id,course_id,is_published")
         .eq("id", assignment_id).eq("is_published", True).limit(1).execute())
     if not result.data:
         raise HTTPException(404, "Published assignment not found.")
     assignment = result.data[0]
     if not _enrolment(str(user.id), str(assignment["course_id"])):
         raise HTTPException(403, "You are not enrolled in this course.")
+    if assignment.get("lesson_id"):
+        _assert_module_unlocked(str(user.id), _module_for_lesson(str(assignment["lesson_id"])))
     file_url = body.file_url.strip() if body.file_url else None
     if file_url and not file_url.startswith("https://"):
         raise HTTPException(400, "Submission links must use HTTPS.")
@@ -452,6 +542,7 @@ def lesson_media(
     course_id = _course_for_lesson(lesson_id)
     if not _enrolment(str(user.id), course_id):
         raise HTTPException(403, "You are not enrolled in this course.")
+    _assert_module_unlocked(str(user.id), _module_for_lesson(lesson_id))
 
     videos = (
         supabase.table("lesson_videos")
@@ -519,6 +610,7 @@ def update_lesson_progress(
             403,
             "You are not enrolled in this course.",
         )
+    _assert_module_unlocked(str(user.id), _module_for_lesson(lesson_id))
 
     now = datetime.now(timezone.utc).isoformat()
 
